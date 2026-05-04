@@ -1,0 +1,8 @@
+# Solo owner today; add teammates here when hiring.
+* @rishabhc143
+
+# Schema changes are highest-risk — flag explicitly.
+/prisma/                @rishabhc143
+/lib/auth.ts            @rishabhc143
+/lib/auth-helpers.ts    @rishabhc143
+/middleware.ts          @rishabhc143
