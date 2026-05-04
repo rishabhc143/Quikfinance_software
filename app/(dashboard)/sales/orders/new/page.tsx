@@ -1,0 +1,41 @@
+import Link from "next/link";
+import { ArrowLeft } from "lucide-react";
+import { format } from "date-fns";
+import { db } from "@/lib/db";
+import { requireOrganization } from "@/lib/auth-helpers";
+import { Button } from "@/components/ui/button";
+import { SimpleDocForm, type SimpleDocValues } from "@/components/shared/simple-doc-form";
+import { createSalesOrderAction } from "../actions";
+
+export const metadata = { title: "New Sales Order" };
+
+export default async function NewSalesOrderPage() {
+  const { organization } = await requireOrganization();
+  const customers = await db.contact.findMany({
+    where: { organizationId: organization.id, deletedAt: null, type: { in: ["CUSTOMER", "BOTH"] } },
+    select: { id: true, displayName: true }, orderBy: { displayName: "asc" },
+  });
+  async function submit(values: SimpleDocValues) {
+    "use server";
+    if (!values.contactId) throw new Error("Customer required");
+    await createSalesOrderAction({ contactId: values.contactId, date: new Date(values.date), total: values.total, status: values.status });
+  }
+  return (
+    <div className="p-6 max-w-3xl mx-auto space-y-4">
+      <div className="flex items-center gap-2">
+        <Button asChild variant="ghost" size="icon"><Link href="/sales/orders"><ArrowLeft className="h-4 w-4" /></Link></Button>
+        <h1 className="text-xl font-semibold">New Sales Order</h1>
+      </div>
+      <SimpleDocForm
+        contactLabel="Customer"
+        statusOptions={["draft", "confirmed", "fulfilled", "cancelled"]}
+        contactOptions={customers.map((c) => ({ value: c.id, label: c.displayName }))}
+        currency={organization.currency}
+        defaultDate={format(new Date(), "yyyy-MM-dd")}
+        onSubmitAction={submit}
+        cancelHref="/sales/orders"
+        submitLabel="Create order"
+      />
+    </div>
+  );
+}

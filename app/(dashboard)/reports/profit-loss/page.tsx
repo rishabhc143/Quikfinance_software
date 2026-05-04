@@ -1,0 +1,119 @@
+import Link from "next/link";
+import { ArrowLeft } from "lucide-react";
+import { db } from "@/lib/db";
+import { requireOrganization } from "@/lib/auth-helpers";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { formatMoney } from "@/lib/money";
+import { startOfYear, endOfYear, format } from "date-fns";
+
+export const metadata = { title: "Profit & Loss" };
+
+export default async function ProfitLossPage({ searchParams }: { searchParams: Record<string, string> }) {
+  const { organization } = await requireOrganization();
+  const cur = organization.currency;
+  const now = new Date();
+  const from = searchParams.from ? new Date(searchParams.from) : startOfYear(now);
+  const to = searchParams.to ? new Date(searchParams.to) : endOfYear(now);
+
+  const [paidInvoices, expenses, openInvoices] = await Promise.all([
+    db.invoice.aggregate({
+      where: {
+        organizationId: organization.id, deletedAt: null, status: "PAID",
+        issueDate: { gte: from, lte: to },
+      },
+      _sum: { total: true }, _count: true,
+    }),
+    db.expense.findMany({
+      where: { organizationId: organization.id, date: { gte: from, lte: to } },
+      select: { category: true, amount: true },
+    }),
+    db.invoice.aggregate({
+      where: {
+        organizationId: organization.id, deletedAt: null,
+        status: { in: ["SENT", "PARTIALLY_PAID", "OVERDUE"] },
+        issueDate: { gte: from, lte: to },
+      },
+      _sum: { total: true, amountPaid: true },
+    }),
+  ]);
+
+  const revenue = Number(paidInvoices._sum.total ?? 0);
+  const accruedRevenue = Number(openInvoices._sum.total ?? 0);
+
+  const expenseByCategory = expenses.reduce<Record<string, number>>((acc, e) => {
+    acc[e.category] = (acc[e.category] ?? 0) + Number(e.amount);
+    return acc;
+  }, {});
+  const totalExpenses = Object.values(expenseByCategory).reduce((s, n) => s + n, 0);
+  const netCash = revenue - totalExpenses;
+  const netAccrual = (revenue + accruedRevenue) - totalExpenses;
+
+  return (
+    <div className="p-6 max-w-4xl mx-auto space-y-4">
+      <div className="flex items-center gap-2">
+        <Button asChild variant="ghost" size="icon"><Link href="/reports"><ArrowLeft className="h-4 w-4" /></Link></Button>
+        <div>
+          <h1 className="text-xl font-semibold">Profit &amp; Loss</h1>
+          <p className="text-sm text-muted-foreground">{format(from, "dd MMM yyyy")} → {format(to, "dd MMM yyyy")}</p>
+        </div>
+      </div>
+
+      <form className="flex items-center gap-2 text-sm" action="/reports/profit-loss">
+        <label>From <input type="date" name="from" defaultValue={format(from, "yyyy-MM-dd")} className="ml-1 h-9 rounded-md border border-input bg-background px-3 text-sm" /></label>
+        <label>To <input type="date" name="to" defaultValue={format(to, "yyyy-MM-dd")} className="ml-1 h-9 rounded-md border border-input bg-background px-3 text-sm" /></label>
+        <Button type="submit" size="sm" variant="outline">Apply</Button>
+      </form>
+
+      <div className="grid gap-3 md:grid-cols-3">
+        <Card><CardContent className="pt-6"><div className="text-xs text-muted-foreground">Revenue (paid)</div><div className="text-2xl font-semibold mt-1 tabular-nums">{formatMoney(revenue, cur)}</div><div className="text-xs text-muted-foreground mt-1">{paidInvoices._count} invoices</div></CardContent></Card>
+        <Card><CardContent className="pt-6"><div className="text-xs text-muted-foreground">Total expenses</div><div className="text-2xl font-semibold mt-1 tabular-nums">{formatMoney(totalExpenses, cur)}</div></CardContent></Card>
+        <Card><CardContent className="pt-6"><div className="text-xs text-muted-foreground">Net (cash basis)</div><div className={"text-2xl font-semibold mt-1 tabular-nums " + (netCash >= 0 ? "text-emerald-600" : "text-destructive")}>{formatMoney(netCash, cur)}</div></CardContent></Card>
+      </div>
+
+      <Card>
+        <CardHeader><CardTitle className="text-base">Revenue</CardTitle></CardHeader>
+        <CardContent className="p-0">
+          <table className="w-full text-sm">
+            <tbody className="divide-y">
+              <tr><td className="p-3">Invoiced and paid</td><td className="p-3 text-right tabular-nums">{formatMoney(revenue, cur)}</td></tr>
+              <tr><td className="p-3 text-muted-foreground">Invoiced but unpaid (accrual)</td><td className="p-3 text-right tabular-nums text-muted-foreground">{formatMoney(accruedRevenue, cur)}</td></tr>
+            </tbody>
+            <tfoot className="bg-muted/30">
+              <tr><td className="p-3 font-medium">Total revenue (accrual basis)</td><td className="p-3 text-right tabular-nums font-semibold">{formatMoney(revenue + accruedRevenue, cur)}</td></tr>
+            </tfoot>
+          </table>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader><CardTitle className="text-base">Expenses by category</CardTitle></CardHeader>
+        <CardContent className="p-0">
+          {Object.keys(expenseByCategory).length === 0 ? (
+            <div className="p-6 text-sm text-center text-muted-foreground">No expenses recorded in this period.</div>
+          ) : (
+            <table className="w-full text-sm">
+              <tbody className="divide-y">
+                {Object.entries(expenseByCategory).sort((a, b) => b[1] - a[1]).map(([cat, amt]) => (
+                  <tr key={cat}><td className="p-3">{cat}</td><td className="p-3 text-right tabular-nums">{formatMoney(amt, cur)}</td></tr>
+                ))}
+              </tbody>
+              <tfoot className="bg-muted/30">
+                <tr><td className="p-3 font-medium">Total expenses</td><td className="p-3 text-right tabular-nums font-semibold">{formatMoney(totalExpenses, cur)}</td></tr>
+              </tfoot>
+            </table>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent className="pt-6">
+          <div className="flex items-center justify-between">
+            <span className="font-medium">Net profit (accrual basis)</span>
+            <span className={"text-xl font-semibold tabular-nums " + (netAccrual >= 0 ? "text-emerald-600" : "text-destructive")}>{formatMoney(netAccrual, cur)}</span>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
