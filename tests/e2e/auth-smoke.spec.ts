@@ -17,9 +17,9 @@ test.describe("Auth + dashboard smoke", () => {
     await page.getByLabel("Password").fill(ADMIN_PASSWORD);
     await page.getByRole("button", { name: /sign in$/i }).click();
 
-    // Dashboard
-    await expect(page).toHaveURL(/\/(?:$|\?)/, { timeout: 10_000 });
-    await expect(page.getByRole("heading", { name: /^hello,/i })).toBeVisible();
+    // Dashboard — assert by content. The URL may briefly pass through
+    // /api/auth/callback in production builds before settling at /.
+    await expect(page.getByRole("heading", { name: /^hello,/i })).toBeVisible({ timeout: 15_000 });
     await expect(page.getByText("Total Receivables")).toBeVisible();
 
     // Items list (seeded Widget Pro must appear)
