@@ -25,11 +25,11 @@ export default async function QuoteDetailPage({ params }: { params: { id: string
         <div className="flex items-center gap-2">
           <Button asChild variant="ghost" size="icon"><Link href="/sales/quotes"><ArrowLeft className="h-4 w-4" /></Link></Button>
           <h1 className="text-xl font-semibold font-mono">{q.number}</h1>
-          <Badge variant={q.status === "accepted" ? "success" : "outline"}>{q.status}</Badge>
+          <Badge variant={q.status === "ACCEPTED" || q.status === "INVOICED" ? "success" : "outline"}>{q.status}</Badge>
         </div>
         <div className="flex gap-2">
           <DeleteButton action={deleteQuoteAction.bind(null, q.id)} confirmText="Delete this quote?" redirectTo="/sales/quotes" />
-          {q.status !== "accepted" && <ConvertButton quoteId={q.id} />}
+          {q.status !== "INVOICED" && <ConvertButton quoteId={q.id} />}
         </div>
       </div>
       <Card>

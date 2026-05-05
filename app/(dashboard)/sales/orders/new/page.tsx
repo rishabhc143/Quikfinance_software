@@ -18,7 +18,11 @@ export default async function NewSalesOrderPage() {
   async function submit(values: SimpleDocValues) {
     "use server";
     if (!values.contactId) throw new Error("Customer required");
-    await createSalesOrderAction({ contactId: values.contactId, date: new Date(values.date), total: values.total, status: values.status });
+    const statusMap: Record<string, "DRAFT" | "CONFIRMED" | "CLOSED" | "VOID"> = {
+      draft: "DRAFT", confirmed: "CONFIRMED", fulfilled: "CLOSED", cancelled: "VOID",
+    };
+    const status = statusMap[values.status] ?? "DRAFT";
+    await createSalesOrderAction({ contactId: values.contactId, date: new Date(values.date), total: values.total, status });
   }
   return (
     <div className="p-6 max-w-3xl mx-auto space-y-4">

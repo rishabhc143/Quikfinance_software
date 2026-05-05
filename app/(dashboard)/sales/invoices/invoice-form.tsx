@@ -16,7 +16,7 @@ export type Line = { itemId: string | null; description: string; quantity: numbe
 
 export type InvoiceFormValues = {
   contactId: string | null;
-  status: "DRAFT" | "SENT" | "PARTIALLY_PAID" | "PAID" | "OVERDUE" | "VOID";
+  status: "DRAFT" | "SENT" | "PARTIALLY_PAID" | "PAID" | "OVERDUE" | "VOID" | "WRITTEN_OFF";
   issueDate: string; // yyyy-MM-dd
   dueDate: string;
   notes: string;

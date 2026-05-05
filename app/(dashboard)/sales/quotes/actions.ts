@@ -10,7 +10,9 @@ import { nextDocumentNumber } from "@/lib/next-number";
 
 const schema = z.object({
   contactId: z.string().min(1),
-  status: z.string().default("draft"),
+  status: z
+    .enum(["DRAFT", "SENT", "ACCEPTED", "DECLINED", "EXPIRED", "INVOICED"])
+    .default("DRAFT"),
   issueDate: z.coerce.date(),
   expiryDate: z.coerce.date().optional().nullable(),
   total: z.coerce.number().nonnegative(),
@@ -43,9 +45,9 @@ export async function convertQuoteToInvoiceAction(quoteId: string) {
       lineItems: { create: [{ description: `Converted from quote ${q.number}`, quantity: 1, rate: total, amount: total }] },
     },
   });
-  await db.quote.update({ where: { id: quoteId }, data: { status: "accepted" } });
+  await db.quote.update({ where: { id: quoteId }, data: { status: "INVOICED", convertedInvoiceId: created.id, acceptedAt: new Date() } });
   await writeAuditLog({ organizationId: organization.id, userId: user.id, action: "CREATE", entityType: "Invoice", entityId: created.id, after: { number: created.number, fromQuote: q.number } });
-  await writeAuditLog({ organizationId: organization.id, userId: user.id, action: "UPDATE", entityType: "Quote", entityId: q.id, before: { status: q.status }, after: { status: "accepted" } });
+  await writeAuditLog({ organizationId: organization.id, userId: user.id, action: "UPDATE", entityType: "Quote", entityId: q.id, before: { status: q.status }, after: { status: "INVOICED" } });
   revalidatePath("/sales/quotes");
   revalidatePath("/sales/invoices");
   redirect(`/sales/invoices/${created.id}`);

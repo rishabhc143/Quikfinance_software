@@ -67,16 +67,100 @@ async function main() {
     });
   }
 
-  await db.numberSeries.upsert({
-    where: { organizationId_module: { organizationId: org.id, module: "invoice" } },
-    update: {},
-    create: { organizationId: org.id, module: "invoice", prefix: "INV-", nextValue: 1, padding: 5 },
-  });
-  await db.numberSeries.upsert({
-    where: { organizationId_module: { organizationId: org.id, module: "bill" } },
-    update: {},
-    create: { organizationId: org.id, module: "bill", prefix: "BILL-", nextValue: 1, padding: 5 },
-  });
+  const numberSeriesSeeds: { module: string; prefix: string }[] = [
+    { module: "invoice", prefix: "INV-" },
+    { module: "bill", prefix: "BILL-" },
+    { module: "quote", prefix: "QT-" },
+    { module: "salesOrder", prefix: "SO-" },
+    { module: "deliveryChallan", prefix: "DC-" },
+    { module: "creditNote", prefix: "CN-" },
+    { module: "paymentReceived", prefix: "RCV-" },
+    { module: "paymentMade", prefix: "PAY-" },
+    { module: "purchaseOrder", prefix: "PO-" },
+    { module: "vendorCredit", prefix: "VC-" },
+    { module: "manualJournal", prefix: "MJ-" },
+    { module: "recurringInvoice", prefix: "RECINV-" },
+  ];
+  for (const ns of numberSeriesSeeds) {
+    await db.numberSeries.upsert({
+      where: { organizationId_module: { organizationId: org.id, module: ns.module } },
+      update: {},
+      create: { organizationId: org.id, ...ns, nextValue: 1, padding: 5 },
+    });
+  }
+
+  // Default Indian GST tax rows. Sales module references these by id.
+  const taxSeeds: { name: string; rate: number; isDefault?: boolean }[] = [
+    { name: "GST 0%", rate: 0 },
+    { name: "GST 5%", rate: 5 },
+    { name: "GST 12%", rate: 12 },
+    { name: "GST 18%", rate: 18, isDefault: true },
+    { name: "GST 28%", rate: 28 },
+  ];
+  for (const t of taxSeeds) {
+    await db.tax.upsert({
+      where: { organizationId_name: { organizationId: org.id, name: t.name } },
+      update: {},
+      create: {
+        organizationId: org.id,
+        name: t.name,
+        rate: t.rate,
+        type: "standard",
+        isDefault: t.isDefault ?? false,
+      },
+    });
+  }
+
+  // Default payment terms.
+  const paymentTermSeeds: { name: string; numberOfDays: number; isDefault?: boolean }[] = [
+    { name: "Due on Receipt", numberOfDays: 0, isDefault: true },
+    { name: "Net 15", numberOfDays: 15 },
+    { name: "Net 30", numberOfDays: 30 },
+    { name: "Net 45", numberOfDays: 45 },
+    { name: "Net 60", numberOfDays: 60 },
+  ];
+  for (const p of paymentTermSeeds) {
+    await db.paymentTerms.upsert({
+      where: { organizationId_name: { organizationId: org.id, name: p.name } },
+      update: {},
+      create: { organizationId: org.id, ...p },
+    });
+  }
+
+  // Default delivery methods.
+  for (const name of ["Road", "Air", "Courier", "Self pickup"]) {
+    await db.deliveryMethod.upsert({
+      where: { organizationId_name: { organizationId: org.id, name } },
+      update: {},
+      create: { organizationId: org.id, name },
+    });
+  }
+
+  // Default PDF templates per document type. Phase S3 wires the renderer; the
+  // configJson placeholder lets callers reference templates by id today.
+  const pdfTemplateSeeds = [
+    { documentType: "QUOTE", name: "Standard Quote" },
+    { documentType: "SALES_ORDER", name: "Standard Sales Order" },
+    { documentType: "INVOICE", name: "Standard Invoice" },
+    { documentType: "CREDIT_NOTE", name: "Standard Credit Note" },
+    { documentType: "DELIVERY_CHALLAN", name: "Standard Delivery Challan" },
+  ];
+  for (const t of pdfTemplateSeeds) {
+    const exists = await db.pdfTemplate.findFirst({
+      where: { organizationId: org.id, documentType: t.documentType, name: t.name },
+    });
+    if (!exists) {
+      await db.pdfTemplate.create({
+        data: {
+          organizationId: org.id,
+          documentType: t.documentType,
+          name: t.name,
+          configJson: { layout: "standard", showLogo: true, accentColor: "#1d4ed8" },
+          isDefault: true,
+        },
+      });
+    }
+  }
 
   const sales = await db.chartOfAccount.findFirst({ where: { organizationId: org.id, name: "Sales" } });
   const cogs = await db.chartOfAccount.findFirst({ where: { organizationId: org.id, name: "Cost of Goods Sold" } });

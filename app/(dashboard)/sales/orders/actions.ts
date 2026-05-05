@@ -12,7 +12,7 @@ const schema = z.object({
   contactId: z.string().min(1),
   date: z.coerce.date(),
   total: z.coerce.number().nonnegative(),
-  status: z.string().min(1),
+  status: z.enum(["DRAFT", "CONFIRMED", "CLOSED", "VOID"]).default("DRAFT"),
 });
 export type SalesOrderInput = z.input<typeof schema>;
 

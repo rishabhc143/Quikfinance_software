@@ -17,7 +17,9 @@ const lineSchema = z.object({
 
 const schema = z.object({
   contactId: z.string().min(1),
-  status: z.enum(["DRAFT", "SENT", "PARTIALLY_PAID", "PAID", "OVERDUE", "VOID"]).default("DRAFT"),
+  status: z
+    .enum(["DRAFT", "SENT", "PARTIALLY_PAID", "PAID", "OVERDUE", "VOID", "WRITTEN_OFF"])
+    .default("DRAFT"),
   issueDate: z.coerce.date(),
   dueDate: z.coerce.date(),
   currency: z.string().min(3).max(8).optional().nullable(),

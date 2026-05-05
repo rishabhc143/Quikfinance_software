@@ -27,7 +27,7 @@ export function QuoteForm({ contactOptions, currency }: { contactOptions: Combob
     if (!contactId) { toast.error("Pick a customer"); return; }
     setBusy(true);
     try {
-      await createQuoteAction({ contactId, status: "draft", issueDate: new Date(issueDate), expiryDate: expiryDate ? new Date(expiryDate) : null, total });
+      await createQuoteAction({ contactId, status: "DRAFT", issueDate: new Date(issueDate), expiryDate: expiryDate ? new Date(expiryDate) : null, total });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Save failed");
       setBusy(false);
