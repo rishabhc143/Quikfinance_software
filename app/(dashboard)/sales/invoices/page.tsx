@@ -1,85 +1,156 @@
 import Link from "next/link";
-import type { Prisma } from "@prisma/client";
+import { format } from "date-fns";
+import { Receipt, Plus } from "lucide-react";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
+import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { DataTable, PageHeader, EmptyState, type ColumnDef } from "@/components/shared/data-table";
+import { TransactionListPage } from "@/components/shared/transaction-list-page";
 import { formatMoney } from "@/lib/money";
-import { format } from "date-fns";
 
 export const metadata = { title: "Invoices" };
 
-function statusVariant(s: string): "default" | "secondary" | "success" | "warning" | "destructive" | "outline" {
-  if (s === "PAID") return "success";
-  if (s === "OVERDUE" || s === "VOID") return "destructive";
-  if (s === "PARTIALLY_PAID") return "warning";
-  if (s === "DRAFT") return "secondary";
-  return "default";
-}
+const STATUS_VARIANT: Record<string, "secondary" | "outline" | "destructive"> = {
+  DRAFT: "outline",
+  SENT: "secondary",
+  PARTIALLY_PAID: "secondary",
+  PAID: "secondary",
+  OVERDUE: "destructive",
+  VOID: "outline",
+  WRITTEN_OFF: "outline",
+};
 
-const COLUMNS: ColumnDef[] = [
-  { key: "number", header: "Number", sortable: true },
-  { key: "contactName", header: "Customer" },
-  { key: "status", header: "Status" },
-  { key: "issueDate", header: "Issue", sortable: true },
-  { key: "dueDate", header: "Due", sortable: true },
-  { key: "total", header: "Total", sortable: true, align: "right" },
-  { key: "amountPaid", header: "Paid", align: "right" },
-];
-
-export default async function InvoicesPage({ searchParams }: { searchParams: Record<string, string> }) {
+export default async function InvoicesListPage({
+  searchParams,
+}: {
+  searchParams: { q?: string; page?: string; pageSize?: string; sort?: string; dir?: string };
+}) {
   const { organization } = await requireOrganization();
-  const cur = organization.currency;
-  const q = (searchParams.q ?? "").trim();
-  const status = searchParams.status;
-  const sort = ["number", "issueDate", "dueDate", "total", "status"].includes(searchParams.sort ?? "") ? searchParams.sort! : "issueDate";
+  const q = searchParams.q?.trim() ?? "";
+  const page = Math.max(1, Number(searchParams.page ?? "1"));
+  const pageSize = Number(searchParams.pageSize ?? 25);
+  const sort = searchParams.sort ?? "issueDate";
   const dir: "asc" | "desc" = searchParams.dir === "asc" ? "asc" : "desc";
-  const page = Math.max(1, parseInt(searchParams.page ?? "1", 10));
-  const pageSize = [10, 25, 50, 100].includes(parseInt(searchParams.pageSize ?? "25", 10)) ? parseInt(searchParams.pageSize ?? "25", 10) : 25;
 
-  const where: Prisma.InvoiceWhereInput = {
-    organizationId: organization.id, deletedAt: null,
-    ...(status && status !== "all" ? { status: status.toUpperCase() as Prisma.EnumInvoiceStatusFilter } : {}),
-    ...(q ? { OR: [
-      { number: { contains: q, mode: "insensitive" } },
-      { contact: { displayName: { contains: q, mode: "insensitive" } } },
-    ] } : {}),
+  const where = {
+    organizationId: organization.id,
+    deletedAt: null,
+    ...(q
+      ? {
+          OR: [
+            { number: { contains: q, mode: "insensitive" as const } },
+            { referenceNumber: { contains: q, mode: "insensitive" as const } },
+            { contact: { displayName: { contains: q, mode: "insensitive" as const } } },
+          ],
+        }
+      : {}),
   };
 
-  const [total, rows] = await Promise.all([
+  const orderBy =
+    sort === "number"
+      ? { number: dir }
+      : sort === "total"
+      ? { total: dir }
+      : sort === "dueDate"
+      ? { dueDate: dir }
+      : sort === "createdAt"
+      ? { createdAt: dir }
+      : { issueDate: dir };
+
+  const [invoices, total] = await Promise.all([
+    db.invoice.findMany({
+      where,
+      orderBy,
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+      include: { contact: { select: { displayName: true } } },
+    }),
     db.invoice.count({ where }),
-    db.invoice.findMany({ where, orderBy: { [sort]: dir }, skip: (page - 1) * pageSize, take: pageSize, include: { contact: { select: { displayName: true } } } }),
   ]);
 
-  const dataRows = rows.map((i) => ({
-    id: i.id,
-    href: `/sales/invoices/${i.id}`,
-    cells: [
-      <span key="num" className="font-medium font-mono">{i.number}</span>,
-      i.contact.displayName,
-      <Badge key="s" variant={statusVariant(i.status)}>{i.status.replace("_", " ")}</Badge>,
-      format(i.issueDate, "dd MMM yyyy"),
-      format(i.dueDate, "dd MMM yyyy"),
-      formatMoney(Number(i.total), cur),
-      formatMoney(Number(i.amountPaid), cur),
-    ],
-  }));
+  const rows = invoices.map((inv) => {
+    const balance = Number(inv.total) - Number(inv.amountPaid);
+    return {
+      id: inv.id,
+      href: `/sales/invoices/${inv.id}`,
+      cells: [
+        <span key="d">{format(inv.issueDate, "dd MMM yyyy")}</span>,
+        <span key="n" className="font-mono">{inv.number}</span>,
+        <span key="r">{inv.referenceNumber ?? "—"}</span>,
+        <span key="c">{inv.contact.displayName}</span>,
+        <Badge key="s" variant={STATUS_VARIANT[inv.status] ?? "outline"}>{inv.status}</Badge>,
+        <span key="due">{format(inv.dueDate, "dd MMM yyyy")}</span>,
+        <span key="a" className="text-right tabular-nums">
+          {formatMoney(Number(inv.total), inv.currency ?? organization.currency)}
+        </span>,
+        <span key="b" className="text-right tabular-nums">
+          {formatMoney(balance, inv.currency ?? organization.currency)}
+        </span>,
+      ],
+    };
+  });
+
+  const empty = (
+    <div className="space-y-6">
+      <div className="rounded-lg border bg-background p-8 max-w-lg mx-auto space-y-4">
+        <div className="mx-auto h-24 w-24 rounded-full bg-primary/10 flex items-center justify-center">
+          <Receipt className="h-10 w-10 text-primary" aria-hidden />
+        </div>
+        <div>
+          <h2 className="text-xl font-semibold">Bring your business to life with invoices.</h2>
+          <p className="text-sm text-muted-foreground mt-1">
+            Send professional invoices, get paid faster, track every rupee.
+          </p>
+        </div>
+        <div className="flex flex-col items-center gap-2">
+          <Button asChild>
+            <Link href="/sales/invoices/new" className="gap-1">
+              <Plus className="h-4 w-4" /> Create New Invoice
+            </Link>
+          </Button>
+          <Link href="/sales/invoices/import" className="text-sm text-primary hover:underline">
+            Import Invoices
+          </Link>
+        </div>
+      </div>
+    </div>
+  );
 
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-4">
-      <PageHeader title="Invoices" ctaHref="/sales/invoices/new" ctaLabel="+ New Invoice" />
-      <div className="flex gap-1 text-xs">
-        {["all", "DRAFT", "SENT", "OVERDUE", "PAID", "VOID"].map((s) => (
-          <Link key={s} href={`/sales/invoices${s === "all" ? "" : `?status=${s.toLowerCase()}`}`} className={`px-3 py-1 rounded-full ${(status ?? "all") === s.toLowerCase() ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground"}`}>
-            {s === "all" ? "All" : s.toLowerCase().replace("_", " ")}
-          </Link>
-        ))}
-      </div>
-      {total === 0 && !q && !status ? (
-        <EmptyState title="No invoices yet" description="Send a polished invoice to a customer in seconds. We'll track payments and overdue automatically." ctaHref="/sales/invoices/new" ctaLabel="+ Create your first invoice" />
-      ) : (
-        <DataTable rows={dataRows} columns={COLUMNS} total={total} page={page} pageSize={pageSize} sort={sort} dir={dir} search={q} />
-      )}
+    <div className="p-6">
+      <TransactionListPage
+        title="All Invoices"
+        view="All invoices"
+        newHref="/sales/invoices/new"
+        newLabel="New"
+        importHref="/sales/invoices/import"
+        preferencesHref="/settings/preferences/invoices"
+        sortOptions={[
+          { label: "Date", value: "issueDate" },
+          { label: "Due date", value: "dueDate" },
+          { label: "Invoice number", value: "number" },
+          { label: "Amount", value: "total" },
+          { label: "Created time", value: "createdAt" },
+        ]}
+        columns={[
+          { key: "date", header: "Date", sortable: true },
+          { key: "number", header: "Invoice #", sortable: true },
+          { key: "ref", header: "Reference #" },
+          { key: "cust", header: "Customer name" },
+          { key: "status", header: "Status" },
+          { key: "due", header: "Due date", sortable: true },
+          { key: "amount", header: "Amount", align: "right", sortable: true },
+          { key: "balance", header: "Balance", align: "right" },
+        ]}
+        rows={rows}
+        total={total}
+        page={page}
+        pageSize={pageSize}
+        sort={sort}
+        dir={dir}
+        search={q}
+        empty={empty}
+      />
     </div>
   );
 }
