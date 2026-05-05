@@ -241,5 +241,34 @@ Every interpretive call I made while implementing the master prompt, with the re
 **Choice:** `lib/sales/cron.ts.assertCronAuthorized()` accepts the secret from either `x-vercel-cron-secret` (Vercel's runtime header) or the `?secret=` query param (manual dev triggering). When `CRON_SECRET` is unset in dev, requests pass through unconditionally; production with no secret returns 500.
 **Why:** Vercel Cron only sends the header; manual debugging needs the query form; dev shouldn't need any setup.
 
+### D46. Customer "delete" is soft-delete + transactional guard.
+**Choice:** `softDeleteCustomerAction` blocks when the contact has any ACTIVE recurring invoice or any unpaid invoice (status SENT/PARTIALLY_PAID/OVERDUE). Otherwise sets `deletedAt`.
+**Why:** the spec says do not delete customers with transactions; soft-delete preserves history; the guard prevents the accountant from breaking AR aging.
+
+### D47. Customer import wizard ships with 3 dup-handling options (Skip / Overwrite / Add as new).
+**Choice:** `importCustomersAction` matches the master prompt's three modes; "Add as new" appends a `(NNNN)` suffix to displayName so the unique-per-org constraint holds. CSV-only in v1 — XLSX deferred to S8.
+
+### D48. Quote → Invoice / SO conversion preserves line items but resets the document number.
+**Choice:** `convertQuoteToInvoice` / `convertQuoteToSalesOrder` create a brand-new doc with its own number from `getNextDocumentNumber()`, copy all line items, and link the source via `convertedInvoiceId` / `convertedSalesOrderId`. The source quote flips to INVOICED so it cannot be re-converted.
+
+### D49. Record-Payment math is shared between the inline modal and the standalone form.
+**Choice:** `recordPaymentAction` in `app/(dashboard)/sales/invoices/actions.ts` is the single function. The Payments Received `/new` page calls `recordStandalonePaymentAction` which delegates to it. The Invoice detail's `<RecordPaymentDialog>` calls it directly.
+**Why:** invoice status updates + amountPaid increments + excess-as-credit handling can't drift between the two entry points.
+
+### D50. Recurring invoice template stored as JSON snapshot, not foreign keys.
+**Choice:** `RecurringInvoice.templateJson` captures the line items, totals, payment terms id, salesperson id, currency, notes, and T&C at the moment the profile is saved. Edits replace the JSON wholesale. The cron generator reads this snapshot to create each Invoice.
+**Why:** decouples generated invoices from later edits to items/taxes — the historical snapshot is what got billed; a price change tomorrow doesn't retro-edit yesterday's recurring invoice.
+**Trade-off:** if items are renamed, the recurring invoice keeps the old name until edited. We document this and add a "Refresh from items" action in S8+ if needed.
+
+### D51. Recurring cron idempotency via `RecurringInvoiceOccurrence` unique key.
+**Choice:** `(recurringInvoiceId, occurrenceDate)` is unique. The generator inserts the occurrence row inside the same transaction that creates the Invoice; a duplicate cron run hits the unique constraint and skips. The `Run Now` button uses today's start-of-day, so accidental double-clicks within the same day no-op.
+
+### D52. Credit Note auto-closes when balance reaches zero.
+**Choice:** when `applied + refunded >= total` (within 0.0001 tolerance), `applyCreditNoteToInvoice` and `refundCreditNote` flip status to CLOSED. Reopening requires voiding an application/refund first (deferred to S8+).
+
+### D53. Customer portal route is unauthenticated, token-gated, audit-logged on every view.
+**Choice:** `/portal/invoices/[token]` reads the invoice by `portalAccessToken`, never exposes the token in any other response, and writes an `AuditLog` row tagged `InvoicePortalView` per request. "Pay Now" is a stub button until the payments integration lands.
+**Why:** customers shouldn't have to log in to pay; the token is a 25-char cuid making enumeration impractical; audit captures first-view for the merchant's reminder cadence.
+
 
 

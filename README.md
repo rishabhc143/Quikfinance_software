@@ -106,3 +106,52 @@ Open `http://localhost:3000`. Sign in with the seeded credentials, or create a n
 ## Continuing the build
 
 The master prompt is in `_archive_supabase_v1/` (along with the previous Supabase scaffold this replaced). Each subsequent turn extends one phase at a time without rewriting earlier phases.
+
+## Sales module
+
+Built per `quikfinance_sales_master_prompt.md`. Eight phases shipped on the `feat/sales-module` branch (S1–S8).
+
+### Sub-modules
+| Sub-module | List | Form | Detail | Lifecycle | Conversions |
+|-----------|------|------|--------|-----------|-------------|
+| Customers (`/sales/customers`) | empty state + table | 6-tab New/Edit | 5-tab detail with receivables, transactions timeline | Active/Inactive, soft-delete | — |
+| Quotes (`/sales/quotes`) | + lifecycle SVG | full form, line items, totals | status pill + status-aware actions | DRAFT→SENT→ACCEPTED/DECLINED→INVOICED/EXPIRED | → Invoice, → Sales Order |
+| Sales Orders (`/sales/orders`) | + lifecycle SVG | shipment date, payment terms, delivery method | status-aware actions | DRAFT→CONFIRMED→CLOSED, VOID | → Invoice, → Purchase Order (stub) |
+| Invoices (`/sales/invoices`) | populated table | shared form, payment-terms-driven due date | balance card + Record Payment / Send Reminder / Void / Write Off / Apply Credits | DRAFT→SENT→PARTIALLY_PAID→PAID, OVERDUE/VOID/WRITTEN_OFF | (target of conversion) |
+| Recurring Invoices (`/sales/recurring-invoices`) | next-occurrence date | frequency + intervalN, neverExpires | Pause/Resume/Stop/Run Now + generated invoices timeline | ACTIVE/PAUSED/STOPPED/EXPIRED | generates Invoice |
+| Delivery Challans (`/sales/delivery-challans`) | challan type column | challan type radio | Mark Delivered/Returned | DRAFT/OPEN/DELIVERED/INVOICED/RETURNED | — |
+| Payments Received (`/sales/payments-received`) | applied invoices column | customer-driven open-invoices loader, auto-allocate-oldest | allocations + bank charges + customer credit | (no lifecycle) | — |
+| Credit Notes (`/sales/credit-notes`) | balance column | reason picker | Apply-to-Invoice modal + Refund modal | OPEN/CLOSED/VOID | applies to Invoice |
+
+### Shared primitives
+- `<TransactionListPage>` — empty state, three-dots menu, sort options, paginated DataTable wrapper
+- `<TransactionLineItemsTable>` — line-items grid with reactive sub-total/discount/tax/adjustment/total computation; `lib/sales/totals.ts` is the single source of math (server + client share it)
+- `<MoneyInput>`, `<DatePicker>`, typed Combobox wrappers (`ContactCombobox`, `ItemCombobox`, `TaxSelect`, `SalespersonCombobox`, `ProjectCombobox`, `TermsCombobox`, `DeliveryMethodCombobox`)
+- `<RecordPaymentDialog>` for inline payment recording from invoices
+
+### Server utilities (`lib/sales/`)
+- `numbering.ts` — `getNextDocumentNumber(orgId, "QUOTE" | "INVOICE" | …)` atomic increment via `NumberSeries`
+- `totals.ts` — Decimal-safe document compute (lines + sub-total + discount + tax + adjustment + grand total)
+- `email-sender.ts` — `enqueueEmail()` writes EmailJob, `processEmailJob()` is idempotent, cron drains every 15 min
+- `pdf-renderer.ts` — HTML-fallback renderer (S3 swap to `@react-pdf/renderer` is the next iteration)
+- `cron.ts` — `assertCronAuthorized()` guard for cron routes
+- `recurring.ts` — `computeNextOccurrence()` + `generateRecurringOccurrence()` (idempotent on `(recurringInvoiceId × occurrenceDate)`)
+
+### Cron setup
+`vercel.json` schedules:
+- `/api/cron/recurring-invoices` daily at 02:00 UTC — generates invoices for due recurring profiles
+- `/api/cron/invoice-statuses` daily at 02:30 UTC — flips Sent invoices to Overdue when past due
+- `/api/cron/email-job-retry` every 15 min — drains pending EmailJobs
+
+Local triggering: `curl 'http://localhost:3000/api/cron/email-job-retry'` (no auth in dev when `CRON_SECRET` is unset). Production: configure `CRON_SECRET` env and Vercel sends it via `x-vercel-cron-secret` header.
+
+### Resend setup
+Set `RESEND_API_KEY` and `EMAIL_FROM` env vars to enable real email delivery. Without them, `sendEmail()` falls back to console-logging in dev — the EmailJob row still records, so the queue is observable.
+
+### GST stub
+The schema captures `gstin`, `gstTreatment`, `placeOfSupply`, `pan`, `taxPreference`, and HSN/SAC line-item fields. The "Prefill from GSTIN" UI flow per the spec stubs to a mock response — production wiring requires a real GST portal API key (`/api/gst/lookup` placeholder).
+
+### Feature flags
+- `gst.advanced` (Phase S6+) — gates GST split (CGST+SGST vs IGST), e-invoice JSON, place-of-supply autoswitch
+- `pdf.reactRenderer` (Phase S3 follow-up) — flips `lib/sales/pdf-renderer.ts` from HTML to `@react-pdf/renderer`
+- `purchases.bharatConnect` (Phase S4 stub) — Convert SO → Purchase Order writes a placeholder PO row when Purchases module is fuller
