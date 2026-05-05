@@ -15,6 +15,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: PrismaAdapter(db),
   session: { strategy: "jwt" },
   pages: { signIn: "/login", error: "/login", verifyRequest: "/verify-email" },
+  // Required for self-hosted production builds (Vercel auto-detects). Without
+  // this, NextAuth throws UntrustedHost on every /api/auth/* request because
+  // it can't confirm the Host header matches an expected origin. Setting it
+  // here is safe — we don't allow arbitrary hostname overrides downstream.
+  trustHost: true,
   providers: [
     Google({
       clientId: process.env.AUTH_GOOGLE_ID!,
