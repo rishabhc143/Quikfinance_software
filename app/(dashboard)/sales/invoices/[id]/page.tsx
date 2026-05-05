@@ -1,90 +1,303 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, Edit2, Wallet } from "lucide-react";
 import { format } from "date-fns";
+import { ArrowLeft, Pencil, MoreHorizontal, DollarSign } from "lucide-react";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { DeleteButton } from "@/components/shared/delete-button";
-import { softDeleteInvoiceAction } from "../actions";
 import { formatMoney } from "@/lib/money";
+import {
+  deleteInvoiceAction,
+  markInvoiceSentAction,
+  voidInvoiceAction,
+  recordPaymentAction,
+  sendInvoiceReminderAction,
+} from "../actions";
+import { InvoiceActionButton } from "./action-button";
+import { RecordPaymentDialog } from "../record-payment-dialog";
 
-export default async function InvoiceDetailPage({ params }: { params: { id: string } }) {
+const STATUS_VARIANT: Record<string, "secondary" | "outline" | "destructive"> = {
+  DRAFT: "outline",
+  SENT: "secondary",
+  PARTIALLY_PAID: "secondary",
+  PAID: "secondary",
+  OVERDUE: "destructive",
+  VOID: "outline",
+  WRITTEN_OFF: "outline",
+};
+
+export default async function InvoiceDetailPage({
+  params,
+}: {
+  params: { id: string };
+}) {
   const { organization } = await requireOrganization();
   const inv = await db.invoice.findFirst({
     where: { id: params.id, organizationId: organization.id, deletedAt: null },
-    include: { contact: true, lineItems: { include: { item: { select: { name: true } } } } },
+    include: {
+      contact: true,
+      lineItems: true,
+      payments: { include: { paymentReceived: true } },
+      reminders: { orderBy: { createdAt: "desc" } },
+    },
   });
   if (!inv) notFound();
-  const cur = organization.currency;
+
+  const balance = Number(inv.total) - Number(inv.amountPaid);
+  const ccy = inv.currency ?? organization.currency;
+
+  const [openInvoicesForCustomer, bankAccounts] = await Promise.all([
+    db.invoice.findMany({
+      where: {
+        organizationId: organization.id,
+        contactId: inv.contactId,
+        deletedAt: null,
+        status: { in: ["SENT", "PARTIALLY_PAID", "OVERDUE", "DRAFT"] },
+      },
+      orderBy: { dueDate: "asc" },
+      select: { id: true, number: true, total: true, amountPaid: true },
+    }),
+    db.bankAccount.findMany({
+      where: { organizationId: organization.id, isActive: true },
+      orderBy: { name: "asc" },
+    }),
+  ]);
 
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-4">
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2 min-w-0">
-          <Button asChild variant="ghost" size="icon"><Link href="/sales/invoices"><ArrowLeft className="h-4 w-4" /></Link></Button>
-          <h1 className="text-xl font-semibold font-mono">{inv.number}</h1>
-          <Badge>{inv.status.replace("_", " ")}</Badge>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Button asChild variant="ghost" size="icon" aria-label="Back">
+            <Link href="/sales/invoices">
+              <ArrowLeft className="h-4 w-4" />
+            </Link>
+          </Button>
+          <h1 className="text-2xl font-semibold font-mono">{inv.number}</h1>
+          <Badge variant={STATUS_VARIANT[inv.status] ?? "outline"}>{inv.status}</Badge>
         </div>
-        <div className="flex gap-2">
-          <DeleteButton action={softDeleteInvoiceAction.bind(null, inv.id)} confirmText="Delete this invoice? Drafts are removed; sent invoices are voided." redirectTo="/sales/invoices" />
-          {inv.status !== "PAID" && inv.status !== "DRAFT" && inv.status !== "VOID" && (
-            <Button asChild variant="outline">
-              <Link href={`/sales/payments-received/new?customer=${inv.contactId}&invoice=${inv.id}`}>
-                <Wallet className="h-3.5 w-3.5 mr-1" /> Record payment
-              </Link>
-            </Button>
-          )}
-          <Button asChild><Link href={`/sales/invoices/${inv.id}/edit`}><Edit2 className="h-3.5 w-3.5 mr-1" /> Edit</Link></Button>
+        <div className="flex items-center gap-2">
+          {inv.status === "DRAFT" ? (
+            <InvoiceActionButton
+              action={markInvoiceSentAction.bind(null, inv.id)}
+              label="Mark as Sent"
+            />
+          ) : null}
+          {balance > 0.0001 &&
+          inv.status !== "VOID" &&
+          inv.status !== "WRITTEN_OFF" ? (
+            <RecordPaymentDialog
+              contactId={inv.contactId}
+              contactName={inv.contact.displayName}
+              currentInvoiceId={inv.id}
+              openInvoices={openInvoicesForCustomer.map((i) => ({
+                id: i.id,
+                number: i.number,
+                total: Number(i.total),
+                amountPaid: Number(i.amountPaid),
+              }))}
+              bankAccountOptions={bankAccounts.map((b) => ({
+                value: b.id,
+                label: b.name,
+                hint: b.accountType,
+              }))}
+              action={recordPaymentAction}
+              trigger={
+                <Button size="sm" className="gap-1">
+                  <DollarSign className="h-4 w-4" /> Record Payment
+                </Button>
+              }
+            />
+          ) : null}
+          <Button asChild variant="outline" size="sm" className="gap-1">
+            <Link href={`/sales/invoices/${inv.id}/edit`}>
+              <Pencil className="h-4 w-4" /> Edit
+            </Link>
+          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="icon" aria-label="More actions">
+                <MoreHorizontal className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem asChild>
+                <Link href={`/sales/invoices/${inv.id}/pdf`} target="_blank">
+                  Download PDF
+                </Link>
+              </DropdownMenuItem>
+              {inv.contact.email && inv.status !== "DRAFT" ? (
+                <DropdownMenuItem asChild>
+                  <form action={sendInvoiceReminderAction.bind(null, inv.id)}>
+                    <button className="w-full text-left">Send Reminder</button>
+                  </form>
+                </DropdownMenuItem>
+              ) : null}
+              <DropdownMenuItem asChild>
+                <Link href={`/portal/invoices/${inv.portalAccessToken}`} target="_blank">
+                  Customer portal link
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              {inv.status !== "VOID" && inv.status !== "PAID" ? (
+                <DropdownMenuItem asChild>
+                  <form action={voidInvoiceAction.bind(null, inv.id)}>
+                    <button className="w-full text-left">Mark as Void</button>
+                  </form>
+                </DropdownMenuItem>
+              ) : null}
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <DeleteButton
+            action={deleteInvoiceAction.bind(null, inv.id)}
+            confirmText="Delete this invoice?"
+            redirectTo="/sales/invoices"
+          />
         </div>
-      </div>
-
-      <div className="grid gap-4 md:grid-cols-3">
-        <Card><CardContent className="pt-6"><div className="text-xs text-muted-foreground">Customer</div><div className="font-medium mt-1">{inv.contact.displayName}</div></CardContent></Card>
-        <Card><CardContent className="pt-6"><div className="text-xs text-muted-foreground">Issue / Due</div><div className="font-medium mt-1">{format(inv.issueDate, "dd MMM yyyy")} → {format(inv.dueDate, "dd MMM yyyy")}</div></CardContent></Card>
-        <Card><CardContent className="pt-6"><div className="text-xs text-muted-foreground">Total / Paid</div><div className="font-medium mt-1">{formatMoney(inv.total, cur)} / {formatMoney(inv.amountPaid, cur)}</div></CardContent></Card>
       </div>
 
       <Card>
-        <CardHeader><CardTitle className="text-base">Line items</CardTitle></CardHeader>
-        <CardContent className="p-0">
+        <CardContent className="pt-6 grid gap-3 text-sm md:grid-cols-3">
+          <div>
+            <div className="text-xs uppercase tracking-wider text-muted-foreground">
+              Customer
+            </div>
+            <div className="font-medium">
+              <Link href={`/sales/customers/${inv.contactId}`} className="hover:underline">
+                {inv.contact.displayName}
+              </Link>
+            </div>
+          </div>
+          <div>
+            <div className="text-xs uppercase tracking-wider text-muted-foreground">
+              Invoice date
+            </div>
+            <div>{format(inv.issueDate, "dd MMM yyyy")}</div>
+            <div className="text-xs uppercase tracking-wider text-muted-foreground mt-2">
+              Due date
+            </div>
+            <div>{format(inv.dueDate, "dd MMM yyyy")}</div>
+          </div>
+          <div className="text-right">
+            <div className="text-xs uppercase tracking-wider text-muted-foreground">
+              Balance due
+            </div>
+            <div className="text-2xl font-semibold">{formatMoney(balance, ccy)}</div>
+            <div className="text-xs text-muted-foreground mt-1">
+              of {formatMoney(Number(inv.total), ccy)}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent className="pt-6">
           <table className="w-full text-sm">
-            <thead className="bg-muted/30 text-xs uppercase tracking-wider text-muted-foreground">
-              <tr><th className="text-left p-3">Description</th><th className="text-right p-3">Qty</th><th className="text-right p-3">Rate</th><th className="text-right p-3">Amount</th></tr>
+            <thead className="bg-muted/40 text-xs uppercase tracking-wider text-muted-foreground">
+              <tr>
+                <th className="p-2 text-left">Item</th>
+                <th className="p-2 text-right">Qty</th>
+                <th className="p-2 text-right">Rate</th>
+                <th className="p-2 text-right">Amount</th>
+              </tr>
             </thead>
             <tbody className="divide-y">
               {inv.lineItems.map((l) => (
                 <tr key={l.id}>
-                  <td className="p-3">
-                    {l.item?.name && <div className="text-xs text-muted-foreground">{l.item.name}</div>}
-                    {l.description}
+                  <td className="p-2">{l.description}</td>
+                  <td className="p-2 text-right tabular-nums">{l.quantity.toString()}</td>
+                  <td className="p-2 text-right tabular-nums">
+                    {formatMoney(Number(l.rate), ccy)}
                   </td>
-                  <td className="p-3 text-right tabular-nums">{Number(l.quantity)}</td>
-                  <td className="p-3 text-right tabular-nums">{formatMoney(l.rate, cur)}</td>
-                  <td className="p-3 text-right tabular-nums">{formatMoney(l.amount, cur)}</td>
+                  <td className="p-2 text-right tabular-nums">
+                    {formatMoney(Number(l.amount), ccy)}
+                  </td>
                 </tr>
               ))}
             </tbody>
-            <tfoot className="bg-muted/20 text-sm">
-              <tr><td colSpan={3} className="p-3 text-right text-muted-foreground">Subtotal</td><td className="p-3 text-right tabular-nums">{formatMoney(inv.subtotal, cur)}</td></tr>
-              <tr><td colSpan={3} className="p-3 text-right font-medium">Total</td><td className="p-3 text-right tabular-nums font-semibold">{formatMoney(inv.total, cur)}</td></tr>
-            </tfoot>
           </table>
+          <div className="mt-4 ml-auto max-w-xs space-y-1 text-sm">
+            <Row label="Sub Total" value={formatMoney(Number(inv.subtotal), ccy)} />
+            {Number(inv.taxTotal) !== 0 ? (
+              <Row label="Tax" value={formatMoney(Number(inv.taxTotal), ccy)} />
+            ) : null}
+            {Number(inv.adjustmentValue) !== 0 ? (
+              <Row
+                label={inv.adjustmentLabel ?? "Adjustment"}
+                value={formatMoney(Number(inv.adjustmentValue), ccy)}
+              />
+            ) : null}
+            <Row label="Total" value={formatMoney(Number(inv.total), ccy)} bold />
+            <Row
+              label="Amount paid"
+              value={formatMoney(Number(inv.amountPaid), ccy)}
+            />
+            <Row label="Balance due" value={formatMoney(balance, ccy)} bold />
+          </div>
         </CardContent>
       </Card>
 
-      {(inv.notes || inv.terms) && (
-        <div className="grid gap-4 md:grid-cols-2">
-          {inv.notes && (
-            <Card><CardHeader><CardTitle className="text-base">Notes</CardTitle></CardHeader><CardContent className="text-sm whitespace-pre-line">{inv.notes}</CardContent></Card>
-          )}
-          {inv.terms && (
-            <Card><CardHeader><CardTitle className="text-base">Terms</CardTitle></CardHeader><CardContent className="text-sm whitespace-pre-line">{inv.terms}</CardContent></Card>
-          )}
-        </div>
-      )}
+      {inv.payments.length > 0 ? (
+        <Card>
+          <CardContent className="pt-6">
+            <h2 className="text-sm font-semibold mb-3">Payments applied</h2>
+            <ul className="space-y-1 text-sm">
+              {inv.payments.map((p) => (
+                <li
+                  key={p.id}
+                  className="flex items-center justify-between border-b pb-2 last:border-b-0"
+                >
+                  <div>
+                    <div className="font-mono">
+                      <Link
+                        href={`/sales/payments-received/${p.paymentReceivedId}`}
+                        className="hover:underline"
+                      >
+                        {p.paymentReceived.number}
+                      </Link>
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      {format(p.paymentReceived.paymentDate, "dd MMM yyyy")} ·{" "}
+                      {p.paymentReceived.paymentMode}
+                    </div>
+                  </div>
+                  <div className="tabular-nums">{formatMoney(Number(p.amount), ccy)}</div>
+                </li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
+      ) : null}
+    </div>
+  );
+}
+
+function Row({
+  label,
+  value,
+  bold,
+}: {
+  label: string;
+  value: string;
+  bold?: boolean;
+}) {
+  return (
+    <div
+      className={`flex justify-between ${
+        bold ? "border-t pt-2 font-semibold" : ""
+      }`}
+    >
+      <span className={bold ? "" : "text-muted-foreground"}>{label}</span>
+      <span className="tabular-nums">{value}</span>
     </div>
   );
 }

@@ -1,74 +1,139 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { format } from "date-fns";
 import { ArrowLeft } from "lucide-react";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
 import { Button } from "@/components/ui/button";
-import { InvoiceForm, type InvoiceFormValues } from "../../invoice-form";
+import { InvoiceForm } from "../../invoice-form";
 import { updateInvoiceAction } from "../../actions";
+import type { InvoiceInput } from "@/lib/validations/invoice";
 
-export default async function EditInvoicePage({ params }: { params: { id: string } }) {
+export const metadata = { title: "Edit Invoice" };
+
+export default async function EditInvoicePage({
+  params,
+}: {
+  params: { id: string };
+}) {
   const { organization } = await requireOrganization();
   const inv = await db.invoice.findFirst({
     where: { id: params.id, organizationId: organization.id, deletedAt: null },
     include: { lineItems: true },
   });
   if (!inv) notFound();
+  if (inv.status === "PAID" || inv.status === "VOID" || inv.status === "WRITTEN_OFF") {
+    notFound();
+  }
 
-  const [contacts, items] = await Promise.all([
+  const [contacts, items, taxes, salespeople, paymentTerms] = await Promise.all([
     db.contact.findMany({
-      where: { organizationId: organization.id, deletedAt: null, type: { in: ["CUSTOMER", "BOTH"] } },
-      orderBy: { displayName: "asc" }, select: { id: true, displayName: true },
+      where: {
+        organizationId: organization.id,
+        deletedAt: null,
+        type: { in: ["CUSTOMER", "BOTH"] as ("CUSTOMER" | "BOTH")[] },
+      },
+      orderBy: { displayName: "asc" },
+      select: { id: true, displayName: true, email: true, companyName: true },
     }),
     db.item.findMany({
       where: { organizationId: organization.id, deletedAt: null, isActive: true },
-      orderBy: { name: "asc" }, select: { id: true, name: true, sellingPrice: true, salesDescription: true },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true, sellingPrice: true, salesDescription: true, unit: true },
+    }),
+    db.tax.findMany({
+      where: { organizationId: organization.id, isActive: true },
+      orderBy: { rate: "asc" },
+    }),
+    db.salesperson.findMany({
+      where: { organizationId: organization.id, isInactive: false },
+      orderBy: { name: "asc" },
+    }),
+    db.paymentTerms.findMany({
+      where: { organizationId: organization.id },
+      orderBy: { numberOfDays: "asc" },
     }),
   ]);
 
-  const initial: Partial<InvoiceFormValues> = {
+  const initial: Partial<InvoiceInput> = {
     contactId: inv.contactId,
+    referenceNumber: inv.referenceNumber ?? "",
+    invoiceDate: inv.issueDate,
+    dueDate: inv.dueDate,
+    paymentTermsId: inv.paymentTermsId,
+    salespersonId: inv.salespersonId,
+    projectId: inv.projectId,
     status: inv.status,
-    issueDate: format(inv.issueDate, "yyyy-MM-dd"),
-    dueDate: format(inv.dueDate, "yyyy-MM-dd"),
-    notes: inv.notes ?? "",
-    terms: inv.terms ?? "",
-    lines: inv.lineItems.map((l) => ({
-      itemId: l.itemId,
-      description: l.description,
-      quantity: Number(l.quantity),
-      rate: Number(l.rate),
-    })),
+    currency: inv.currency ?? organization.currency,
+    documentDiscount: {
+      value: Number(inv.discountValue),
+      type: (inv.discountType as "percentage" | "amount") ?? "percentage",
+    },
+    adjustmentLabel: inv.adjustmentLabel ?? "Adjustment",
+    adjustmentValue: Number(inv.adjustmentValue),
+    customerNotes: inv.customerNotes ?? inv.notes ?? "",
+    termsAndConditions: inv.termsAndConditions ?? inv.terms ?? "",
   };
 
-  async function submit(values: InvoiceFormValues) {
+  const initialLines = inv.lineItems.map((l) => ({
+    id: l.id,
+    itemId: l.itemId,
+    name: l.description,
+    description: l.description ?? "",
+    hsnSacCode: "",
+    quantity: l.quantity.toString(),
+    unit: "",
+    rate: l.rate.toString(),
+    discount: "0",
+    discountType: "percentage" as const,
+    taxId: l.taxId,
+  }));
+
+  async function submit(values: InvoiceInput) {
     "use server";
-    if (!values.contactId) throw new Error("Customer required");
-    await updateInvoiceAction(params.id, {
-      contactId: values.contactId,
-      status: values.status,
-      issueDate: new Date(values.issueDate),
-      dueDate: new Date(values.dueDate),
-      notes: values.notes || null,
-      terms: values.terms || null,
-      lines: values.lines,
-    });
+    await updateInvoiceAction(params.id, values);
   }
 
   return (
-    <div className="p-6 max-w-5xl mx-auto space-y-4">
+    <div className="p-6 max-w-6xl mx-auto space-y-4">
       <div className="flex items-center gap-2">
-        <Button asChild variant="ghost" size="icon"><Link href={`/sales/invoices/${inv.id}`}><ArrowLeft className="h-4 w-4" /></Link></Button>
+        <Button asChild variant="ghost" size="icon" aria-label="Back">
+          <Link href={`/sales/invoices/${inv.id}`}>
+            <ArrowLeft className="h-4 w-4" />
+          </Link>
+        </Button>
+        <h1 className="text-xl font-semibold">Edit Invoice {inv.number}</h1>
       </div>
       <InvoiceForm
-        title={`Edit ${inv.number}`}
         initial={initial}
-        currency={organization.currency}
-        contactOptions={contacts.map((c) => ({ value: c.id, label: c.displayName }))}
-        itemOptions={items.map((i) => ({ value: i.id, label: i.name, sellingPrice: i.sellingPrice ? Number(i.sellingPrice) : null, description: i.salesDescription ?? null }))}
-        onSubmit={submit}
+        initialLines={initialLines}
+        nextNumber={inv.number}
+        defaultCurrency={organization.currency}
+        contactOptions={contacts.map((c) => ({
+          value: c.id,
+          label: c.displayName,
+          hint: c.email ?? c.companyName ?? undefined,
+        }))}
+        itemOptions={items.map((i) => ({
+          value: i.id,
+          label: i.name,
+          rate: i.sellingPrice ? String(i.sellingPrice) : "0",
+          description: i.salesDescription ?? undefined,
+          unit: i.unit ?? undefined,
+        }))}
+        taxOptions={taxes.map((t) => ({
+          value: t.id,
+          label: `${t.name} (${Number(t.rate)}%)`,
+          rate: Number(t.rate),
+        }))}
+        salespersonOptions={salespeople.map((s) => ({ value: s.id, label: s.name }))}
+        paymentTermsOptions={paymentTerms.map((p) => ({
+          value: p.id,
+          label: p.name,
+          numberOfDays: p.numberOfDays,
+        }))}
+        onSubmitAction={submit}
         submitLabel="Update invoice"
+        cancelHref={`/sales/invoices/${inv.id}`}
       />
     </div>
   );

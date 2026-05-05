@@ -1,51 +1,97 @@
 import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, X } from "lucide-react";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
 import { Button } from "@/components/ui/button";
-import { InvoiceForm, type InvoiceFormValues } from "../invoice-form";
+import { InvoiceForm } from "../invoice-form";
 import { createInvoiceAction } from "../actions";
+import { peekNextDocumentNumber } from "@/lib/sales/numbering";
+import type { InvoiceInput } from "@/lib/validations/invoice";
 
 export const metadata = { title: "New Invoice" };
 
 export default async function NewInvoicePage() {
   const { organization } = await requireOrganization();
-  const [contacts, items] = await Promise.all([
+  const [contacts, items, taxes, salespeople, paymentTerms, nextNumber] = await Promise.all([
     db.contact.findMany({
-      where: { organizationId: organization.id, deletedAt: null, type: { in: ["CUSTOMER", "BOTH"] } },
-      orderBy: { displayName: "asc" }, select: { id: true, displayName: true },
+      where: {
+        organizationId: organization.id,
+        deletedAt: null,
+        type: { in: ["CUSTOMER", "BOTH"] as ("CUSTOMER" | "BOTH")[] },
+      },
+      orderBy: { displayName: "asc" },
+      select: { id: true, displayName: true, email: true, companyName: true },
     }),
     db.item.findMany({
       where: { organizationId: organization.id, deletedAt: null, isActive: true },
-      orderBy: { name: "asc" }, select: { id: true, name: true, sellingPrice: true, salesDescription: true },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true, sellingPrice: true, salesDescription: true, unit: true },
     }),
+    db.tax.findMany({
+      where: { organizationId: organization.id, isActive: true },
+      orderBy: { rate: "asc" },
+    }),
+    db.salesperson.findMany({
+      where: { organizationId: organization.id, isInactive: false },
+      orderBy: { name: "asc" },
+    }),
+    db.paymentTerms.findMany({
+      where: { organizationId: organization.id },
+      orderBy: { numberOfDays: "asc" },
+    }),
+    peekNextDocumentNumber(organization.id, "INVOICE"),
   ]);
 
-  async function submit(values: InvoiceFormValues) {
+  async function submit(values: InvoiceInput, opts?: { send?: boolean }) {
     "use server";
-    if (!values.contactId) throw new Error("Customer required");
-    await createInvoiceAction({
-      contactId: values.contactId,
-      status: values.status,
-      issueDate: new Date(values.issueDate),
-      dueDate: new Date(values.dueDate),
-      notes: values.notes || null,
-      terms: values.terms || null,
-      lines: values.lines,
-    });
+    await createInvoiceAction(values, opts);
   }
 
   return (
-    <div className="p-6 max-w-5xl mx-auto space-y-4">
-      <div className="flex items-center gap-2">
-        <Button asChild variant="ghost" size="icon"><Link href="/sales/invoices"><ArrowLeft className="h-4 w-4" /></Link></Button>
+    <div className="p-6 max-w-6xl mx-auto space-y-4">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Button asChild variant="ghost" size="icon" aria-label="Back">
+            <Link href="/sales/invoices">
+              <ArrowLeft className="h-4 w-4" />
+            </Link>
+          </Button>
+          <h1 className="text-xl font-semibold">New Invoice</h1>
+        </div>
+        <Button asChild variant="ghost" size="icon" aria-label="Close">
+          <Link href="/sales/invoices">
+            <X className="h-4 w-4" />
+          </Link>
+        </Button>
       </div>
       <InvoiceForm
-        currency={organization.currency}
-        contactOptions={contacts.map((c) => ({ value: c.id, label: c.displayName }))}
-        itemOptions={items.map((i) => ({ value: i.id, label: i.name, sellingPrice: i.sellingPrice ? Number(i.sellingPrice) : null, description: i.salesDescription ?? null }))}
-        onSubmit={submit}
-        submitLabel="Create invoice"
+        nextNumber={nextNumber}
+        defaultCurrency={organization.currency}
+        contactOptions={contacts.map((c) => ({
+          value: c.id,
+          label: c.displayName,
+          hint: c.email ?? c.companyName ?? undefined,
+        }))}
+        itemOptions={items.map((i) => ({
+          value: i.id,
+          label: i.name,
+          rate: i.sellingPrice ? String(i.sellingPrice) : "0",
+          description: i.salesDescription ?? undefined,
+          unit: i.unit ?? undefined,
+        }))}
+        taxOptions={taxes.map((t) => ({
+          value: t.id,
+          label: `${t.name} (${Number(t.rate)}%)`,
+          rate: Number(t.rate),
+        }))}
+        salespersonOptions={salespeople.map((s) => ({ value: s.id, label: s.name }))}
+        paymentTermsOptions={paymentTerms.map((p) => ({
+          value: p.id,
+          label: p.name,
+          numberOfDays: p.numberOfDays,
+        }))}
+        onSubmitAction={submit}
+        submitLabel="Save as Draft"
       />
     </div>
   );
