@@ -1,44 +1,102 @@
 import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
-import { format } from "date-fns";
+import { ArrowLeft, X } from "lucide-react";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
 import { Button } from "@/components/ui/button";
-import { SimpleDocForm, type SimpleDocValues } from "@/components/shared/simple-doc-form";
+import { SalesOrderForm } from "../sales-order-form";
 import { createSalesOrderAction } from "../actions";
+import { peekNextDocumentNumber } from "@/lib/sales/numbering";
+import type { SalesOrderInput } from "@/lib/validations/sales-order";
 
 export const metadata = { title: "New Sales Order" };
 
 export default async function NewSalesOrderPage() {
   const { organization } = await requireOrganization();
-  const customers = await db.contact.findMany({
-    where: { organizationId: organization.id, deletedAt: null, type: { in: ["CUSTOMER", "BOTH"] } },
-    select: { id: true, displayName: true }, orderBy: { displayName: "asc" },
-  });
-  async function submit(values: SimpleDocValues) {
+  const [contacts, items, taxes, salespeople, paymentTerms, deliveryMethods, nextNumber] = await Promise.all([
+    db.contact.findMany({
+      where: {
+        organizationId: organization.id,
+        deletedAt: null,
+        type: { in: ["CUSTOMER", "BOTH"] as ("CUSTOMER" | "BOTH")[] },
+      },
+      orderBy: { displayName: "asc" },
+      select: { id: true, displayName: true, email: true, companyName: true },
+    }),
+    db.item.findMany({
+      where: { organizationId: organization.id, deletedAt: null, isActive: true },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true, sellingPrice: true, salesDescription: true, unit: true },
+    }),
+    db.tax.findMany({
+      where: { organizationId: organization.id, isActive: true },
+      orderBy: { rate: "asc" },
+    }),
+    db.salesperson.findMany({
+      where: { organizationId: organization.id, isInactive: false },
+      orderBy: { name: "asc" },
+    }),
+    db.paymentTerms.findMany({
+      where: { organizationId: organization.id },
+      orderBy: { numberOfDays: "asc" },
+    }),
+    db.deliveryMethod.findMany({
+      where: { organizationId: organization.id, isInactive: false },
+      orderBy: { name: "asc" },
+    }),
+    peekNextDocumentNumber(organization.id, "SALES_ORDER"),
+  ]);
+
+  async function submit(values: SalesOrderInput, opts?: { send?: boolean }) {
     "use server";
-    if (!values.contactId) throw new Error("Customer required");
-    const statusMap: Record<string, "DRAFT" | "CONFIRMED" | "CLOSED" | "VOID"> = {
-      draft: "DRAFT", confirmed: "CONFIRMED", fulfilled: "CLOSED", cancelled: "VOID",
-    };
-    const status = statusMap[values.status] ?? "DRAFT";
-    await createSalesOrderAction({ contactId: values.contactId, date: new Date(values.date), total: values.total, status });
+    await createSalesOrderAction(values, opts);
   }
+
   return (
-    <div className="p-6 max-w-3xl mx-auto space-y-4">
-      <div className="flex items-center gap-2">
-        <Button asChild variant="ghost" size="icon"><Link href="/sales/orders"><ArrowLeft className="h-4 w-4" /></Link></Button>
-        <h1 className="text-xl font-semibold">New Sales Order</h1>
+    <div className="p-6 max-w-6xl mx-auto space-y-4">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Button asChild variant="ghost" size="icon" aria-label="Back">
+            <Link href="/sales/orders">
+              <ArrowLeft className="h-4 w-4" />
+            </Link>
+          </Button>
+          <h1 className="text-xl font-semibold">New Sales Order</h1>
+        </div>
+        <Button asChild variant="ghost" size="icon" aria-label="Close">
+          <Link href="/sales/orders">
+            <X className="h-4 w-4" />
+          </Link>
+        </Button>
       </div>
-      <SimpleDocForm
-        contactLabel="Customer"
-        statusOptions={["draft", "confirmed", "fulfilled", "cancelled"]}
-        contactOptions={customers.map((c) => ({ value: c.id, label: c.displayName }))}
-        currency={organization.currency}
-        defaultDate={format(new Date(), "yyyy-MM-dd")}
+      <SalesOrderForm
+        nextNumber={nextNumber}
+        defaultCurrency={organization.currency}
+        contactOptions={contacts.map((c) => ({
+          value: c.id,
+          label: c.displayName,
+          hint: c.email ?? c.companyName ?? undefined,
+        }))}
+        itemOptions={items.map((i) => ({
+          value: i.id,
+          label: i.name,
+          rate: i.sellingPrice ? String(i.sellingPrice) : "0",
+          description: i.salesDescription ?? undefined,
+          unit: i.unit ?? undefined,
+        }))}
+        taxOptions={taxes.map((t) => ({
+          value: t.id,
+          label: `${t.name} (${Number(t.rate)}%)`,
+          rate: Number(t.rate),
+        }))}
+        salespersonOptions={salespeople.map((s) => ({ value: s.id, label: s.name }))}
+        paymentTermsOptions={paymentTerms.map((p) => ({
+          value: p.id,
+          label: p.name,
+          hint: p.numberOfDays === 0 ? "Due on receipt" : `${p.numberOfDays} days`,
+        }))}
+        deliveryMethodOptions={deliveryMethods.map((d) => ({ value: d.id, label: d.name }))}
         onSubmitAction={submit}
-        cancelHref="/sales/orders"
-        submitLabel="Create order"
+        submitLabel="Save as Draft"
       />
     </div>
   );
