@@ -1,41 +1,77 @@
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
-import { format } from "date-fns";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
 import { Button } from "@/components/ui/button";
-import { PaymentReceivedForm } from "./form";
-import { createPaymentReceivedAction } from "../actions";
+import { NewPaymentForm } from "./form";
+import { recordStandalonePaymentAction } from "../actions";
+import type { RecordPaymentInput } from "@/lib/validations/invoice";
 
-export const metadata = { title: "Record Payment" };
+export const metadata = { title: "New Payment Received" };
 
-export default async function NewPaymentReceivedPage({ searchParams }: { searchParams: Record<string, string> }) {
+export default async function NewPaymentPage() {
   const { organization } = await requireOrganization();
-  const [customers, bankAccounts] = await Promise.all([
+
+  const [contacts, bankAccounts] = await Promise.all([
     db.contact.findMany({
-      where: { organizationId: organization.id, deletedAt: null, type: { in: ["CUSTOMER", "BOTH"] } },
-      select: { id: true, displayName: true }, orderBy: { displayName: "asc" },
+      where: {
+        organizationId: organization.id,
+        deletedAt: null,
+        type: { in: ["CUSTOMER", "BOTH"] as ("CUSTOMER" | "BOTH")[] },
+      },
+      orderBy: { displayName: "asc" },
+      select: { id: true, displayName: true, email: true },
     }),
     db.bankAccount.findMany({
       where: { organizationId: organization.id, isActive: true },
-      select: { id: true, name: true }, orderBy: { name: "asc" },
+      orderBy: { name: "asc" },
     }),
   ]);
+
+  async function loadOpenInvoices(contactId: string) {
+    "use server";
+    const invoices = await db.invoice.findMany({
+      where: {
+        organizationId: organization.id,
+        contactId,
+        deletedAt: null,
+        status: { in: ["SENT", "PARTIALLY_PAID", "OVERDUE", "DRAFT"] },
+      },
+      orderBy: { dueDate: "asc" },
+      select: { id: true, number: true, total: true, amountPaid: true },
+    });
+    return invoices.map((i) => ({
+      id: i.id,
+      number: i.number,
+      total: Number(i.total),
+      amountPaid: Number(i.amountPaid),
+    }));
+  }
+
+  async function submit(values: RecordPaymentInput) {
+    "use server";
+    await recordStandalonePaymentAction(values);
+  }
 
   return (
     <div className="p-6 max-w-3xl mx-auto space-y-4">
       <div className="flex items-center gap-2">
-        <Button asChild variant="ghost" size="icon"><Link href="/sales/payments-received"><ArrowLeft className="h-4 w-4" /></Link></Button>
-        <h1 className="text-xl font-semibold">Record Payment Received</h1>
+        <Button asChild variant="ghost" size="icon" aria-label="Back">
+          <Link href="/sales/payments-received">
+            <ArrowLeft className="h-4 w-4" />
+          </Link>
+        </Button>
+        <h1 className="text-xl font-semibold">Record Payment</h1>
       </div>
-      <PaymentReceivedForm
-        customers={customers}
-        bankAccounts={bankAccounts}
-        currency={organization.currency}
-        defaultCustomerId={searchParams.customer ?? null}
-        defaultInvoiceId={searchParams.invoice ?? null}
-        defaultDate={format(new Date(), "yyyy-MM-dd")}
-        onSubmitAction={createPaymentReceivedAction}
+      <NewPaymentForm
+        contactOptions={contacts.map((c) => ({
+          value: c.id,
+          label: c.displayName,
+          hint: c.email ?? undefined,
+        }))}
+        bankAccountOptions={bankAccounts.map((b) => ({ value: b.id, label: b.name }))}
+        loadOpenInvoices={loadOpenInvoices}
+        onSubmitAction={submit}
       />
     </div>
   );

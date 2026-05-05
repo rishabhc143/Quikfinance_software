@@ -1,76 +1,115 @@
+import Link from "next/link";
 import { format } from "date-fns";
-import type { Prisma } from "@prisma/client";
+import { Wallet, Plus } from "lucide-react";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
-import { Badge } from "@/components/ui/badge";
-import { DataTable, PageHeader, EmptyState, type ColumnDef } from "@/components/shared/data-table";
+import { Button } from "@/components/ui/button";
+import { TransactionListPage } from "@/components/shared/transaction-list-page";
 import { formatMoney } from "@/lib/money";
 
 export const metadata = { title: "Payments Received" };
 
-const COLUMNS: ColumnDef[] = [
-  { key: "number", header: "Number", sortable: true },
-  { key: "contact", header: "Customer" },
-  { key: "paymentDate", header: "Date", sortable: true },
-  { key: "method", header: "Method" },
-  { key: "amount", header: "Amount", sortable: true, align: "right" },
-  { key: "applied", header: "Applied to" },
-];
-
-export default async function PaymentsReceivedPage({ searchParams }: { searchParams: Record<string, string> }) {
+export default async function PaymentsReceivedListPage({
+  searchParams,
+}: {
+  searchParams: { q?: string; page?: string; pageSize?: string };
+}) {
   const { organization } = await requireOrganization();
-  const cur = organization.currency;
-  const q = (searchParams.q ?? "").trim();
-  const sort = ["paymentDate", "amount", "number"].includes(searchParams.sort ?? "") ? searchParams.sort! : "paymentDate";
-  const dir: "asc" | "desc" = searchParams.dir === "asc" ? "asc" : "desc";
-  const page = Math.max(1, parseInt(searchParams.page ?? "1", 10));
-  const pageSize = 25;
+  const q = searchParams.q?.trim() ?? "";
+  const page = Math.max(1, Number(searchParams.page ?? "1"));
+  const pageSize = Number(searchParams.pageSize ?? 25);
 
-  const where: Prisma.PaymentReceivedWhereInput = {
+  const where = {
     organizationId: organization.id,
-    ...(q ? { OR: [
-      { number: { contains: q, mode: "insensitive" } },
-      { contact: { displayName: { contains: q, mode: "insensitive" } } },
-      { reference: { contains: q, mode: "insensitive" } },
-    ] } : {}),
+    deletedAt: null,
+    ...(q
+      ? {
+          OR: [
+            { number: { contains: q, mode: "insensitive" as const } },
+            { reference: { contains: q, mode: "insensitive" as const } },
+            { contact: { displayName: { contains: q, mode: "insensitive" as const } } },
+          ],
+        }
+      : {}),
   };
 
-  const [total, rows] = await Promise.all([
-    db.paymentReceived.count({ where }),
+  const [items, total] = await Promise.all([
     db.paymentReceived.findMany({
-      where, orderBy: { [sort]: dir }, skip: (page - 1) * pageSize, take: pageSize,
-      include: { contact: { select: { displayName: true } }, allocations: { include: { invoice: { select: { number: true } } } } },
+      where,
+      orderBy: { paymentDate: "desc" },
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+      include: {
+        contact: { select: { displayName: true } },
+        allocations: { select: { invoice: { select: { number: true } } } },
+      },
     }),
+    db.paymentReceived.count({ where }),
   ]);
 
-  const dataRows = rows.map((p) => ({
-    id: p.id,
-    href: `/sales/payments-received/${p.id}`,
-    cells: [
-      <span key="n" className="font-mono">{p.number}</span>,
-      p.contact.displayName,
-      format(p.paymentDate, "dd MMM yyyy"),
-      p.method ? <Badge key="m" variant="outline">{p.method}</Badge> : "—",
-      formatMoney(Number(p.amount), cur),
-      <span key="a" className="text-xs text-muted-foreground">
-        {p.allocations.length === 1 ? p.allocations[0].invoice.number : `${p.allocations.length} invoices`}
-      </span>,
-    ],
-  }));
+  const rows = items.map((p) => {
+    const unused = Number(p.amount) - Number(p.amountUsedForInvoices);
+    return {
+      id: p.id,
+      href: `/sales/payments-received/${p.id}`,
+      cells: [
+        <span key="d">{format(p.paymentDate, "dd MMM yyyy")}</span>,
+        <span key="n" className="font-mono">{p.number}</span>,
+        <span key="r">{p.reference ?? "—"}</span>,
+        <span key="c">{p.contact.displayName}</span>,
+        <span key="i">
+          {p.allocations.map((a) => a.invoice.number).join(", ") || "—"}
+        </span>,
+        <span key="m">{p.paymentMode ?? "—"}</span>,
+        <span key="a" className="text-right tabular-nums">
+          {formatMoney(Number(p.amount), organization.currency)}
+        </span>,
+        <span key="u" className="text-right tabular-nums">
+          {formatMoney(unused, organization.currency)}
+        </span>,
+      ],
+    };
+  });
+
+  const empty = (
+    <div className="space-y-4">
+      <Wallet className="h-12 w-12 mx-auto text-primary" aria-hidden />
+      <h2 className="text-xl font-semibold">No payments yet.</h2>
+      <p className="text-sm text-muted-foreground max-w-md mx-auto">
+        Record customer payments here to keep your receivables accurate.
+      </p>
+      <Button asChild>
+        <Link href="/sales/payments-received/new" className="gap-1">
+          <Plus className="h-4 w-4" /> Record Payment
+        </Link>
+      </Button>
+    </div>
+  );
 
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-4">
-      <PageHeader title="Payments Received" ctaHref="/sales/payments-received/new" ctaLabel="+ Record Payment" />
-      {total === 0 && !q ? (
-        <EmptyState
-          title="Record customer payments"
-          description="Money in from customers, allocated against one or more open invoices. Updates AR balances automatically."
-          ctaHref="/sales/payments-received/new"
-          ctaLabel="+ Record your first payment"
-        />
-      ) : (
-        <DataTable rows={dataRows} columns={COLUMNS} total={total} page={page} pageSize={pageSize} sort={sort} dir={dir} search={q} />
-      )}
+    <div className="p-6">
+      <TransactionListPage
+        title="Payments Received"
+        view="All payments"
+        newHref="/sales/payments-received/new"
+        newLabel="New payment"
+        columns={[
+          { key: "date", header: "Date", sortable: true },
+          { key: "number", header: "Payment #" },
+          { key: "ref", header: "Reference #" },
+          { key: "cust", header: "Customer name" },
+          { key: "inv", header: "Invoice #" },
+          { key: "mode", header: "Mode" },
+          { key: "amount", header: "Amount", align: "right" },
+          { key: "unused", header: "Unused", align: "right" },
+        ]}
+        rows={rows}
+        total={total}
+        page={page}
+        pageSize={pageSize}
+        search={q}
+        empty={empty}
+      />
     </div>
   );
 }

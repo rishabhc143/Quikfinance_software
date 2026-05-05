@@ -7,96 +7,107 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Combobox } from "@/components/ui/combobox";
-import { formatMoney, currencySymbol } from "@/lib/money";
-import { type PaymentReceivedInput } from "../actions";
+import { Combobox, type ComboboxOption } from "@/components/ui/combobox";
+import { DatePicker } from "@/components/shared/date-picker";
+import { MoneyInput } from "@/components/shared/money-input";
+import { format } from "date-fns";
 import { toast } from "sonner";
+import type { RecordPaymentInput } from "@/lib/validations/invoice";
 
-type Invoice = {
+const PAYMENT_MODES: ComboboxOption[] = [
+  { value: "cash", label: "Cash" },
+  { value: "bank_transfer", label: "Bank Transfer" },
+  { value: "cheque", label: "Cheque" },
+  { value: "credit_card", label: "Credit Card" },
+  { value: "upi", label: "UPI" },
+  { value: "other", label: "Other" },
+];
+
+export type OpenInvoiceLite = {
   id: string;
   number: string;
   total: number;
   amountPaid: number;
-  dueDate: string;
 };
 
-type Props = {
-  customers: { id: string; displayName: string }[];
-  bankAccounts: { id: string; name: string }[];
-  currency: string;
-  defaultCustomerId: string | null;
-  defaultInvoiceId: string | null;
-  defaultDate: string;
-  onSubmitAction: (input: PaymentReceivedInput) => Promise<unknown>;
-};
-
-export function PaymentReceivedForm({ customers, bankAccounts, currency, defaultCustomerId, defaultInvoiceId, defaultDate, onSubmitAction }: Props) {
+export function NewPaymentForm({
+  contactOptions,
+  bankAccountOptions,
+  loadOpenInvoices,
+  onSubmitAction,
+}: {
+  contactOptions: ComboboxOption[];
+  bankAccountOptions: ComboboxOption[];
+  loadOpenInvoices: (contactId: string) => Promise<OpenInvoiceLite[]>;
+  onSubmitAction: (input: RecordPaymentInput) => Promise<unknown>;
+}) {
   const router = useRouter();
-  const [contactId, setContactId] = React.useState<string | null>(defaultCustomerId);
-  const [paymentDate, setPaymentDate] = React.useState(defaultDate);
-  const [method, setMethod] = React.useState("Bank transfer");
-  const [reference, setReference] = React.useState("");
-  const [bankAccountId, setBankAccountId] = React.useState<string | null>(bankAccounts[0]?.id ?? null);
-  const [notes, setNotes] = React.useState("");
-  const [openInvoices, setOpenInvoices] = React.useState<Invoice[]>([]);
-  const [allocations, setAllocations] = React.useState<Record<string, number>>({});
-  const [loading, setLoading] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
+  const [contactId, setContactId] = React.useState<string | null>(null);
+  const [paymentDate, setPaymentDate] = React.useState<Date>(new Date());
+  const [amountReceived, setAmountReceived] = React.useState("0");
+  const [paymentMode, setPaymentMode] = React.useState("bank_transfer");
+  const [depositToAccountId, setDepositToAccountId] = React.useState<string | null>(null);
+  const [bankCharges, setBankCharges] = React.useState("0");
+  const [reference, setReference] = React.useState("");
+  const [notes, setNotes] = React.useState("");
+  const [openInvoices, setOpenInvoices] = React.useState<OpenInvoiceLite[]>([]);
+  const [allocations, setAllocations] = React.useState<Record<string, string>>({});
 
-  // Fetch open invoices when customer changes
   React.useEffect(() => {
-    if (!contactId) { setOpenInvoices([]); setAllocations({}); return; }
-    setLoading(true);
-    fetch(`/api/customers/${contactId}/open-invoices`)
-      .then((r) => r.ok ? r.json() : [])
-      .then((data: Invoice[]) => {
-        setOpenInvoices(data);
-        // Pre-allocate from URL param if provided, else default to outstanding for the first invoice
-        if (defaultInvoiceId && data.find((i) => i.id === defaultInvoiceId)) {
-          const inv = data.find((i) => i.id === defaultInvoiceId)!;
-          setAllocations({ [inv.id]: inv.total - inv.amountPaid });
-        } else {
-          setAllocations({});
-        }
-      })
-      .catch(() => setOpenInvoices([]))
-      .finally(() => setLoading(false));
-  }, [contactId, defaultInvoiceId]);
-
-  const totalAmount = Object.values(allocations).reduce((s, n) => s + (Number.isFinite(n) ? n : 0), 0);
-
-  function setAlloc(invoiceId: string, value: number) {
-    setAllocations((prev) => {
-      const next = { ...prev };
-      if (!value) delete next[invoiceId];
-      else next[invoiceId] = value;
-      return next;
+    if (!contactId) {
+      setOpenInvoices([]);
+      setAllocations({});
+      return;
+    }
+    loadOpenInvoices(contactId).then((rows) => {
+      setOpenInvoices(rows);
+      setAllocations(Object.fromEntries(rows.map((r) => [r.id, "0"])));
     });
-  }
+  }, [contactId, loadOpenInvoices]);
 
-  function autoAllocate() {
-    // Allocate full outstanding to oldest invoices first up to a target you'd type — simple version: fill each
-    const next: Record<string, number> = {};
+  function autoAllocateOldest() {
+    let remaining = Number(amountReceived);
+    const next: Record<string, string> = {};
     for (const inv of openInvoices) {
-      const out = inv.total - inv.amountPaid;
-      if (out > 0.001) next[inv.id] = out;
+      if (remaining <= 0) {
+        next[inv.id] = "0";
+        continue;
+      }
+      const due = inv.total - inv.amountPaid;
+      const allocate = Math.min(remaining, due);
+      next[inv.id] = allocate.toFixed(2);
+      remaining -= allocate;
     }
     setAllocations(next);
   }
 
-  async function submit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    if (!contactId) { toast.error("Pick a customer"); return; }
-    const allocs = Object.entries(allocations).filter(([, amt]) => amt > 0).map(([invoiceId, amount]) => ({ invoiceId, amount }));
-    if (allocs.length === 0) { toast.error("Allocate at least one invoice"); return; }
+  async function submit() {
+    if (!contactId) {
+      toast.error("Pick a customer");
+      return;
+    }
+    if (Number(amountReceived) <= 0) {
+      toast.error("Amount must be positive");
+      return;
+    }
     setBusy(true);
     try {
       await onSubmitAction({
-        contactId, paymentDate: new Date(paymentDate),
-        method: method || null, reference: reference || null,
-        bankAccountId: bankAccountId, notes: notes || null,
-        allocations: allocs,
+        contactId,
+        paymentDate: format(paymentDate, "yyyy-MM-dd") as unknown as Date,
+        amountReceived: Number(amountReceived),
+        paymentMode: paymentMode as RecordPaymentInput["paymentMode"],
+        depositToAccountId,
+        bankCharges: Number(bankCharges || 0),
+        reference: reference || null,
+        notes: notes || null,
+        allocations: Object.entries(allocations)
+          .filter(([, v]) => Number(v) > 0)
+          .map(([invoiceId, amount]) => ({ invoiceId, amount: Number(amount) })),
       });
+      toast.success("Payment recorded");
+      router.push("/sales/payments-received");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Save failed");
       setBusy(false);
@@ -104,114 +115,103 @@ export function PaymentReceivedForm({ customers, bankAccounts, currency, default
   }
 
   return (
-    <form onSubmit={submit} className="space-y-5">
-      <div className="grid gap-4 md:grid-cols-2">
-        <div>
-          <Label>Customer <span className="text-destructive">*</span></Label>
-          <Combobox
-            options={customers.map((c) => ({ value: c.id, label: c.displayName }))}
-            value={contactId}
-            onChange={setContactId}
-            placeholder="Select customer"
-          />
-        </div>
-        <div>
-          <Label>Payment date <span className="text-destructive">*</span></Label>
-          <Input type="date" value={paymentDate} onChange={(e) => setPaymentDate(e.target.value)} required />
-        </div>
-        <div>
-          <Label>Method</Label>
-          <select value={method} onChange={(e) => setMethod(e.target.value)} className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm">
-            <option>Bank transfer</option><option>Cash</option><option>Cheque</option>
-            <option>Credit card</option><option>UPI</option><option>Other</option>
-          </select>
-        </div>
-        <div>
-          <Label>Bank account</Label>
-          <select value={bankAccountId ?? ""} onChange={(e) => setBankAccountId(e.target.value || null)} className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm">
-            <option value="">— None —</option>
-            {bankAccounts.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
-          </select>
-        </div>
-        <div className="md:col-span-2">
-          <Label>Reference</Label>
-          <Input value={reference} onChange={(e) => setReference(e.target.value)} placeholder="Cheque #, txn ref, etc." />
-        </div>
-      </div>
+    <div className="space-y-6">
+      <section className="rounded-md border bg-card p-6 grid gap-4 md:grid-cols-[10rem_1fr]">
+        <Label className="pt-2">Customer *</Label>
+        <Combobox options={contactOptions} value={contactId} onChange={setContactId} placeholder="Select customer…" />
 
-      <div className="rounded-md border bg-background overflow-hidden">
-        <div className="px-3 py-2 border-b bg-muted/30 flex items-center justify-between">
-          <h3 className="text-sm font-medium">Apply against open invoices</h3>
-          {openInvoices.length > 0 && (
-            <Button type="button" variant="outline" size="sm" onClick={autoAllocate}>Auto-allocate all</Button>
+        <Label className="pt-2">Amount received *</Label>
+        <MoneyInput value={amountReceived} onChange={setAmountReceived} />
+
+        <Label className="pt-2">Payment date *</Label>
+        <DatePicker value={paymentDate} onChange={(d) => d && setPaymentDate(d)} />
+
+        <Label className="pt-2">Payment mode</Label>
+        <Combobox
+          options={PAYMENT_MODES}
+          value={paymentMode}
+          onChange={(v) => setPaymentMode(v ?? "bank_transfer")}
+        />
+
+        <Label className="pt-2">Deposit to</Label>
+        <Combobox
+          options={bankAccountOptions}
+          value={depositToAccountId}
+          onChange={setDepositToAccountId}
+          placeholder="Optional"
+        />
+
+        <Label className="pt-2">Bank charges</Label>
+        <MoneyInput value={bankCharges} onChange={setBankCharges} />
+
+        <Label className="pt-2">Reference #</Label>
+        <Input value={reference} onChange={(e) => setReference(e.target.value)} />
+
+        <Label className="pt-2">Notes</Label>
+        <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} />
+      </section>
+
+      {contactId ? (
+        <section className="rounded-md border bg-card p-4 space-y-2">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-semibold">Apply to invoices</h2>
+            <Button type="button" variant="link" size="sm" onClick={autoAllocateOldest}>
+              Auto-allocate oldest first
+            </Button>
+          </div>
+          {openInvoices.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              No unpaid invoices for this customer. The full amount will be recorded
+              as customer credit.
+            </p>
+          ) : (
+            <table className="w-full text-sm">
+              <thead className="text-xs uppercase text-muted-foreground">
+                <tr>
+                  <th className="text-left p-1">Invoice</th>
+                  <th className="text-right p-1">Total</th>
+                  <th className="text-right p-1">Balance</th>
+                  <th className="text-right p-1">Apply</th>
+                </tr>
+              </thead>
+              <tbody>
+                {openInvoices.map((inv) => {
+                  const balance = inv.total - inv.amountPaid;
+                  return (
+                    <tr key={inv.id} className="border-t">
+                      <td className="p-1 font-mono">{inv.number}</td>
+                      <td className="p-1 text-right tabular-nums">
+                        {inv.total.toFixed(2)}
+                      </td>
+                      <td className="p-1 text-right tabular-nums">{balance.toFixed(2)}</td>
+                      <td className="p-1">
+                        <Input
+                          inputMode="decimal"
+                          className="h-8 text-right"
+                          value={allocations[inv.id] ?? ""}
+                          onChange={(e) =>
+                            setAllocations({ ...allocations, [inv.id]: e.target.value })
+                          }
+                        />
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           )}
-        </div>
-        {!contactId ? (
-          <div className="p-6 text-sm text-center text-muted-foreground">Pick a customer to see their open invoices.</div>
-        ) : loading ? (
-          <div className="p-6 text-sm text-center text-muted-foreground">Loading…</div>
-        ) : openInvoices.length === 0 ? (
-          <div className="p-6 text-sm text-center text-muted-foreground">No open invoices for this customer.</div>
-        ) : (
-          <table className="w-full text-sm">
-            <thead className="bg-muted/30 text-xs uppercase tracking-wider text-muted-foreground">
-              <tr>
-                <th className="text-left p-3">Invoice</th>
-                <th className="text-left p-3">Due</th>
-                <th className="text-right p-3">Total</th>
-                <th className="text-right p-3">Outstanding</th>
-                <th className="text-right p-3">Apply</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y">
-              {openInvoices.map((inv) => {
-                const outstanding = inv.total - inv.amountPaid;
-                const value = allocations[inv.id] ?? 0;
-                return (
-                  <tr key={inv.id}>
-                    <td className="p-3 font-mono">{inv.number}</td>
-                    <td className="p-3 text-xs text-muted-foreground">{new Date(inv.dueDate).toLocaleDateString()}</td>
-                    <td className="p-3 text-right tabular-nums">{formatMoney(inv.total, currency)}</td>
-                    <td className="p-3 text-right tabular-nums">{formatMoney(outstanding, currency)}</td>
-                    <td className="p-3 text-right">
-                      <Input
-                        type="number" step="0.01" min="0" max={outstanding}
-                        className="w-32 ml-auto text-right"
-                        value={value || ""}
-                        onChange={(e) => {
-                          const n = Number(e.target.value);
-                          if (n > outstanding) setAlloc(inv.id, outstanding);
-                          else setAlloc(inv.id, n);
-                        }}
-                      />
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-            <tfoot className="bg-muted/20 text-sm">
-              <tr>
-                <td colSpan={4} className="p-3 text-right font-medium">Total payment amount</td>
-                <td className="p-3 text-right tabular-nums font-semibold">{formatMoney(totalAmount, currency)}</td>
-              </tr>
-            </tfoot>
-          </table>
-        )}
-      </div>
+        </section>
+      ) : null}
 
-      <div>
-        <Label>Notes</Label>
-        <Textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
-      </div>
-
-      <div className="flex items-center justify-end gap-2 pt-2 border-t">
-        <Button type="button" variant="outline" onClick={() => router.push("/sales/payments-received")} disabled={busy}>Cancel</Button>
-        <Button type="submit" disabled={busy || totalAmount <= 0}>
-          {busy && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-          Record {totalAmount > 0 ? formatMoney(totalAmount, currency) : "payment"}
+      <div className="flex items-center gap-2 sticky bottom-0 bg-background border-t -mx-6 px-6 py-3">
+        <Button onClick={submit} disabled={busy} className="gap-1">
+          {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+          Record payment
+        </Button>
+        <Button variant="ghost" onClick={() => router.push("/sales/payments-received")}>
+          Cancel
         </Button>
       </div>
-      <p className="text-xs text-muted-foreground">Currency symbol: {currencySymbol(currency)}</p>
-    </form>
+    </div>
   );
 }
