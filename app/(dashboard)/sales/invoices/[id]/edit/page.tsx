@@ -25,7 +25,7 @@ export default async function EditInvoicePage({
     notFound();
   }
 
-  const [contacts, items, taxes, salespeople, paymentTerms, pdfTemplates] = await Promise.all([
+  const [contacts, items, taxes, salespeople, paymentTerms, pdfTemplates, customFieldDefs, customFieldValues] = await Promise.all([
     db.contact.findMany({
       where: {
         organizationId: organization.id,
@@ -56,7 +56,26 @@ export default async function EditInvoicePage({
       where: { organizationId: organization.id, documentType: "INVOICE" },
       orderBy: { name: "asc" },
     }),
+    db.customFieldDefinition.findMany({
+      where: {
+        organizationId: organization.id,
+        entityType: "INVOICE",
+        deletedAt: null,
+      },
+      orderBy: [{ position: "asc" }, { createdAt: "asc" }],
+    }),
+    db.customFieldValue.findMany({
+      where: {
+        organizationId: organization.id,
+        entityType: "INVOICE",
+        entityId: inv.id,
+      },
+    }),
   ]);
+
+  const initialCustomFieldValues: Record<string, unknown> = Object.fromEntries(
+    customFieldValues.map((v) => [v.fieldDefinitionId, v.value])
+  );
 
   const initial: Partial<InvoiceInput> = {
     contactId: inv.contactId,
@@ -136,6 +155,23 @@ export default async function EditInvoicePage({
           numberOfDays: p.numberOfDays,
         }))}
         pdfTemplateOptions={pdfTemplates.map((t) => ({ value: t.id, label: t.name }))}
+        customFieldDefinitions={customFieldDefs.map((d) => ({
+          id: d.id,
+          fieldKey: d.fieldKey,
+          label: d.label,
+          dataType: d.dataType as
+            | "text"
+            | "number"
+            | "date"
+            | "dropdown"
+            | "checkbox"
+            | "email"
+            | "url",
+          options:
+            (d.options as { label: string; value: string }[] | null) ?? null,
+          isRequired: d.isRequired,
+        }))}
+        customFieldInitialValues={initialCustomFieldValues}
         onSubmitAction={submit}
         submitLabel="Update invoice"
         cancelHref={`/sales/invoices/${inv.id}`}

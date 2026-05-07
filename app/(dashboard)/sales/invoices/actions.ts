@@ -109,6 +109,20 @@ export async function createInvoiceAction(
     },
   });
 
+  // M17c: persist custom field values, if any
+  if (data.customFieldValues && data.customFieldValues.length > 0) {
+    await db.customFieldValue.createMany({
+      data: data.customFieldValues.map((v) => ({
+        organizationId: organization.id,
+        entityType: "INVOICE",
+        entityId: created.id,
+        fieldDefinitionId: v.fieldDefinitionId,
+        value: v.value as object,
+      })),
+      skipDuplicates: true,
+    });
+  }
+
   await writeAuditLog({
     organizationId: organization.id,
     userId: user.id,
@@ -173,6 +187,26 @@ export async function updateInvoiceAction(id: string, input: InvoiceInput) {
         },
       },
     });
+    // M17c: replace custom-field values for this invoice wholesale
+    await tx.customFieldValue.deleteMany({
+      where: {
+        organizationId: organization.id,
+        entityType: "INVOICE",
+        entityId: id,
+      },
+    });
+    if (data.customFieldValues && data.customFieldValues.length > 0) {
+      await tx.customFieldValue.createMany({
+        data: data.customFieldValues.map((v) => ({
+          organizationId: organization.id,
+          entityType: "INVOICE",
+          entityId: id,
+          fieldDefinitionId: v.fieldDefinitionId,
+          value: v.value as object,
+        })),
+        skipDuplicates: true,
+      });
+    }
   });
 
   await writeAuditLog({
