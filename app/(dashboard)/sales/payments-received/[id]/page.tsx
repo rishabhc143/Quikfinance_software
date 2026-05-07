@@ -1,14 +1,25 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { format } from "date-fns";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, MoreHorizontal } from "lucide-react";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { DeleteButton } from "@/components/shared/delete-button";
 import { formatMoney } from "@/lib/money";
-import { deletePaymentReceivedAction } from "../actions";
+import {
+  deletePaymentReceivedAction,
+  refundPaymentAction,
+  emailPaymentReceiptAction,
+} from "../actions";
+import { RefundPaymentDialog } from "./refund-dialog";
 
 export default async function PaymentDetailPage({
   params,
@@ -40,11 +51,44 @@ export default async function PaymentDetailPage({
           </Button>
           <h1 className="text-2xl font-semibold font-mono">{p.number}</h1>
         </div>
-        <DeleteButton
-          action={deletePaymentReceivedAction.bind(null, p.id)}
-          confirmText="Delete this payment? Allocated payments cannot be deleted."
-          redirectTo="/sales/payments-received"
-        />
+        <div className="flex items-center gap-2">
+          {p.contact.email ? (
+            <form action={emailPaymentReceiptAction.bind(null, p.id)}>
+              <Button type="submit" variant="outline" size="sm">
+                Email Receipt
+              </Button>
+            </form>
+          ) : null}
+          <RefundPaymentDialog
+            paymentId={p.id}
+            number={p.number}
+            amount={Number(p.amount)}
+            currency={ccy}
+            action={refundPaymentAction}
+            trigger={
+              <Button variant="outline" size="sm">
+                Refund
+              </Button>
+            }
+          />
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="icon" aria-label="More">
+                <MoreHorizontal className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem asChild>
+                <a href={`/sales/customers/${p.contactId}`}>View customer</a>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <DeleteButton
+            action={deletePaymentReceivedAction.bind(null, p.id)}
+            confirmText="Delete this payment? Allocated payments cannot be deleted."
+            redirectTo="/sales/payments-received"
+          />
+        </div>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">

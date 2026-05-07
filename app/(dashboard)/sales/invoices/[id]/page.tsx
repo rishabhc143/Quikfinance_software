@@ -22,9 +22,11 @@ import {
   voidInvoiceAction,
   recordPaymentAction,
   sendInvoiceReminderAction,
+  applyCreditsToInvoiceAction,
 } from "../actions";
 import { InvoiceActionButton } from "./action-button";
 import { RecordPaymentDialog } from "../record-payment-dialog";
+import { ApplyCreditsDialog } from "./apply-credits-dialog";
 
 const STATUS_VARIANT: Record<string, "secondary" | "outline" | "destructive"> = {
   DRAFT: "outline",
@@ -56,7 +58,7 @@ export default async function InvoiceDetailPage({
   const balance = Number(inv.total) - Number(inv.amountPaid);
   const ccy = inv.currency ?? organization.currency;
 
-  const [openInvoicesForCustomer, bankAccounts] = await Promise.all([
+  const [openInvoicesForCustomer, bankAccounts, openCreditNotesForCustomer] = await Promise.all([
     db.invoice.findMany({
       where: {
         organizationId: organization.id,
@@ -70,6 +72,23 @@ export default async function InvoiceDetailPage({
     db.bankAccount.findMany({
       where: { organizationId: organization.id, isActive: true },
       orderBy: { name: "asc" },
+    }),
+    db.creditNote.findMany({
+      where: {
+        organizationId: organization.id,
+        contactId: inv.contactId,
+        deletedAt: null,
+        status: "OPEN",
+      },
+      orderBy: { date: "asc" },
+      select: {
+        id: true,
+        number: true,
+        date: true,
+        total: true,
+        amountApplied: true,
+        amountRefunded: true,
+      },
     }),
   ]);
 
@@ -90,6 +109,31 @@ export default async function InvoiceDetailPage({
             <InvoiceActionButton
               action={markInvoiceSentAction.bind(null, inv.id)}
               label="Mark as Sent"
+            />
+          ) : null}
+          {balance > 0.0001 &&
+          inv.status !== "VOID" &&
+          inv.status !== "WRITTEN_OFF" &&
+          openCreditNotesForCustomer.length > 0 ? (
+            <ApplyCreditsDialog
+              invoiceId={inv.id}
+              invoiceBalance={balance}
+              currency={ccy}
+              openCredits={openCreditNotesForCustomer.map((cn) => ({
+                id: cn.id,
+                number: cn.number,
+                date: format(cn.date, "dd MMM yyyy"),
+                balance:
+                  Number(cn.total) -
+                  Number(cn.amountApplied) -
+                  Number(cn.amountRefunded),
+              }))}
+              action={applyCreditsToInvoiceAction}
+              trigger={
+                <Button size="sm" variant="outline">
+                  Apply Credits
+                </Button>
+              }
             />
           ) : null}
           {balance > 0.0001 &&

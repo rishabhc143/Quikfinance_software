@@ -20,6 +20,7 @@ import {
   refundCreditNoteAction,
   voidCreditNoteAction,
   deleteCreditNoteAction,
+  reopenCreditNoteAction,
 } from "../actions";
 import { ApplyCreditDialog } from "./apply-dialog";
 import { RefundCreditDialog } from "./refund-dialog";
@@ -104,6 +105,13 @@ export default async function CreditNoteDetailPage({
                 <DropdownMenuItem asChild>
                   <form action={voidCreditNoteAction.bind(null, cn.id)}>
                     <button className="w-full text-left">Mark as Void</button>
+                  </form>
+                </DropdownMenuItem>
+              ) : null}
+              {cn.status === "CLOSED" && balance > 0.0001 ? (
+                <DropdownMenuItem asChild>
+                  <form action={reopenCreditNoteAction.bind(null, cn.id)}>
+                    <button className="w-full text-left">Reopen</button>
                   </form>
                 </DropdownMenuItem>
               ) : null}
