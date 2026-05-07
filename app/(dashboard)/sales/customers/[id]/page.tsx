@@ -198,6 +198,13 @@ export default async function CustomerDetailPage({
 
   return (
     <div className="p-6 max-w-6xl mx-auto space-y-4">
+      <nav aria-label="Breadcrumb" className="text-xs text-muted-foreground">
+        <Link href="/sales/customers" className="hover:underline">
+          Customers
+        </Link>
+        <span className="mx-1">/</span>
+        <span aria-current="page">{c.displayName}</span>
+      </nav>
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Button asChild variant="ghost" size="icon" aria-label="Back">
@@ -450,13 +457,16 @@ export default async function CustomerDetailPage({
                     </p>
                   ) : (
                     <table className="w-full text-sm">
+                      <caption className="sr-only">
+                        Recent transactions for {c.displayName}
+                      </caption>
                       <thead className="text-xs uppercase text-muted-foreground">
                         <tr className="text-left">
-                          <th className="p-2">Date</th>
-                          <th className="p-2">Type</th>
-                          <th className="p-2">Number</th>
-                          <th className="p-2">Status</th>
-                          <th className="p-2 text-right">Amount</th>
+                          <th scope="col" className="p-2">Date</th>
+                          <th scope="col" className="p-2">Type</th>
+                          <th scope="col" className="p-2">Number</th>
+                          <th scope="col" className="p-2">Status</th>
+                          <th scope="col" className="p-2 text-right">Amount</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y">

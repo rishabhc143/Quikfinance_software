@@ -86,9 +86,9 @@ export function DataTable({
           <thead className="bg-muted/50 text-xs uppercase tracking-wider text-muted-foreground">
             <tr>
               {columns.map((c) => (
-                <th key={c.key} className={`p-3 ${c.align === "right" ? "text-right" : c.align === "center" ? "text-center" : "text-left"} ${c.className ?? ""}`}>
+                <th key={c.key} scope="col" className={`p-3 ${c.align === "right" ? "text-right" : c.align === "center" ? "text-center" : "text-left"} ${c.className ?? ""}`}>
                   {c.sortable ? (
-                    <button onClick={() => setSort(c.key)} className="inline-flex items-center gap-1 hover:text-foreground">
+                    <button type="button" onClick={() => setSort(c.key)} className="inline-flex items-center gap-1 hover:text-foreground" aria-label={`Sort by ${c.header}`}>
                       {c.header}
                       {sort !== c.key ? <ArrowUpDown className="h-3 w-3" /> : dir === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />}
                     </button>

@@ -100,7 +100,7 @@ export default async function SalesOrderDetailPage({
               {so.status === "CONFIRMED" ? (
                 <DropdownMenuItem asChild>
                   <form action={closeSalesOrderAction.bind(null, so.id)}>
-                    <button className="w-full text-left">Mark as Closed</button>
+                    <button type="submit" className="w-full text-left">Mark as Closed</button>
                   </form>
                 </DropdownMenuItem>
               ) : null}
@@ -109,7 +109,7 @@ export default async function SalesOrderDetailPage({
                   <form
                     action={convertSalesOrderToPurchaseOrderAction.bind(null, so.id)}
                   >
-                    <button className="w-full text-left">Convert to Purchase Order</button>
+                    <button type="submit" className="w-full text-left">Convert to Purchase Order</button>
                   </form>
                 </DropdownMenuItem>
               ) : null}

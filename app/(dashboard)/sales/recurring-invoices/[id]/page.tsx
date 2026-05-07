@@ -89,7 +89,7 @@ export default async function RecurringDetailPage({
               {r.status !== "STOPPED" ? (
                 <DropdownMenuItem asChild>
                   <form action={stopRecurringInvoiceAction.bind(null, r.id)}>
-                    <button className="w-full text-left">Stop</button>
+                    <button type="submit" className="w-full text-left">Stop</button>
                   </form>
                 </DropdownMenuItem>
               ) : null}

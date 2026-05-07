@@ -107,15 +107,30 @@ export default async function InvoiceDetailPage({
 
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-4">
+      <nav aria-label="Breadcrumb" className="text-xs text-muted-foreground">
+        <Link href="/sales/invoices" className="hover:underline">
+          Invoices
+        </Link>
+        <span className="mx-1">/</span>
+        <span aria-current="page">{inv.number}</span>
+      </nav>
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <Button asChild variant="ghost" size="icon" aria-label="Back">
+          <Button asChild variant="ghost" size="icon" aria-label="Back to invoices">
             <Link href="/sales/invoices">
               <ArrowLeft className="h-4 w-4" />
             </Link>
           </Button>
-          <h1 className="text-2xl font-semibold font-mono">{inv.number}</h1>
-          <Badge variant={STATUS_VARIANT[inv.status] ?? "outline"}>{inv.status}</Badge>
+          <h1 className="text-2xl font-semibold font-mono">
+            <span className="sr-only">Invoice </span>
+            {inv.number}
+          </h1>
+          <Badge
+            variant={STATUS_VARIANT[inv.status] ?? "outline"}
+            aria-label={`Status: ${inv.status.replace("_", " ").toLowerCase()}`}
+          >
+            {inv.status}
+          </Badge>
         </div>
         <div className="flex items-center gap-2">
           {inv.status === "DRAFT" ? (
@@ -224,7 +239,7 @@ export default async function InvoiceDetailPage({
               {inv.status !== "VOID" && inv.status !== "PAID" ? (
                 <DropdownMenuItem asChild>
                   <form action={voidInvoiceAction.bind(null, inv.id)}>
-                    <button className="w-full text-left">Mark as Void</button>
+                    <button type="submit" className="w-full text-left">Mark as Void</button>
                   </form>
                 </DropdownMenuItem>
               ) : null}
@@ -275,12 +290,15 @@ export default async function InvoiceDetailPage({
       <Card>
         <CardContent className="pt-6">
           <table className="w-full text-sm">
+            <caption className="sr-only">
+              Line items on invoice {inv.number}
+            </caption>
             <thead className="bg-muted/40 text-xs uppercase tracking-wider text-muted-foreground">
               <tr>
-                <th className="p-2 text-left">Item</th>
-                <th className="p-2 text-right">Qty</th>
-                <th className="p-2 text-right">Rate</th>
-                <th className="p-2 text-right">Amount</th>
+                <th scope="col" className="p-2 text-left">Item</th>
+                <th scope="col" className="p-2 text-right">Qty</th>
+                <th scope="col" className="p-2 text-right">Rate</th>
+                <th scope="col" className="p-2 text-right">Amount</th>
               </tr>
             </thead>
             <tbody className="divide-y">
