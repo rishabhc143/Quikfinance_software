@@ -1,10 +1,18 @@
 "use client";
 
 import * as React from "react";
-import { Plus, Trash2, GripVertical } from "lucide-react";
+import { Plus, Trash2, GripVertical, Layers } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { Combobox, type ComboboxOption } from "@/components/ui/combobox";
 import { MoneyInput } from "@/components/shared/money-input";
 import { computeDocument, type DocumentComputed } from "@/lib/sales/totals";
@@ -86,6 +94,12 @@ export function TransactionLineItemsTable(props: TransactionLineItemsTableProps)
 
   const taxOptions = props.taxOptions ?? [];
   const taxByValue = React.useMemo(() => new Map(taxOptions.map((t) => [t.value, t])), [taxOptions]);
+
+  const totalQuantity = React.useMemo(
+    () =>
+      lines.reduce((n, l) => n + Number(l.quantity || 0), 0).toLocaleString(),
+    [lines]
+  );
 
   const totals = React.useMemo(() => {
     return computeDocument({
@@ -281,10 +295,34 @@ export function TransactionLineItemsTable(props: TransactionLineItemsTableProps)
         <Button type="button" variant="outline" size="sm" onClick={add} className="gap-1">
           <Plus className="h-4 w-4" /> Add new row
         </Button>
+        <BulkAddDialog
+          itemOptions={props.itemOptions}
+          onAdd={(rows) => {
+            const newRows = rows.map((r) => ({
+              id: `bulk-${++UID}-${Date.now()}`,
+              itemId: r.itemId,
+              name: r.name,
+              description: r.description,
+              hsnSacCode: r.hsnSacCode,
+              quantity: r.quantity,
+              unit: r.unit,
+              rate: r.rate,
+            }));
+            // Replace any blank rows or append
+            setLines((curr) => {
+              const filtered = curr.filter((c) => c.name.trim().length > 0);
+              return [...filtered, ...newRows];
+            });
+          }}
+        />
       </div>
 
       <aside className="ml-auto max-w-sm rounded-md border bg-card p-4 text-sm">
         <dl className="space-y-1">
+          <div className="flex justify-between text-xs text-muted-foreground">
+            <dt>Total Quantity</dt>
+            <dd className="tabular-nums">{totalQuantity}</dd>
+          </div>
           <div className="flex justify-between">
             <dt className="text-muted-foreground">Sub Total</dt>
             <dd className="tabular-nums">{totals.subTotal}</dd>
@@ -314,5 +352,153 @@ export function TransactionLineItemsTable(props: TransactionLineItemsTableProps)
         </dl>
       </aside>
     </div>
+  );
+}
+
+/**
+ * Modal that lets a merchant pick multiple items from the catalog with a
+ * per-item quantity. Per <quotes_spec> "Add Items in Bulk button — opens
+ * modal with searchable item list, multi-select with quantity column,
+ * bulk add". Calls back with one row per selected item.
+ */
+function BulkAddDialog({
+  itemOptions,
+  onAdd,
+}: {
+  itemOptions: ItemOption[];
+  onAdd: (
+    rows: {
+      itemId: string;
+      name: string;
+      description?: string;
+      hsnSacCode?: string;
+      quantity: string;
+      unit?: string;
+      rate: string;
+    }[]
+  ) => void;
+}) {
+  const [open, setOpen] = React.useState(false);
+  const [search, setSearch] = React.useState("");
+  const [selections, setSelections] = React.useState<Record<string, string>>({});
+
+  const filtered = React.useMemo(() => {
+    const q = search.toLowerCase().trim();
+    if (!q) return itemOptions;
+    return itemOptions.filter(
+      (i) =>
+        i.label.toLowerCase().includes(q) ||
+        i.hint?.toLowerCase().includes(q)
+    );
+  }, [search, itemOptions]);
+
+  function commit() {
+    const rows = Object.entries(selections)
+      .filter(([, qty]) => Number(qty) > 0)
+      .map(([itemId, qty]) => {
+        const opt = itemOptions.find((o) => o.value === itemId)!;
+        return {
+          itemId,
+          name: opt.label,
+          description: opt.description,
+          hsnSacCode: opt.hsnSacCode,
+          quantity: qty,
+          unit: opt.unit,
+          rate: opt.rate ?? "0",
+        };
+      });
+    onAdd(rows);
+    setSelections({});
+    setSearch("");
+    setOpen(false);
+  }
+
+  const totalSelected = Object.values(selections).reduce(
+    (n, v) => n + (Number(v) > 0 ? 1 : 0),
+    0
+  );
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button type="button" variant="outline" size="sm" className="gap-1">
+          <Layers className="h-4 w-4" /> Add Items in Bulk
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Add items in bulk</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3">
+          <Input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search items"
+          />
+          <div className="max-h-80 overflow-y-auto rounded border">
+            <table className="w-full text-sm">
+              <thead className="bg-muted/30 text-xs uppercase tracking-wider text-muted-foreground sticky top-0">
+                <tr>
+                  <th className="p-2 text-left">Item</th>
+                  <th className="p-2 text-right w-24">Rate</th>
+                  <th className="p-2 text-right w-28">Quantity</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {filtered.map((opt) => (
+                  <tr key={opt.value}>
+                    <td className="p-2">
+                      <div className="font-medium">{opt.label}</div>
+                      {opt.hint ? (
+                        <div className="text-xs text-muted-foreground">
+                          {opt.hint}
+                        </div>
+                      ) : null}
+                    </td>
+                    <td className="p-2 text-right tabular-nums">
+                      {opt.rate ?? "0"}
+                    </td>
+                    <td className="p-2">
+                      <Input
+                        inputMode="decimal"
+                        className="h-8 text-right"
+                        value={selections[opt.value] ?? ""}
+                        onChange={(e) =>
+                          setSelections({
+                            ...selections,
+                            [opt.value]: e.target.value,
+                          })
+                        }
+                      />
+                    </td>
+                  </tr>
+                ))}
+                {filtered.length === 0 ? (
+                  <tr>
+                    <td
+                      colSpan={3}
+                      className="p-3 text-center text-sm text-muted-foreground"
+                    >
+                      No items match.
+                    </td>
+                  </tr>
+                ) : null}
+              </tbody>
+            </table>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            {totalSelected} item(s) selected
+          </p>
+        </div>
+        <DialogFooter>
+          <Button variant="ghost" onClick={() => setOpen(false)}>
+            Cancel
+          </Button>
+          <Button onClick={commit} disabled={totalSelected === 0}>
+            Add {totalSelected || ""} item(s)
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
