@@ -17,6 +17,7 @@ import {
 } from "@/components/shared/transaction-line-items-table";
 import { AttachFilesField, type AttachedFile } from "@/components/shared/attach-files-field";
 import { PdfTemplatePicker } from "@/components/shared/pdf-template-picker";
+import { createCustomerInlineAction } from "@/app/(dashboard)/sales/_inline-create/actions";
 import type { DeliveryChallanInput } from "@/lib/validations/delivery-challan";
 import { format } from "date-fns";
 import { toast } from "sonner";
@@ -53,6 +54,7 @@ export function ChallanForm({
   const [terms, setTerms] = React.useState("");
   const [pdfTemplateId, setPdfTemplateId] = React.useState<string | null>(null);
   const [attachments, setAttachments] = React.useState<AttachedFile[]>([]);
+  const [contactsState, setContactsState] = React.useState(contactOptions);
   const [lines, setLines] = React.useState<LineItem[]>([]);
 
   async function submit() {
@@ -101,7 +103,28 @@ export function ChallanForm({
     <div className="space-y-6">
       <section className="rounded-md border bg-card p-6 grid gap-4 md:grid-cols-[10rem_1fr]">
         <Label className="pt-2">Customer *</Label>
-        <Combobox options={contactOptions} value={contactId} onChange={setContactId} placeholder="Select customer…" />
+        <Combobox
+          options={contactsState}
+          value={contactId}
+          onChange={setContactId}
+          placeholder="Select customer…"
+          allowCreate
+          onCreate={async (input: string) => {
+            try {
+              const created = await createCustomerInlineAction({
+                displayName: input,
+                email: null,
+              });
+              setContactsState((prev) => [
+                ...prev,
+                { value: created.id, label: created.displayName },
+              ]);
+              setContactId(created.id);
+            } catch (err) {
+              toast.error(err instanceof Error ? err.message : "Couldn't add customer");
+            }
+          }}
+        />
 
         <Label className="pt-2">Reference #</Label>
         <Input value={referenceNumber} onChange={(e) => setReferenceNumber(e.target.value)} />
