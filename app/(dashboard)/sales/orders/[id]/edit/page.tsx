@@ -23,7 +23,7 @@ export default async function EditSalesOrderPage({
   if (!so) notFound();
   if (so.status === "CLOSED" || so.status === "VOID") notFound();
 
-  const [contacts, items, taxes, salespeople, paymentTerms, deliveryMethods] = await Promise.all([
+  const [contacts, items, taxes, salespeople, paymentTerms, deliveryMethods, pdfTemplates] = await Promise.all([
     db.contact.findMany({
       where: {
         organizationId: organization.id,
@@ -52,6 +52,10 @@ export default async function EditSalesOrderPage({
     }),
     db.deliveryMethod.findMany({
       where: { organizationId: organization.id, isInactive: false },
+      orderBy: { name: "asc" },
+    }),
+    db.pdfTemplate.findMany({
+      where: { organizationId: organization.id, documentType: "SALES_ORDER" },
       orderBy: { name: "asc" },
     }),
   ]);
@@ -130,6 +134,7 @@ export default async function EditSalesOrderPage({
         salespersonOptions={salespeople.map((s) => ({ value: s.id, label: s.name }))}
         paymentTermsOptions={paymentTerms.map((p) => ({ value: p.id, label: p.name }))}
         deliveryMethodOptions={deliveryMethods.map((d) => ({ value: d.id, label: d.name }))}
+        pdfTemplateOptions={pdfTemplates.map((t) => ({ value: t.id, label: t.name }))}
         onSubmitAction={submit}
         submitLabel="Update sales order"
         cancelHref={`/sales/orders/${so.id}`}

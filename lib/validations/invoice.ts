@@ -36,6 +36,18 @@ export const invoiceSchema = z.object({
   customerNotes: z.string().max(2000).nullable().optional(),
   termsAndConditions: z.string().max(4000).nullable().optional(),
   pdfTemplateId: z.string().nullable().optional(),
+  attachments: z
+    .array(
+      z.object({
+        fileName: z.string().min(1).max(200),
+        fileUrl: z.string().min(1),
+        fileSize: z.coerce.number().int().nonnegative(),
+        mimeType: z.string().min(1).max(120),
+      })
+    )
+    .max(10)
+    .optional()
+    .default([]),
   lines: z.array(lineItemSchema).min(1, "At least one line item required"),
 });
 export type InvoiceInput = z.input<typeof invoiceSchema>;

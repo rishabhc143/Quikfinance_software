@@ -25,7 +25,7 @@ export default async function EditInvoicePage({
     notFound();
   }
 
-  const [contacts, items, taxes, salespeople, paymentTerms] = await Promise.all([
+  const [contacts, items, taxes, salespeople, paymentTerms, pdfTemplates] = await Promise.all([
     db.contact.findMany({
       where: {
         organizationId: organization.id,
@@ -51,6 +51,10 @@ export default async function EditInvoicePage({
     db.paymentTerms.findMany({
       where: { organizationId: organization.id },
       orderBy: { numberOfDays: "asc" },
+    }),
+    db.pdfTemplate.findMany({
+      where: { organizationId: organization.id, documentType: "INVOICE" },
+      orderBy: { name: "asc" },
     }),
   ]);
 
@@ -131,6 +135,7 @@ export default async function EditInvoicePage({
           label: p.name,
           numberOfDays: p.numberOfDays,
         }))}
+        pdfTemplateOptions={pdfTemplates.map((t) => ({ value: t.id, label: t.name }))}
         onSubmitAction={submit}
         submitLabel="Update invoice"
         cancelHref={`/sales/invoices/${inv.id}`}

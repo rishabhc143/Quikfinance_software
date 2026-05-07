@@ -84,6 +84,17 @@ export async function createInvoiceAction(
       termsAndConditions: data.termsAndConditions ?? null,
       pdfTemplateId: data.pdfTemplateId ?? null,
       sentAt: opts?.send ? new Date() : null,
+      attachments:
+        data.attachments && data.attachments.length > 0
+          ? {
+              create: data.attachments.map((a) => ({
+                fileName: a.fileName,
+                fileUrl: a.fileUrl,
+                fileSize: a.fileSize,
+                mimeType: a.mimeType,
+              })),
+            }
+          : undefined,
       lineItems: {
         create: data.lines.map((l) => ({
           itemId: l.itemId || null,
