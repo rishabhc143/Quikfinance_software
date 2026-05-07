@@ -8,6 +8,11 @@ import { TransactionListPage } from "@/components/shared/transaction-list-page";
 import { CustomersTable } from "./customers-table";
 import { bulkSetCustomerActiveAction } from "./actions";
 import { formatMoney } from "@/lib/money";
+import {
+  getSavedViews,
+  resolveActiveView,
+  whereForFilter,
+} from "@/lib/sales/saved-views";
 
 export const metadata = { title: "Customers" };
 
@@ -33,15 +38,16 @@ export default async function CustomersListPage({
   const pageSize = Number(searchParams.pageSize ?? PAGE_SIZE_DEFAULT);
   const sort = searchParams.sort ?? "displayName";
   const dir = searchParams.dir === "desc" ? "desc" : "asc";
-  const view = searchParams.view ?? "all";
+  // M17d: Saved Views chevron-dropdown is DB-backed.
+  const savedViews = await getSavedViews(organization.id, "customers");
+  const activeView = resolveActiveView(savedViews, searchParams.view);
+  const view = activeView?.slug ?? "all";
 
   const where = {
     organizationId: organization.id,
     type: { in: ["CUSTOMER", "BOTH"] as ("CUSTOMER" | "BOTH")[] },
     deletedAt: null,
-    ...(view === "active" ? { isInactive: false } : {}),
-    ...(view === "inactive" ? { isInactive: true } : {}),
-    ...(view === "portal_enabled" ? { enablePortal: true } : {}),
+    ...(activeView ? whereForFilter(activeView.filter) : {}),
     ...(q
       ? {
           OR: [
@@ -155,12 +161,7 @@ export default async function CustomersListPage({
       <TransactionListPage
         title="Customers"
         view={viewLabel(view)}
-        views={[
-          { value: "all", label: "All" },
-          { value: "active", label: "Active" },
-          { value: "inactive", label: "Inactive" },
-          { value: "portal_enabled", label: "Portal-enabled" },
-        ]}
+        views={savedViews.map((v) => ({ value: v.slug, label: v.label }))}
         activeView={view}
         newHref="/sales/customers/new"
         newLabel="New"
