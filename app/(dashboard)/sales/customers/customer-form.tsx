@@ -15,6 +15,7 @@ import { Combobox, type ComboboxOption } from "@/components/ui/combobox";
 import { MoneyInput } from "@/components/shared/money-input";
 import { DatePicker } from "@/components/shared/date-picker";
 import { customerSchema, type CustomerInput } from "@/lib/validations/customer";
+import { GstinPrefillDialog } from "./gstin-prefill-dialog";
 import { toast } from "sonner";
 
 const SALUTATIONS = ["Mr.", "Mrs.", "Ms.", "Miss", "Dr.", ""] as const;
@@ -369,12 +370,50 @@ export function CustomerForm({
             />
 
             <Label className="pt-2">GSTIN</Label>
-            <Input
-              {...form.register("gstin")}
-              placeholder="22AAAAA0000A1Z5"
-              className="uppercase"
-              maxLength={15}
-            />
+            <div className="space-y-1">
+              <Input
+                {...form.register("gstin")}
+                placeholder="22AAAAA0000A1Z5"
+                className="uppercase"
+                maxLength={15}
+              />
+              <GstinPrefillDialog
+                initialGstin={form.getValues("gstin") ?? ""}
+                onApply={(data) => {
+                  form.setValue("gstin", data.gstin);
+                  if (!form.getValues("displayName")) {
+                    form.setValue("displayName", data.tradeName);
+                  }
+                  if (!form.getValues("companyName")) {
+                    form.setValue("companyName", data.legalName);
+                  }
+                  form.setValue("gstTreatment", data.gstTreatment);
+                  form.setValue("placeOfSupply", data.placeOfSupply);
+                  // Populate the first (billing) address
+                  const addresses = form.getValues("addresses") ?? [];
+                  const billingIdx = addresses.findIndex(
+                    (a) => a?.kind === "billing"
+                  );
+                  if (billingIdx >= 0) {
+                    form.setValue(
+                      `addresses.${billingIdx}.addressLine1`,
+                      data.addressLine1
+                    );
+                    form.setValue(
+                      `addresses.${billingIdx}.addressLine2`,
+                      data.addressLine2
+                    );
+                    form.setValue(`addresses.${billingIdx}.city`, data.city);
+                    form.setValue(`addresses.${billingIdx}.state`, data.state);
+                    form.setValue(`addresses.${billingIdx}.zipCode`, data.zipCode);
+                    form.setValue(
+                      `addresses.${billingIdx}.country`,
+                      data.country
+                    );
+                  }
+                }}
+              />
+            </div>
 
             <Label className="pt-2">GST Treatment</Label>
             <Controller

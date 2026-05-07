@@ -19,6 +19,7 @@ import {
 import { AttachFilesField, type AttachedFile } from "@/components/shared/attach-files-field";
 import { PdfTemplatePicker } from "@/components/shared/pdf-template-picker";
 import { NumberSeriesPopover } from "@/components/shared/number-series-popover";
+import { CustomerSearchDialog } from "@/components/shared/customer-search-dialog";
 import { updateNumberSeriesInlineAction } from "@/app/(dashboard)/settings/number-series/inline-actions";
 import type { QuoteInput } from "@/lib/validations/quote";
 import { format } from "date-fns";
@@ -32,6 +33,10 @@ export type QuoteFormProps = {
   taxOptions: TaxOption[];
   salespersonOptions: ComboboxOption[];
   pdfTemplateOptions?: ComboboxOption[];
+  /** All Project rows for the org — the form filters client-side by
+   *  selected customer per <quotes_spec>: "only projects of the
+   *  selected customer". */
+  projectOptions?: { value: string; label: string; customerId: string | null }[];
   /** Server action that creates a new Salesperson row inline. */
   createSalesperson?: (input: { name: string }) => Promise<{ id: string; name: string }>;
   /** Server action that creates a minimal Customer inline. */
@@ -57,6 +62,7 @@ export function QuoteForm({
   taxOptions,
   salespersonOptions,
   pdfTemplateOptions = [],
+  projectOptions = [],
   createSalesperson,
   createCustomer,
   numberSeries,
@@ -82,6 +88,9 @@ export function QuoteForm({
   );
   const [salespersonId, setSalespersonId] = React.useState<string | null>(
     initial?.salespersonId ?? null
+  );
+  const [projectId, setProjectId] = React.useState<string | null>(
+    initial?.projectId ?? null
   );
   const [subject, setSubject] = React.useState(initial?.subject ?? "");
   const [discountValue, setDiscountValue] = React.useState(
@@ -131,7 +140,7 @@ export function QuoteForm({
         ? (format(expiryDate, "yyyy-MM-dd") as unknown as Date)
         : null,
       salespersonId,
-      projectId: null,
+      projectId,
       subject: subject || null,
       status: send ? "SENT" : "DRAFT",
       currency: defaultCurrency,
@@ -170,34 +179,49 @@ export function QuoteForm({
     <div className="space-y-6">
       <section className="rounded-md border bg-card p-6 grid gap-4 md:grid-cols-[10rem_1fr]">
         <Label className="pt-2">Customer Name *</Label>
-        <Combobox
-          options={contactsState}
-          value={contactId}
-          onChange={(v) => setContactId(v)}
-          placeholder="Select customer…"
-          allowCreate={!!createCustomer}
-          onCreate={
-            createCustomer
-              ? async (input: string) => {
-                  try {
-                    const created = await createCustomer({
-                      displayName: input,
-                      email: null,
-                    });
-                    setContactsState((prev) => [
-                      ...prev,
-                      { value: created.id, label: created.displayName },
-                    ]);
-                    setContactId(created.id);
-                  } catch (err) {
-                    toast.error(
-                      err instanceof Error ? err.message : "Couldn't create customer"
-                    );
-                  }
-                }
-              : undefined
-          }
-        />
+        <div className="flex items-center gap-2">
+          <div className="flex-1">
+            <Combobox
+              options={contactsState}
+              value={contactId}
+              onChange={(v) => setContactId(v)}
+              placeholder="Select customer…"
+              allowCreate={!!createCustomer}
+              onCreate={
+                createCustomer
+                  ? async (input: string) => {
+                      try {
+                        const created = await createCustomer({
+                          displayName: input,
+                          email: null,
+                        });
+                        setContactsState((prev) => [
+                          ...prev,
+                          { value: created.id, label: created.displayName },
+                        ]);
+                        setContactId(created.id);
+                      } catch (err) {
+                        toast.error(
+                          err instanceof Error ? err.message : "Couldn't create customer"
+                        );
+                      }
+                    }
+                  : undefined
+              }
+            />
+          </div>
+          <CustomerSearchDialog
+            onSelect={(c) => {
+              if (!contactsState.find((o) => o.value === c.id)) {
+                setContactsState((prev) => [
+                  ...prev,
+                  { value: c.id, label: c.displayName },
+                ]);
+              }
+              setContactId(c.id);
+            }}
+          />
+        </div>
 
         <Label className="pt-2">Quote #</Label>
         {!initial && numberSeries ? (
@@ -253,6 +277,28 @@ export function QuoteForm({
               : undefined
           }
         />
+
+        <Label className="pt-2">Project Name</Label>
+        <div className="space-y-1">
+          <Combobox
+            options={projectOptions
+              .filter((p) => !contactId || p.customerId === contactId)
+              .map((p) => ({ value: p.value, label: p.label }))}
+            value={projectId}
+            onChange={(v) => setProjectId(v)}
+            placeholder={
+              contactId
+                ? "Select a project for this customer"
+                : "Select a customer first"
+            }
+            disabled={!contactId}
+          />
+          {!contactId ? (
+            <p className="text-xs text-muted-foreground">
+              Select a customer to associate a project.
+            </p>
+          ) : null}
+        </div>
 
         <Label className="pt-2">Subject</Label>
         <Textarea

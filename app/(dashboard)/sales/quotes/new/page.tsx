@@ -16,7 +16,7 @@ export const metadata = { title: "New Quote" };
 
 export default async function NewQuotePage() {
   const { organization } = await requireOrganization();
-  const [contacts, items, taxes, salespeople, pdfTemplates, numberSeries, nextNumber] = await Promise.all([
+  const [contacts, items, taxes, salespeople, pdfTemplates, projects, numberSeries, nextNumber] = await Promise.all([
     db.contact.findMany({
       where: {
         organizationId: organization.id,
@@ -42,6 +42,11 @@ export default async function NewQuotePage() {
     db.pdfTemplate.findMany({
       where: { organizationId: organization.id, documentType: "QUOTE" },
       orderBy: { name: "asc" },
+    }),
+    db.project.findMany({
+      where: { organizationId: organization.id, status: "active" },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true, customerId: true },
     }),
     db.numberSeries.findUnique({
       where: {
@@ -95,6 +100,11 @@ export default async function NewQuotePage() {
         }))}
         salespersonOptions={salespeople.map((s) => ({ value: s.id, label: s.name }))}
         pdfTemplateOptions={pdfTemplates.map((t) => ({ value: t.id, label: t.name }))}
+        projectOptions={projects.map((p) => ({
+          value: p.id,
+          label: p.name,
+          customerId: p.customerId,
+        }))}
         createSalesperson={createSalespersonInlineAction}
         createCustomer={createCustomerInlineAction}
         numberSeries={
