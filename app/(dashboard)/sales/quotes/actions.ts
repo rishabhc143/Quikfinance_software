@@ -9,6 +9,7 @@ import { getNextDocumentNumber } from "@/lib/sales/numbering";
 import { computeDocument } from "@/lib/sales/totals";
 import { enqueueEmail } from "@/lib/sales/email-sender";
 import { renderSalesDocumentHtml } from "@/lib/sales/pdf-renderer";
+import { applyMergeTags } from "@/lib/sales/merge-tags";
 import { quoteSchema, type QuoteInput } from "@/lib/validations/quote";
 import { format } from "date-fns";
 
@@ -184,6 +185,84 @@ export async function updateQuoteAction(id: string, input: QuoteInput) {
   revalidatePath("/sales/quotes");
   revalidatePath(`/sales/quotes/${id}`);
   redirect(`/sales/quotes/${id}`);
+}
+
+/**
+ * Send Quote modal action — used by the <SaveAndSendDialog> on the
+ * Quote detail page. Accepts merchant-edited subject/body with merge
+ * tags + To/Cc + scheduledFor + attachPdf flag (PDF attachment URL is
+ * derived from the public PDF route).
+ */
+export async function sendQuoteWithEmailAction(input: {
+  documentId: string;
+  to: string;
+  cc?: string[];
+  subject: string;
+  bodyHtml: string;
+  attachPdf: boolean;
+  scheduledFor?: Date | string | null;
+}): Promise<void> {
+  const { user, organization } = await requireOrganization();
+  const q = await db.quote.findFirst({
+    where: { id: input.documentId, organizationId: organization.id, deletedAt: null },
+    include: { contact: true, organization: true },
+  });
+  if (!q) throw new Error("Quote not found");
+
+  const ctx = {
+    customerName: q.contact.displayName,
+    customerEmail: q.contact.email,
+    documentNumber: q.number,
+    documentTotal: q.total.toString(),
+    documentDate: format(q.issueDate, "dd MMM yyyy"),
+    documentDueDate: q.expiryDate ? format(q.expiryDate, "dd MMM yyyy") : null,
+    orgName: q.organization.name,
+  };
+  const renderedSubject = applyMergeTags(input.subject, ctx);
+  const renderedBody = applyMergeTags(input.bodyHtml, ctx);
+
+  const scheduledFor =
+    input.scheduledFor instanceof Date
+      ? input.scheduledFor
+      : input.scheduledFor
+      ? new Date(input.scheduledFor)
+      : new Date();
+
+  await enqueueEmail({
+    organizationId: organization.id,
+    toEmail: input.to,
+    ccEmails: input.cc,
+    subject: renderedSubject,
+    bodyHtml: renderedBody,
+    documentType: "QUOTE",
+    documentId: q.id,
+    scheduledFor,
+  });
+
+  // Flip status to SENT if not already past it
+  if (q.status === "DRAFT") {
+    await db.quote.update({
+      where: { id: q.id },
+      data: { status: "SENT", sentAt: new Date() },
+    });
+  }
+
+  await writeAuditLog({
+    organizationId: organization.id,
+    userId: user.id,
+    action: "UPDATE",
+    entityType: "Quote",
+    entityId: q.id,
+    after: {
+      sent: true,
+      to: input.to,
+      attachPdf: input.attachPdf,
+      scheduledFor: scheduledFor.toISOString(),
+    },
+  });
+
+  revalidatePath(`/sales/quotes/${q.id}`);
+  revalidatePath("/sales/quotes");
 }
 
 export async function markQuoteSentAction(id: string) {

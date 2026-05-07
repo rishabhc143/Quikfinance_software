@@ -9,6 +9,7 @@ import { getNextDocumentNumber } from "@/lib/sales/numbering";
 import { computeDocument } from "@/lib/sales/totals";
 import { enqueueEmail } from "@/lib/sales/email-sender";
 import { renderSalesDocumentHtml } from "@/lib/sales/pdf-renderer";
+import { applyMergeTags } from "@/lib/sales/merge-tags";
 import {
   invoiceSchema,
   recordPaymentSchema,
@@ -309,29 +310,63 @@ export async function recordPaymentAction(input: RecordPaymentInput): Promise<vo
   revalidatePath("/sales/payments-received");
 }
 
-export async function sendInvoiceReminderAction(id: string): Promise<void> {
+/**
+ * Send Reminder modal action — accepts the merchant-editable subject/body
+ * (with merge tags) and an optional scheduledFor for "Send Later". Records
+ * an InvoiceReminder row per the <invoices_spec> Send Reminder modal.
+ */
+export async function sendInvoiceReminderAction(input: {
+  invoiceId: string;
+  subject: string;
+  bodyHtml: string;
+  scheduledFor?: Date | string | null;
+}): Promise<void> {
   const { user, organization } = await requireOrganization();
   const inv = await db.invoice.findFirst({
-    where: { id, organizationId: organization.id, deletedAt: null },
+    where: { id: input.invoiceId, organizationId: organization.id, deletedAt: null },
     include: { contact: true, organization: true },
   });
   if (!inv || !inv.contact.email) throw new Error("Invoice or customer email missing");
+  if (!input.subject?.trim()) throw new Error("Subject is required");
+  if (!input.bodyHtml?.trim()) throw new Error("Body is required");
+
+  // Merge-tag substitution happens in the modal preview but we re-run it
+  // server-side too in case anyone hits the action directly.
+  const ctx = {
+    customerName: inv.contact.displayName,
+    customerEmail: inv.contact.email,
+    documentNumber: inv.number,
+    documentTotal: inv.total.toString(),
+    documentDate: format(inv.issueDate, "dd MMM yyyy"),
+    documentDueDate: format(inv.dueDate, "dd MMM yyyy"),
+    orgName: inv.organization.name,
+  };
+  const renderedSubject = applyMergeTags(input.subject, ctx);
+  const renderedBody = applyMergeTags(input.bodyHtml, ctx);
+
+  const scheduledFor =
+    input.scheduledFor instanceof Date
+      ? input.scheduledFor
+      : input.scheduledFor
+      ? new Date(input.scheduledFor)
+      : new Date();
 
   await enqueueEmail({
     organizationId: organization.id,
     toEmail: inv.contact.email,
-    subject: `Reminder: Invoice ${inv.number} from ${inv.organization.name}`,
-    bodyHtml: `<p>Hello ${inv.contact.displayName},</p><p>This is a friendly reminder that invoice ${inv.number} for ${inv.total} is due on ${format(inv.dueDate, "dd MMM yyyy")}.</p>`,
+    subject: renderedSubject,
+    bodyHtml: renderedBody,
     documentType: "INVOICE",
     documentId: inv.id,
+    scheduledFor,
   });
 
   await db.invoiceReminder.create({
     data: {
-      invoiceId: id,
+      invoiceId: input.invoiceId,
       type: "MANUAL",
       daysOffset: 0,
-      sentAt: new Date(),
+      sentAt: scheduledFor.getTime() <= Date.now() ? scheduledFor : null,
     },
   });
 
@@ -340,9 +375,10 @@ export async function sendInvoiceReminderAction(id: string): Promise<void> {
     userId: user.id,
     action: "CREATE",
     entityType: "InvoiceReminder",
-    entityId: id,
+    entityId: input.invoiceId,
+    after: { subject: renderedSubject, scheduledFor: scheduledFor.toISOString() },
   });
-  revalidatePath(`/sales/invoices/${id}`);
+  revalidatePath(`/sales/invoices/${input.invoiceId}`);
 }
 
 /**
