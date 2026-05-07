@@ -21,7 +21,7 @@ export default async function EditQuotePage({ params }: { params: { id: string }
     notFound();
   }
 
-  const [contacts, items, taxes, salespeople, pdfTemplates] = await Promise.all([
+  const [contacts, items, taxes, salespeople, pdfTemplates, customFieldDefs, customFieldValues] = await Promise.all([
     db.contact.findMany({
       where: {
         organizationId: organization.id,
@@ -48,7 +48,26 @@ export default async function EditQuotePage({ params }: { params: { id: string }
       where: { organizationId: organization.id, documentType: "QUOTE" },
       orderBy: { name: "asc" },
     }),
+    db.customFieldDefinition.findMany({
+      where: {
+        organizationId: organization.id,
+        entityType: "QUOTE",
+        deletedAt: null,
+      },
+      orderBy: [{ position: "asc" }, { createdAt: "asc" }],
+    }),
+    db.customFieldValue.findMany({
+      where: {
+        organizationId: organization.id,
+        entityType: "QUOTE",
+        entityId: q.id,
+      },
+    }),
   ]);
+
+  const initialCustomFieldValues: Record<string, unknown> = Object.fromEntries(
+    customFieldValues.map((v) => [v.fieldDefinitionId, v.value])
+  );
 
   const initial: Partial<QuoteInput> = {
     contactId: q.contactId,
@@ -122,6 +141,23 @@ export default async function EditQuotePage({ params }: { params: { id: string }
         }))}
         salespersonOptions={salespeople.map((s) => ({ value: s.id, label: s.name }))}
         pdfTemplateOptions={pdfTemplates.map((t) => ({ value: t.id, label: t.name }))}
+        customFieldDefinitions={customFieldDefs.map((d) => ({
+          id: d.id,
+          fieldKey: d.fieldKey,
+          label: d.label,
+          dataType: d.dataType as
+            | "text"
+            | "number"
+            | "date"
+            | "dropdown"
+            | "checkbox"
+            | "email"
+            | "url",
+          options:
+            (d.options as { label: string; value: string }[] | null) ?? null,
+          isRequired: d.isRequired,
+        }))}
+        customFieldInitialValues={initialCustomFieldValues}
         onSubmitAction={submit}
         submitLabel="Update quote"
         cancelHref={`/sales/quotes/${q.id}`}

@@ -16,7 +16,7 @@ export const metadata = { title: "New Quote" };
 
 export default async function NewQuotePage() {
   const { organization } = await requireOrganization();
-  const [contacts, items, taxes, salespeople, pdfTemplates, projects, numberSeries, nextNumber] = await Promise.all([
+  const [contacts, items, taxes, salespeople, pdfTemplates, projects, numberSeries, nextNumber, customFieldDefs] = await Promise.all([
     db.contact.findMany({
       where: {
         organizationId: organization.id,
@@ -54,6 +54,14 @@ export default async function NewQuotePage() {
       },
     }),
     peekNextDocumentNumber(organization.id, "QUOTE"),
+    db.customFieldDefinition.findMany({
+      where: {
+        organizationId: organization.id,
+        entityType: "QUOTE",
+        deletedAt: null,
+      },
+      orderBy: [{ position: "asc" }, { createdAt: "asc" }],
+    }),
   ]);
 
   async function submit(values: QuoteInput, opts?: { send?: boolean }) {
@@ -107,6 +115,22 @@ export default async function NewQuotePage() {
         }))}
         createSalesperson={createSalespersonInlineAction}
         createCustomer={createCustomerInlineAction}
+        customFieldDefinitions={customFieldDefs.map((d) => ({
+          id: d.id,
+          fieldKey: d.fieldKey,
+          label: d.label,
+          dataType: d.dataType as
+            | "text"
+            | "number"
+            | "date"
+            | "dropdown"
+            | "checkbox"
+            | "email"
+            | "url",
+          options:
+            (d.options as { label: string; value: string }[] | null) ?? null,
+          isRequired: d.isRequired,
+        }))}
         numberSeries={
           numberSeries
             ? {

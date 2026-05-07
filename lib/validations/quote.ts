@@ -59,6 +59,16 @@ export const quoteSchema = z.object({
     .max(5)
     .optional()
     .default([]),
+  // M21: optional custom field values keyed by CustomFieldDefinition.id.
+  customFieldValues: z
+    .array(
+      z.object({
+        fieldDefinitionId: z.string().min(1),
+        value: z.unknown(),
+      })
+    )
+    .optional()
+    .default([]),
   lines: z.array(lineItemSchema).min(1, "At least one line item required"),
 });
 export type QuoteInput = z.input<typeof quoteSchema>;

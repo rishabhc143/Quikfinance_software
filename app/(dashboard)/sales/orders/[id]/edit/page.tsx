@@ -23,7 +23,7 @@ export default async function EditSalesOrderPage({
   if (!so) notFound();
   if (so.status === "CLOSED" || so.status === "VOID") notFound();
 
-  const [contacts, items, taxes, salespeople, paymentTerms, deliveryMethods, pdfTemplates] = await Promise.all([
+  const [contacts, items, taxes, salespeople, paymentTerms, deliveryMethods, pdfTemplates, customFieldDefs, customFieldValues] = await Promise.all([
     db.contact.findMany({
       where: {
         organizationId: organization.id,
@@ -58,7 +58,26 @@ export default async function EditSalesOrderPage({
       where: { organizationId: organization.id, documentType: "SALES_ORDER" },
       orderBy: { name: "asc" },
     }),
+    db.customFieldDefinition.findMany({
+      where: {
+        organizationId: organization.id,
+        entityType: "SALES_ORDER",
+        deletedAt: null,
+      },
+      orderBy: [{ position: "asc" }, { createdAt: "asc" }],
+    }),
+    db.customFieldValue.findMany({
+      where: {
+        organizationId: organization.id,
+        entityType: "SALES_ORDER",
+        entityId: so.id,
+      },
+    }),
   ]);
+
+  const initialCustomFieldValues: Record<string, unknown> = Object.fromEntries(
+    customFieldValues.map((v) => [v.fieldDefinitionId, v.value])
+  );
 
   const initial: Partial<SalesOrderInput> = {
     contactId: so.contactId,
@@ -135,6 +154,23 @@ export default async function EditSalesOrderPage({
         paymentTermsOptions={paymentTerms.map((p) => ({ value: p.id, label: p.name }))}
         deliveryMethodOptions={deliveryMethods.map((d) => ({ value: d.id, label: d.name }))}
         pdfTemplateOptions={pdfTemplates.map((t) => ({ value: t.id, label: t.name }))}
+        customFieldDefinitions={customFieldDefs.map((d) => ({
+          id: d.id,
+          fieldKey: d.fieldKey,
+          label: d.label,
+          dataType: d.dataType as
+            | "text"
+            | "number"
+            | "date"
+            | "dropdown"
+            | "checkbox"
+            | "email"
+            | "url",
+          options:
+            (d.options as { label: string; value: string }[] | null) ?? null,
+          isRequired: d.isRequired,
+        }))}
+        customFieldInitialValues={initialCustomFieldValues}
         onSubmitAction={submit}
         submitLabel="Update sales order"
         cancelHref={`/sales/orders/${so.id}`}
