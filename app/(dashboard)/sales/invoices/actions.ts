@@ -706,3 +706,38 @@ export async function bulkDeleteInvoicesAction(input: {
   revalidatePath("/sales/invoices");
   return { ok: true, updated: result.count };
 }
+
+/**
+ * Bulk email per <invoices_spec> "Bulk: Email". Skips invoices whose
+ * customer has no email on file.
+ */
+export async function bulkEmailInvoicesAction(input: {
+  ids: string[];
+}): Promise<{ ok: boolean; updated?: number; error?: string }> {
+  const { user, organization } = await requireOrganization();
+  if (!input.ids?.length) return { ok: true, updated: 0 };
+  const targets = await db.invoice.findMany({
+    where: {
+      id: { in: input.ids },
+      organizationId: organization.id,
+      deletedAt: null,
+    },
+    select: { id: true, contact: { select: { email: true } } },
+  });
+  let queued = 0;
+  for (const t of targets) {
+    if (!t.contact?.email) continue;
+    await enqueueAndAttach(organization.id, t.id);
+    queued += 1;
+  }
+  await writeAuditLog({
+    organizationId: organization.id,
+    userId: user.id,
+    action: "CREATE",
+    entityType: "InvoiceEmailBulk",
+    entityId: `bulk-${Date.now()}`,
+    after: { queued, ids: input.ids },
+  });
+  revalidatePath("/sales/invoices");
+  return { ok: true, updated: queued };
+}

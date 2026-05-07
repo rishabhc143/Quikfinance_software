@@ -10,6 +10,7 @@ import { BulkAwareDataTable } from "@/components/shared/bulk-aware-data-table";
 import { formatMoney } from "@/lib/money";
 import {
   bulkDeleteInvoicesAction,
+  bulkEmailInvoicesAction,
   bulkMarkInvoicesSentAction,
   bulkSendRemindersAction,
 } from "./actions";
@@ -228,6 +229,22 @@ export default async function InvoicesListPage({
                 doneVerb: "Queued reminders for",
                 noun: "invoice",
                 action: async (ids) => bulkSendRemindersAction({ ids }),
+              },
+              {
+                label: "Print",
+                href: (ids) =>
+                  `/sales/invoices/bulk-pdf?ids=${ids.join(",")}`,
+              },
+              {
+                label: "Email",
+                doneVerb: "Queued emails for",
+                noun: "invoice",
+                action: async (ids) => bulkEmailInvoicesAction({ ids }),
+              },
+              {
+                label: "Export Selected",
+                href: (ids) =>
+                  `/api/sales/invoices/export?mode=selected&ids=${ids.join(",")}`,
               },
               {
                 label: "Delete",

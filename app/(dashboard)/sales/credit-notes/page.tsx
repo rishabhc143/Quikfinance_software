@@ -135,6 +135,11 @@ export default async function CreditNotesListPage({
                 action: async (ids) => bulkMarkCreditNotesOpenAction({ ids }),
               },
               {
+                label: "Export Selected",
+                href: (ids) =>
+                  `/api/sales/credit-notes/export?mode=selected&ids=${ids.join(",")}`,
+              },
+              {
                 label: "Delete",
                 variant: "destructive",
                 doneVerb: "Deleted",

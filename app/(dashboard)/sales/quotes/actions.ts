@@ -662,3 +662,39 @@ export async function bulkDeleteQuotesAction(input: {
   revalidatePath("/sales/quotes");
   return { ok: true, updated: result.count };
 }
+
+/**
+ * Bulk email per <quotes_spec> "Bulk: Email". Fans the existing
+ * single-doc enqueueAndAttach across selected ids; quotes whose
+ * customer has no email are skipped silently.
+ */
+export async function bulkEmailQuotesAction(input: {
+  ids: string[];
+}): Promise<{ ok: boolean; updated?: number; error?: string }> {
+  const { user, organization } = await requireOrganization();
+  if (!input.ids?.length) return { ok: true, updated: 0 };
+  const targets = await db.quote.findMany({
+    where: {
+      id: { in: input.ids },
+      organizationId: organization.id,
+      deletedAt: null,
+    },
+    select: { id: true, contact: { select: { email: true } } },
+  });
+  let queued = 0;
+  for (const t of targets) {
+    if (!t.contact?.email) continue;
+    await enqueueAndAttach(organization.id, t.id);
+    queued += 1;
+  }
+  await writeAuditLog({
+    organizationId: organization.id,
+    userId: user.id,
+    action: "CREATE",
+    entityType: "QuoteEmailBulk",
+    entityId: `bulk-${Date.now()}`,
+    after: { queued, ids: input.ids },
+  });
+  revalidatePath("/sales/quotes");
+  return { ok: true, updated: queued };
+}

@@ -10,6 +10,7 @@ import { BulkAwareDataTable } from "@/components/shared/bulk-aware-data-table";
 import { formatMoney } from "@/lib/money";
 import {
   bulkDeleteQuotesAction,
+  bulkEmailQuotesAction,
   bulkMarkQuotesAcceptedAction,
   bulkMarkQuotesSentAction,
 } from "./actions";
@@ -267,6 +268,22 @@ export default async function QuotesListPage({
                 doneVerb: "Marked",
                 noun: "quote as accepted",
                 action: async (ids) => bulkMarkQuotesAcceptedAction({ ids }),
+              },
+              {
+                label: "Print",
+                href: (ids) =>
+                  `/sales/quotes/bulk-pdf?ids=${ids.join(",")}`,
+              },
+              {
+                label: "Email",
+                doneVerb: "Queued emails for",
+                noun: "quote",
+                action: async (ids) => bulkEmailQuotesAction({ ids }),
+              },
+              {
+                label: "Export Selected",
+                href: (ids) =>
+                  `/api/sales/quotes/export?mode=selected&ids=${ids.join(",")}`,
               },
               {
                 label: "Delete",

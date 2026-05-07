@@ -132,6 +132,11 @@ export default async function PaymentsReceivedListPage({
             rowNoun="payment"
             bulkActions={[
               {
+                label: "Export Selected",
+                href: (ids) =>
+                  `/api/sales/payments-received/export?mode=selected&ids=${ids.join(",")}`,
+              },
+              {
                 label: "Delete",
                 variant: "destructive",
                 doneVerb: "Deleted",

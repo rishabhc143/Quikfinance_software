@@ -147,6 +147,11 @@ export default async function RecurringInvoicesListPage({
                 action: async (ids) => bulkResumeRecurringAction({ ids }),
               },
               {
+                label: "Export Selected",
+                href: (ids) =>
+                  `/api/sales/recurring-invoices/export?mode=selected&ids=${ids.join(",")}`,
+              },
+              {
                 label: "Delete",
                 variant: "destructive",
                 doneVerb: "Deleted",
