@@ -35,6 +35,10 @@ export type TransactionListPageProps = {
   newHref?: string;
   newLabel?: string;
   importHref?: string;
+  /** M17f: alternative to `importHref` — multiple import targets, rendered
+   *  as separate three-dots items (e.g. Invoices: "Import Invoices" +
+   *  "Import Debit Notes"). When supplied, replaces the single Import row. */
+  importMenuItems?: { label: string; href: string }[];
   /** Base URL for the export route handler. Two menu entries are added:
    *  Export All (mode=all) and Export Current View (mode=current_view). */
   exportHref?: string;
@@ -136,7 +140,13 @@ export function TransactionListPage(props: TransactionListPageProps) {
                   <DropdownMenuSeparator />
                 </>
               ) : null}
-              {props.importHref ? (
+              {props.importMenuItems && props.importMenuItems.length > 0 ? (
+                props.importMenuItems.map((it) => (
+                  <DropdownMenuItem key={it.href} asChild>
+                    <Link href={it.href}>{it.label}</Link>
+                  </DropdownMenuItem>
+                ))
+              ) : props.importHref ? (
                 <DropdownMenuItem asChild>
                   <Link href={props.importHref}>Import</Link>
                 </DropdownMenuItem>

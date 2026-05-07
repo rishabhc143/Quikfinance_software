@@ -43,6 +43,18 @@ function normalizeHeader(h: string): string {
 export async function importInvoicesAction(input: {
   csvText: string;
   dupHandling: DupHandling;
+  // M17f: Invoices Refinement Patch import options. Accepted but
+  // intentionally minimal in this batch:
+  // - autoGenerateNumbers: when true, ignore any invoiceNumber column
+  //   and let getNextDocumentNumber pick the next number (already the
+  //   default behavior when invoiceNumber is empty; this flag enforces
+  //   it).
+  // - linkSalesOrders / mapAddresses: stored on the AuditLog only;
+  //   actual mapping plumbing is a follow-up to keep this batch
+  //   single-PR-sized.
+  autoGenerateNumbers?: boolean;
+  linkSalesOrders?: boolean;
+  mapAddresses?: boolean;
 }): Promise<ImportResult> {
   const { user, organization } = await requireOrganization();
   const result: ImportResult = {
@@ -202,6 +214,9 @@ export async function importInvoicesAction(input: {
       updated: result.updated,
       skipped: result.skipped,
       errors: result.errors.length,
+      autoGenerateNumbers: !!input.autoGenerateNumbers,
+      linkSalesOrders: !!input.linkSalesOrders,
+      mapAddresses: !!input.mapAddresses,
     },
   });
 

@@ -153,7 +153,10 @@ export default async function InvoicesListPage({
         activeView={view}
         newHref="/sales/invoices/new"
         newLabel="New"
-        importHref="/sales/invoices/import"
+        importMenuItems={[
+          { label: "Import Invoices", href: "/sales/invoices/import" },
+          { label: "Import Debit Notes", href: "/sales/debit-notes/import" },
+        ]}
         exportHref="/api/sales/invoices/export"
         preferencesHref="/settings/preferences/invoices"
         customFieldsHref="/settings/preferences/invoices/custom-fields"
