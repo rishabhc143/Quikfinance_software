@@ -2,8 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { format } from "date-fns";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
-import { renderSalesDocumentHtml } from "@/lib/sales/pdf-renderer";
+import { renderSalesDocumentPdf } from "@/lib/sales/pdf-document";
 
+export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(
@@ -17,7 +18,7 @@ export async function GET(
   });
   if (!inv) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-  const html = renderSalesDocumentHtml({
+  const pdfBytes = await renderSalesDocumentPdf({
     type: "INVOICE",
     organization: { name: inv.organization.name },
     document: {
@@ -55,10 +56,10 @@ export async function GET(
     termsAndConditions: inv.termsAndConditions ?? inv.terms,
   });
 
-  return new NextResponse(html, {
+  return new NextResponse(pdfBytes as unknown as BodyInit, {
     headers: {
-      "Content-Type": "text/html; charset=utf-8",
-      "Content-Disposition": `inline; filename="invoice-${inv.number}.html"`,
+      "Content-Type": "application/pdf",
+      "Content-Disposition": `inline; filename="invoice-${inv.number}.pdf"`,
     },
   });
 }
