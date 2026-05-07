@@ -24,8 +24,10 @@ import {
   markQuoteDeclinedAction,
   convertQuoteToInvoiceAction,
   convertQuoteToSalesOrderAction,
+  sendQuoteWithEmailAction,
 } from "../actions";
 import { QuoteActionButton } from "./action-button";
+import { SaveAndSendDialog } from "@/components/shared/save-and-send-dialog";
 
 export default async function QuoteDetailPage({ params }: { params: { id: string } }) {
   const { organization } = await requireOrganization();
@@ -73,6 +75,27 @@ export default async function QuoteDetailPage({ params }: { params: { id: string
             <QuoteActionButton
               action={markQuoteSentAction.bind(null, q.id)}
               label="Mark as Sent"
+              variant="outline"
+            />
+          ) : null}
+          {q.contact.email && q.status !== "INVOICED" ? (
+            <SaveAndSendDialog
+              documentId={q.id}
+              documentLabel="Quote"
+              toEmail={q.contact.email}
+              ctx={{
+                customerName: q.contact.displayName,
+                customerEmail: q.contact.email,
+                documentNumber: q.number,
+                documentTotal: Number(q.total).toFixed(2),
+                documentDate: format(q.issueDate, "dd MMM yyyy"),
+                documentDueDate: q.expiryDate
+                  ? format(q.expiryDate, "dd MMM yyyy")
+                  : null,
+                orgName: organization.name,
+              }}
+              action={sendQuoteWithEmailAction}
+              trigger={<Button size="sm">Send</Button>}
             />
           ) : null}
           {q.status === "SENT" ? (

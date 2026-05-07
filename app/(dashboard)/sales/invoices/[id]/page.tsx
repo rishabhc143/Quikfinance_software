@@ -28,6 +28,7 @@ import {
 import { InvoiceActionButton } from "./action-button";
 import { RecordPaymentDialog } from "../record-payment-dialog";
 import { ApplyCreditsDialog } from "./apply-credits-dialog";
+import { SendReminderDialog } from "./send-reminder-dialog";
 
 const STATUS_VARIANT: Record<string, "secondary" | "outline" | "destructive"> = {
   DRAFT: "outline",
@@ -174,6 +175,27 @@ export default async function InvoiceDetailPage({
               }
             />
           ) : null}
+          {inv.contact.email && inv.status !== "DRAFT" && inv.status !== "PAID" ? (
+            <SendReminderDialog
+              invoiceId={inv.id}
+              toEmail={inv.contact.email}
+              ctx={{
+                customerName: inv.contact.displayName,
+                customerEmail: inv.contact.email,
+                documentNumber: inv.number,
+                documentTotal: Number(inv.total).toFixed(2),
+                documentDate: format(inv.issueDate, "dd MMM yyyy"),
+                documentDueDate: format(inv.dueDate, "dd MMM yyyy"),
+                orgName: organization.name,
+              }}
+              action={sendInvoiceReminderAction}
+              trigger={
+                <Button variant="outline" size="sm">
+                  Send Reminder
+                </Button>
+              }
+            />
+          ) : null}
           <Button asChild variant="outline" size="sm" className="gap-1">
             <Link href={`/sales/invoices/${inv.id}/edit`}>
               <Pencil className="h-4 w-4" /> Edit
@@ -191,13 +213,8 @@ export default async function InvoiceDetailPage({
                   Download PDF
                 </Link>
               </DropdownMenuItem>
-              {inv.contact.email && inv.status !== "DRAFT" ? (
-                <DropdownMenuItem asChild>
-                  <form action={sendInvoiceReminderAction.bind(null, inv.id)}>
-                    <button className="w-full text-left">Send Reminder</button>
-                  </form>
-                </DropdownMenuItem>
-              ) : null}
+              {/* Send Reminder lives outside the dropdown as a dialog
+                  trigger — see the Button below the menu. */}
               <DropdownMenuItem asChild>
                 <Link href={`/portal/invoices/${inv.portalAccessToken}`} target="_blank">
                   Customer portal link
