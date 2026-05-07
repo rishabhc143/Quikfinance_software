@@ -75,6 +75,17 @@ export function BulkActionsBar({
           {busy === "inactive" ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
           Mark Inactive
         </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => {
+            const url = `/api/sales/customers/export?mode=selected&ids=${selectedIds.join(",")}`;
+            window.open(url, "_blank", "noopener");
+          }}
+          disabled={busy !== "idle"}
+        >
+          Export Selected
+        </Button>
         <Button size="sm" variant="ghost" onClick={onClear}>
           Clear
         </Button>

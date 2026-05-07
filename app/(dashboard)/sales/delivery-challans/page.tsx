@@ -123,6 +123,11 @@ export default async function DeliveryChallansListPage({
                 action: async (ids) => bulkMarkChallansOpenAction({ ids }),
               },
               {
+                label: "Export Selected",
+                href: (ids) =>
+                  `/api/sales/delivery-challans/export?mode=selected&ids=${ids.join(",")}`,
+              },
+              {
                 label: "Delete",
                 variant: "destructive",
                 doneVerb: "Deleted",

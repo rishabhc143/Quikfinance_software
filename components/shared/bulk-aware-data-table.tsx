@@ -32,9 +32,19 @@ export type BulkAction = {
   variant?: "default" | "outline" | "destructive" | "secondary" | "ghost";
   /** Show a confirm() prompt before invoking. Useful for destructive actions. */
   confirm?: string;
-  action: (
+  /**
+   * Server action that performs the bulk operation. Mutually exclusive
+   * with `href`.
+   */
+  action?: (
     ids: string[]
   ) => Promise<{ ok: boolean; updated?: number; error?: string }>;
+  /**
+   * Builds a URL to navigate to (typically a route handler that streams a
+   * zip or CSV). When set, the button opens the URL in a new tab — used
+   * for Bulk Print (zip of PDFs) and Bulk Export Selected (CSV).
+   */
+  href?: (ids: string[]) => string;
 };
 
 export function BulkAwareDataTable({
@@ -125,6 +135,16 @@ export function BulkAwareDataTable({
   async function runAction(action: BulkAction) {
     if (action.confirm && !window.confirm(action.confirm)) return;
     const ids = Array.from(selected);
+
+    // href-mode: navigate to a download URL (zip / csv) and clear selection
+    if (action.href) {
+      const url = action.href(ids);
+      window.open(url, "_blank", "noopener");
+      setSelected(new Set());
+      return;
+    }
+
+    if (!action.action) return;
     setBusy(action.label);
     try {
       const r = await action.action(ids);

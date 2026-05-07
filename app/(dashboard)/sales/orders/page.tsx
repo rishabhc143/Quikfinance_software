@@ -10,6 +10,7 @@ import { BulkAwareDataTable } from "@/components/shared/bulk-aware-data-table";
 import { formatMoney } from "@/lib/money";
 import {
   bulkDeleteSalesOrdersAction,
+  bulkEmailSalesOrdersAction,
   bulkMarkSalesOrdersOpenAction,
 } from "./actions";
 
@@ -219,6 +220,22 @@ export default async function SalesOrdersListPage({
                 doneVerb: "Marked",
                 noun: "order as open",
                 action: async (ids) => bulkMarkSalesOrdersOpenAction({ ids }),
+              },
+              {
+                label: "Print",
+                href: (ids) =>
+                  `/sales/orders/bulk-pdf?ids=${ids.join(",")}`,
+              },
+              {
+                label: "Email",
+                doneVerb: "Queued emails for",
+                noun: "sales order",
+                action: async (ids) => bulkEmailSalesOrdersAction({ ids }),
+              },
+              {
+                label: "Export Selected",
+                href: (ids) =>
+                  `/api/sales/orders/export?mode=selected&ids=${ids.join(",")}`,
               },
               {
                 label: "Delete",

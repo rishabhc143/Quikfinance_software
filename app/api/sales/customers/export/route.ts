@@ -15,16 +15,28 @@ export const dynamic = "force-dynamic";
 export async function GET(req: NextRequest) {
   const { organization } = await requireOrganization();
   const sp = req.nextUrl.searchParams;
-  const mode = sp.get("mode") === "current_view" ? "current_view" : "all";
+  const rawMode = sp.get("mode");
+  const mode =
+    rawMode === "selected"
+      ? "selected"
+      : rawMode === "current_view"
+      ? "current_view"
+      : "all";
   const format = sp.get("format") === "xlsx" ? "xlsx" : "csv";
   const q = sp.get("q")?.trim() ?? "";
   const view = sp.get("view") ?? "all";
-  const cap = mode === "all" ? 25_000 : 10_000;
+  const idsParam = sp.get("ids") ?? "";
+  const ids =
+    mode === "selected"
+      ? idsParam.split(",").map((s) => s.trim()).filter(Boolean).slice(0, 1000)
+      : [];
+  const cap = mode === "all" ? 25_000 : mode === "current_view" ? 10_000 : 1_000;
 
   const where = {
     organizationId: organization.id,
     type: { in: ["CUSTOMER", "BOTH"] as ("CUSTOMER" | "BOTH")[] },
     deletedAt: null,
+    ...(mode === "selected" ? { id: { in: ids } } : {}),
     ...(view === "active" ? { isInactive: false } : {}),
     ...(view === "inactive" ? { isInactive: true } : {}),
     ...(mode === "current_view" && q

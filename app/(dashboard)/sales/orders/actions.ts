@@ -483,3 +483,38 @@ export async function bulkDeleteSalesOrdersAction(input: {
   revalidatePath("/sales/orders");
   return { ok: true, updated: result.count };
 }
+
+/**
+ * Bulk email per <sales_orders_spec> "Bulk: Email". Skips orders whose
+ * customer has no email on file.
+ */
+export async function bulkEmailSalesOrdersAction(input: {
+  ids: string[];
+}): Promise<{ ok: boolean; updated?: number; error?: string }> {
+  const { user, organization } = await requireOrganization();
+  if (!input.ids?.length) return { ok: true, updated: 0 };
+  const targets = await db.salesOrder.findMany({
+    where: {
+      id: { in: input.ids },
+      organizationId: organization.id,
+      deletedAt: null,
+    },
+    select: { id: true, contact: { select: { email: true } } },
+  });
+  let queued = 0;
+  for (const t of targets) {
+    if (!t.contact?.email) continue;
+    await enqueueAndAttach(organization.id, t.id);
+    queued += 1;
+  }
+  await writeAuditLog({
+    organizationId: organization.id,
+    userId: user.id,
+    action: "CREATE",
+    entityType: "SalesOrderEmailBulk",
+    entityId: `bulk-${Date.now()}`,
+    after: { queued, ids: input.ids },
+  });
+  revalidatePath("/sales/orders");
+  return { ok: true, updated: queued };
+}
