@@ -39,6 +39,10 @@ export type TransactionListPageProps = {
    *  Export All (mode=all) and Export Current View (mode=current_view). */
   exportHref?: string;
   preferencesHref?: string;
+  /** M17c — link to the Manage Custom Fields editor for this entity. */
+  customFieldsHref?: string;
+  /** M17b — direct link to Online Payments settings (Invoices three-dots). */
+  onlinePaymentsHref?: string;
   /** Three-dots Sort By options. Each emits a query param ?sort= when clicked. */
   sortOptions?: { label: string; value: string }[];
   columns: ColumnDef[];
@@ -152,6 +156,16 @@ export function TransactionListPage(props: TransactionListPageProps) {
               {props.preferencesHref ? (
                 <DropdownMenuItem asChild>
                   <Link href={props.preferencesHref}>Preferences</Link>
+                </DropdownMenuItem>
+              ) : null}
+              {props.customFieldsHref ? (
+                <DropdownMenuItem asChild>
+                  <Link href={props.customFieldsHref}>Manage Custom Fields</Link>
+                </DropdownMenuItem>
+              ) : null}
+              {props.onlinePaymentsHref ? (
+                <DropdownMenuItem asChild>
+                  <Link href={props.onlinePaymentsHref}>Online Payments</Link>
                 </DropdownMenuItem>
               ) : null}
             </DropdownMenuContent>

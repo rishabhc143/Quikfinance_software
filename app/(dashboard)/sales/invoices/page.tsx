@@ -182,6 +182,8 @@ export default async function InvoicesListPage({
         importHref="/sales/invoices/import"
         exportHref="/api/sales/invoices/export"
         preferencesHref="/settings/preferences/invoices"
+        customFieldsHref="/settings/preferences/invoices/custom-fields"
+        onlinePaymentsHref="/settings/online-payments/customer-payments"
         sortOptions={[
           // M17a: 9 sort fields per spec — Order Number, Customer Name, Balance Due added.
           { label: "Created Time", value: "createdAt" },

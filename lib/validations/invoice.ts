@@ -48,6 +48,19 @@ export const invoiceSchema = z.object({
     .max(10)
     .optional()
     .default([]),
+  // M17c: optional custom field values keyed by CustomFieldDefinition.id.
+  // The save action persists these via setCustomFieldValuesAction inside
+  // its transaction.
+  customFieldValues: z
+    .array(
+      z.object({
+        fieldDefinitionId: z.string().min(1),
+        // Stored as JSON; runtime shape varies by dataType.
+        value: z.unknown(),
+      })
+    )
+    .optional()
+    .default([]),
   lines: z.array(lineItemSchema).min(1, "At least one line item required"),
 });
 export type InvoiceInput = z.input<typeof invoiceSchema>;

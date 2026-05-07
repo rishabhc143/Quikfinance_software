@@ -12,7 +12,7 @@ export const metadata = { title: "New Invoice" };
 
 export default async function NewInvoicePage() {
   const { organization } = await requireOrganization();
-  const [contacts, items, taxes, salespeople, paymentTerms, pdfTemplates, numberSeries, nextNumber] = await Promise.all([
+  const [contacts, items, taxes, salespeople, paymentTerms, pdfTemplates, numberSeries, nextNumber, customFieldDefs] = await Promise.all([
     db.contact.findMany({
       where: {
         organizationId: organization.id,
@@ -49,6 +49,14 @@ export default async function NewInvoicePage() {
       },
     }),
     peekNextDocumentNumber(organization.id, "INVOICE"),
+    db.customFieldDefinition.findMany({
+      where: {
+        organizationId: organization.id,
+        entityType: "INVOICE",
+        deletedAt: null,
+      },
+      orderBy: [{ position: "asc" }, { createdAt: "asc" }],
+    }),
   ]);
 
   async function submit(values: InvoiceInput, opts?: { send?: boolean }) {
@@ -100,6 +108,22 @@ export default async function NewInvoicePage() {
           numberOfDays: p.numberOfDays,
         }))}
         pdfTemplateOptions={pdfTemplates.map((t) => ({ value: t.id, label: t.name }))}
+        customFieldDefinitions={customFieldDefs.map((d) => ({
+          id: d.id,
+          fieldKey: d.fieldKey,
+          label: d.label,
+          dataType: d.dataType as
+            | "text"
+            | "number"
+            | "date"
+            | "dropdown"
+            | "checkbox"
+            | "email"
+            | "url",
+          options:
+            (d.options as { label: string; value: string }[] | null) ?? null,
+          isRequired: d.isRequired,
+        }))}
         numberSeries={
           numberSeries
             ? {
