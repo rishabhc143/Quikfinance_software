@@ -40,6 +40,12 @@ export type RenderableSalesDocument = {
   totals: DocumentComputed;
   notes?: string | null;
   termsAndConditions?: string | null;
+  /**
+   * M20: custom fields with showOnPdf=true (or showOnPortal=true).
+   * Already formatted by lib/sales/custom-fields-loader.ts — caller
+   * passes plain `{ label, value }` rows ready to print.
+   */
+  customFields?: { label: string; value: string }[];
 };
 
 const TYPE_LABEL: Record<RenderableSalesDocument["type"], string> = {
@@ -136,6 +142,23 @@ export function renderSalesDocumentHtml(doc: RenderableSalesDocument): string {
     </table>
   </section>
 
+  ${
+    doc.customFields && doc.customFields.length > 0
+      ? `<section style="margin-bottom:16px;">
+        <div style="font-weight:600;margin-bottom:4px;">Additional Information</div>
+        <table style="border-collapse:collapse;font-size:13px;color:#444;">
+          ${doc.customFields
+            .map(
+              (cf) =>
+                `<tr><td style="padding:2px 16px 2px 0;color:#777;">${escape(
+                  cf.label
+                )}</td><td>${escape(cf.value)}</td></tr>`
+            )
+            .join("")}
+        </table>
+      </section>`
+      : ""
+  }
   ${doc.notes ? `<section style="margin-bottom:16px;"><div style="font-weight:600;margin-bottom:4px;">Notes</div><div style="color:#444;font-size:13px;white-space:pre-line;">${escape(doc.notes)}</div></section>` : ""}
   ${doc.termsAndConditions ? `<section style="margin-bottom:16px;"><div style="font-weight:600;margin-bottom:4px;">Terms &amp; Conditions</div><div style="color:#444;font-size:13px;white-space:pre-line;">${escape(doc.termsAndConditions)}</div></section>` : ""}
 </body>

@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { writeAuditLog } from "@/lib/audit";
+import { loadVisibleCustomFields } from "@/lib/sales/custom-fields-loader";
 import { PayNowButton } from "./pay-now-button";
 
 export const metadata = { title: "Invoice" };
@@ -36,6 +37,14 @@ export default async function InvoicePortalPage({
   });
   const razorpayReady =
     !!gatewayCfg?.razorpayEnabled && !!gatewayCfg.razorpayKeyId;
+
+  // M20: render custom fields with showOnPortal=true below customer notes.
+  const customFields = await loadVisibleCustomFields({
+    organizationId: inv.organizationId,
+    entityType: "INVOICE",
+    entityId: inv.id,
+    surface: "portal",
+  });
 
   // Track first-view
   if (!inv.sentAt && inv.status === "DRAFT") {
@@ -178,6 +187,24 @@ export default async function InvoicePortalPage({
                 Notes
               </div>
               <div className="whitespace-pre-line">{inv.customerNotes}</div>
+            </CardContent>
+          </Card>
+        ) : null}
+
+        {customFields.length > 0 ? (
+          <Card>
+            <CardContent className="pt-6 text-sm">
+              <div className="text-xs uppercase tracking-wider text-muted-foreground mb-2">
+                Additional Information
+              </div>
+              <dl className="grid gap-x-6 gap-y-2 sm:grid-cols-[10rem_1fr]">
+                {customFields.map((cf, i) => (
+                  <div key={i} className="contents">
+                    <dt className="text-muted-foreground">{cf.label}</dt>
+                    <dd className="break-words">{cf.value}</dd>
+                  </div>
+                ))}
+              </dl>
             </CardContent>
           </Card>
         ) : null}

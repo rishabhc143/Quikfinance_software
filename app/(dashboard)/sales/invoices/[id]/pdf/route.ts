@@ -3,6 +3,7 @@ import { format } from "date-fns";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
 import { renderSalesDocumentPdf } from "@/lib/sales/pdf-document";
+import { loadVisibleCustomFields } from "@/lib/sales/custom-fields-loader";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -17,6 +18,13 @@ export async function GET(
     include: { contact: true, lineItems: true, organization: true },
   });
   if (!inv) return NextResponse.json({ error: "Not found" }, { status: 404 });
+
+  const customFields = await loadVisibleCustomFields({
+    organizationId: organization.id,
+    entityType: "INVOICE",
+    entityId: inv.id,
+    surface: "pdf",
+  });
 
   const pdfBytes = await renderSalesDocumentPdf({
     type: "INVOICE",
@@ -54,6 +62,7 @@ export async function GET(
     },
     notes: inv.customerNotes ?? inv.notes,
     termsAndConditions: inv.termsAndConditions ?? inv.terms,
+    customFields,
   });
 
   return new NextResponse(pdfBytes as unknown as BodyInit, {
