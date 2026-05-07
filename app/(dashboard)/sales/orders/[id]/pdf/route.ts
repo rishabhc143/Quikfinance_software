@@ -3,6 +3,7 @@ import { format } from "date-fns";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
 import { renderSalesDocumentPdf } from "@/lib/sales/pdf-document";
+import { loadVisibleCustomFields } from "@/lib/sales/custom-fields-loader";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -21,6 +22,13 @@ export async function GET(
     },
   });
   if (!so) return NextResponse.json({ error: "Not found" }, { status: 404 });
+
+  const customFields = await loadVisibleCustomFields({
+    organizationId: organization.id,
+    entityType: "SALES_ORDER",
+    entityId: so.id,
+    surface: "pdf",
+  });
 
   const pdfBytes = await renderSalesDocumentPdf({
     type: "SALES_ORDER",
@@ -58,6 +66,7 @@ export async function GET(
     },
     notes: so.customerNotes,
     termsAndConditions: so.termsAndConditions,
+    customFields,
   });
 
   return new NextResponse(pdfBytes as unknown as BodyInit, {

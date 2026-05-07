@@ -3,6 +3,7 @@ import { format } from "date-fns";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
 import { renderSalesDocumentPdf } from "@/lib/sales/pdf-document";
+import { loadVisibleCustomFields } from "@/lib/sales/custom-fields-loader";
 import { parseIds, zipPdfs } from "@/lib/sales/bulk-pdf";
 
 export const runtime = "nodejs";
@@ -36,6 +37,12 @@ export async function GET(req: NextRequest) {
     quotes.map(async (q) => ({
       filename: `quote-${q.number}.pdf`,
       bytes: await renderSalesDocumentPdf({
+        customFields: await loadVisibleCustomFields({
+          organizationId: organization.id,
+          entityType: "QUOTE",
+          entityId: q.id,
+          surface: "pdf",
+        }),
         type: "QUOTE",
         organization: { name: q.organization.name },
         document: {

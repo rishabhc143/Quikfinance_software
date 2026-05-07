@@ -109,6 +109,20 @@ export async function createQuoteAction(input: QuoteInput, opts?: { send?: boole
     return q;
   });
 
+  // M21: persist custom field values
+  if (data.customFieldValues && data.customFieldValues.length > 0) {
+    await db.customFieldValue.createMany({
+      data: data.customFieldValues.map((v) => ({
+        organizationId: organization.id,
+        entityType: "QUOTE",
+        entityId: created.id,
+        fieldDefinitionId: v.fieldDefinitionId,
+        value: v.value as object,
+      })),
+      skipDuplicates: true,
+    });
+  }
+
   await writeAuditLog({
     organizationId: organization.id,
     userId: user.id,
@@ -182,6 +196,26 @@ export async function updateQuoteAction(id: string, input: QuoteInput) {
         },
       },
     });
+    // M21: replace custom field values wholesale
+    await tx.customFieldValue.deleteMany({
+      where: {
+        organizationId: organization.id,
+        entityType: "QUOTE",
+        entityId: id,
+      },
+    });
+    if (data.customFieldValues && data.customFieldValues.length > 0) {
+      await tx.customFieldValue.createMany({
+        data: data.customFieldValues.map((v) => ({
+          organizationId: organization.id,
+          entityType: "QUOTE",
+          entityId: id,
+          fieldDefinitionId: v.fieldDefinitionId,
+          value: v.value as object,
+        })),
+        skipDuplicates: true,
+      });
+    }
   });
 
   await writeAuditLog({

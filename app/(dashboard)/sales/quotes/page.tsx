@@ -203,6 +203,7 @@ export default async function QuotesListPage({
         importHref="/sales/quotes/import"
         exportHref="/api/sales/quotes/export"
         preferencesHref="/settings/preferences/quotes"
+        customFieldsHref="/settings/preferences/quotes/custom-fields"
         sortOptions={[
           { label: "Date", value: "issueDate" },
           { label: "Quote number", value: "number" },
