@@ -9,6 +9,7 @@ import { getNextDocumentNumber } from "@/lib/sales/numbering";
 import { computeDocument } from "@/lib/sales/totals";
 import { enqueueEmail } from "@/lib/sales/email-sender";
 import { renderSalesDocumentHtml } from "@/lib/sales/pdf-renderer";
+import { loadVisibleCustomFields } from "@/lib/sales/custom-fields-loader";
 import { applyMergeTags } from "@/lib/sales/merge-tags";
 import {
   invoiceSchema,
@@ -582,6 +583,13 @@ async function enqueueAndAttach(orgId: string, invoiceId: string) {
     include: { contact: true, lineItems: true, organization: true },
   });
   if (!inv || !inv.contact.email) return;
+  // M22: include showOnPdf custom fields in the email-attached HTML body
+  const customFields = await loadVisibleCustomFields({
+    organizationId: orgId,
+    entityType: "INVOICE",
+    entityId: inv.id,
+    surface: "pdf",
+  });
   const html = renderSalesDocumentHtml({
     type: "INVOICE",
     organization: { name: inv.organization.name },
@@ -614,6 +622,7 @@ async function enqueueAndAttach(orgId: string, invoiceId: string) {
     },
     notes: inv.customerNotes,
     termsAndConditions: inv.termsAndConditions,
+    customFields,
   });
   await enqueueEmail({
     organizationId: orgId,

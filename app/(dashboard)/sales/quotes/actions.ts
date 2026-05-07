@@ -9,6 +9,7 @@ import { getNextDocumentNumber } from "@/lib/sales/numbering";
 import { computeDocument } from "@/lib/sales/totals";
 import { enqueueEmail } from "@/lib/sales/email-sender";
 import { renderSalesDocumentHtml } from "@/lib/sales/pdf-renderer";
+import { loadVisibleCustomFields } from "@/lib/sales/custom-fields-loader";
 import { applyMergeTags } from "@/lib/sales/merge-tags";
 import { quoteSchema, type QuoteInput } from "@/lib/validations/quote";
 import { format } from "date-fns";
@@ -553,6 +554,13 @@ async function enqueueAndAttach(orgId: string, quoteId: string) {
     include: { contact: true, lineItems: true, organization: true },
   });
   if (!q || !q.contact.email) return;
+  // M22: include showOnPdf custom fields in the email-attached HTML body
+  const customFields = await loadVisibleCustomFields({
+    organizationId: orgId,
+    entityType: "QUOTE",
+    entityId: q.id,
+    surface: "pdf",
+  });
   const html = renderSalesDocumentHtml({
     type: "QUOTE",
     organization: { name: q.organization.name },
@@ -586,6 +594,7 @@ async function enqueueAndAttach(orgId: string, quoteId: string) {
     },
     notes: q.customerNotes,
     termsAndConditions: q.termsAndConditions,
+    customFields,
   });
   await enqueueEmail({
     organizationId: orgId,

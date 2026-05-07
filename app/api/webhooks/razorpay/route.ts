@@ -40,6 +40,17 @@ type RazorpayEvent = {
         notes?: Record<string, string>;
       };
     };
+    // M22: refund.processed payload shape per Razorpay docs.
+    refund?: {
+      entity?: {
+        id?: string;
+        payment_id?: string;
+        amount?: number;
+        currency?: string;
+        status?: string;
+        notes?: Record<string, string>;
+      };
+    };
   };
 };
 
@@ -104,8 +115,9 @@ export async function POST(req: NextRequest) {
       await handlePaymentCaptured(orgId, event);
     } else if (event.event === "payment.failed") {
       await handlePaymentFailed(orgId, event);
+    } else if (event.event === "refund.processed") {
+      await handleRefundProcessed(orgId, event);
     } else {
-      // refund.processed and other events — log but don't error
       // eslint-disable-next-line no-console
       console.log("[razorpay] ignoring event", event.event);
     }
@@ -274,4 +286,188 @@ async function handlePaymentFailed(orgId: string, event: RazorpayEvent) {
       reason: p.error_description ?? p.error_code,
     },
   });
+}
+
+/**
+ * M22: refund.processed handler.
+ *
+ * Razorpay sends this when a previously-captured payment is refunded
+ * (full or partial). The payload references the original payment via
+ * `payment_id`, which we already linked to a PaymentReceived row in
+ * handlePaymentCaptured. We:
+ *   1. Look up the RazorpayPaymentAttempt by razorpayPaymentId
+ *      (idempotent against duplicate webhook deliveries — if the
+ *      attempt is already REFUNDED, we no-op)
+ *   2. Inside a single transaction, reverse the matching
+ *      PaymentReceivedAllocation rows by subtracting from
+ *      Invoice.amountPaid + recomputing Invoice.status
+ *   3. Soft-delete the PaymentReceived
+ *   4. Mark the attempt status=REFUNDED with the webhook payload
+ *   5. Write AuditLog + enqueue a refund-confirmation email
+ *
+ * Partial refunds: per Razorpay docs, refund.amount is the refunded
+ * amount in paise. We reverse exactly that amount, distributing it
+ * across the original allocations proportionally.
+ */
+async function handleRefundProcessed(orgId: string, event: RazorpayEvent) {
+  const r = event.payload?.refund?.entity;
+  if (!r?.id || !r.payment_id || !r.amount) return;
+
+  const attempt = await db.razorpayPaymentAttempt.findUnique({
+    where: { razorpayPaymentId: r.payment_id },
+  });
+  if (!attempt) {
+    // Refund for a payment we don't track — log and skip
+    // eslint-disable-next-line no-console
+    console.warn(
+      "[razorpay] refund for unknown payment",
+      r.payment_id,
+      "refund",
+      r.id
+    );
+    return;
+  }
+  if (attempt.status === "REFUNDED") {
+    // Idempotent — duplicate delivery
+    return;
+  }
+
+  const refundAmount = r.amount / 100;
+  const ccy = r.currency ?? attempt.currency;
+
+  if (!attempt.paymentReceivedId) {
+    // Edge case: payment.captured was processed but PaymentReceived
+    // wasn't linked. Mark the attempt anyway and audit.
+    await db.razorpayPaymentAttempt.update({
+      where: { id: attempt.id },
+      data: {
+        status: "REFUNDED",
+        webhookPayload: event as unknown as object,
+        signatureVerified: true,
+      },
+    });
+    await writeAuditLog({
+      organizationId: orgId,
+      userId: null,
+      action: "UPDATE",
+      entityType: "RazorpayPaymentAttempt",
+      entityId: attempt.id,
+      after: {
+        source: "razorpay-webhook",
+        status: "REFUNDED",
+        amount: refundAmount,
+        refundId: r.id,
+        note: "no PaymentReceived linked — refund recorded on attempt only",
+      },
+    });
+    return;
+  }
+
+  const pr = await db.paymentReceived.findUnique({
+    where: { id: attempt.paymentReceivedId },
+    include: { allocations: true, contact: true, organization: true },
+  });
+  if (!pr || pr.deletedAt) {
+    // Payment already deleted / not found — record refund on attempt
+    await db.razorpayPaymentAttempt.update({
+      where: { id: attempt.id },
+      data: {
+        status: "REFUNDED",
+        webhookPayload: event as unknown as object,
+        signatureVerified: true,
+      },
+    });
+    return;
+  }
+
+  // Distribute the refund proportionally across allocations. With a
+  // single allocation (the typical webhook-created payment) this is a
+  // straight subtract from the lone invoice's amountPaid.
+  const totalAllocated = pr.allocations.reduce(
+    (sum, a) => sum + Number(a.amount),
+    0
+  );
+
+  await db.$transaction(async (tx) => {
+    for (const alloc of pr.allocations) {
+      const share =
+        totalAllocated > 0
+          ? Number(alloc.amount) / totalAllocated
+          : 1 / pr.allocations.length;
+      const reverse = refundAmount * share;
+      const inv = await tx.invoice.findUnique({
+        where: { id: alloc.invoiceId },
+      });
+      if (!inv) continue;
+      const newAmountPaid = Math.max(
+        0,
+        Number(inv.amountPaid) - reverse
+      );
+      const total = Number(inv.total);
+      const newStatus =
+        newAmountPaid >= total - 0.0001
+          ? "PAID"
+          : newAmountPaid > 0
+          ? "PARTIALLY_PAID"
+          : inv.status === "PAID" || inv.status === "PARTIALLY_PAID"
+          ? "SENT"
+          : inv.status;
+      await tx.invoice.update({
+        where: { id: alloc.invoiceId },
+        data: { amountPaid: newAmountPaid, status: newStatus },
+      });
+    }
+
+    // Soft-delete the PaymentReceived once all allocations have been
+    // reversed. (Partial refunds in v1 still soft-delete — partial
+    // refund accounting can be split into a follow-up.)
+    await tx.paymentReceived.update({
+      where: { id: pr.id },
+      data: {
+        deletedAt: new Date(),
+        notes:
+          (pr.notes ?? "") +
+          ` [REFUNDED ${refundAmount.toFixed(2)} ${ccy} via Razorpay refund ${r.id}]`,
+      },
+    });
+
+    await tx.razorpayPaymentAttempt.update({
+      where: { id: attempt.id },
+      data: {
+        status: "REFUNDED",
+        webhookPayload: event as unknown as object,
+        signatureVerified: true,
+      },
+    });
+  });
+
+  await writeAuditLog({
+    organizationId: orgId,
+    userId: null,
+    action: "UPDATE",
+    entityType: "PaymentReceived",
+    entityId: pr.id,
+    after: {
+      source: "razorpay-webhook",
+      event: "refund.processed",
+      refundId: r.id,
+      paymentId: r.payment_id,
+      amount: refundAmount,
+      currency: ccy,
+    },
+  });
+
+  if (pr.contact.email) {
+    await enqueueEmail({
+      organizationId: orgId,
+      toEmail: pr.contact.email,
+      subject: `Refund processed for payment ${pr.number}`,
+      bodyHtml: `<p>Hello ${pr.contact.displayName},</p>
+<p>Your refund of <strong>${refundAmount.toFixed(2)} ${ccy}</strong> for payment <strong>${pr.number}</strong> has been processed by Razorpay.</p>
+<p>Reference: ${r.id}</p>
+<p>Thank you,<br/>${pr.organization.name}</p>`,
+      documentType: "PAYMENT_REFUND",
+      documentId: pr.id,
+    });
+  }
 }
