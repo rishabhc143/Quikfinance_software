@@ -20,7 +20,7 @@ const STATUS_VARIANT: Record<string, "secondary" | "outline" | "destructive"> = 
 export default async function SalesOrdersListPage({
   searchParams,
 }: {
-  searchParams: { q?: string; page?: string; pageSize?: string; sort?: string; dir?: string };
+  searchParams: { q?: string; page?: string; pageSize?: string; sort?: string; dir?: string; view?: string };
 }) {
   const { organization } = await requireOrganization();
   const q = searchParams.q?.trim() ?? "";
@@ -28,10 +28,19 @@ export default async function SalesOrdersListPage({
   const pageSize = Number(searchParams.pageSize ?? 25);
   const sort = searchParams.sort ?? "orderDate";
   const dir: "asc" | "desc" = searchParams.dir === "asc" ? "asc" : "desc";
+  const view = searchParams.view ?? "all";
+
+  const SO_VIEWS: Record<string, "DRAFT" | "CONFIRMED" | "CLOSED" | "VOID"> = {
+    draft: "DRAFT",
+    confirmed: "CONFIRMED",
+    closed: "CLOSED",
+    void: "VOID",
+  };
 
   const where = {
     organizationId: organization.id,
     deletedAt: null,
+    ...(SO_VIEWS[view] ? { status: SO_VIEWS[view] } : {}),
     ...(q
       ? {
           OR: [
@@ -142,8 +151,16 @@ export default async function SalesOrdersListPage({
   return (
     <div className="p-6">
       <TransactionListPage
-        title="All Sales Orders"
+        title="Sales Orders"
         view="All sales orders"
+        views={[
+          { value: "all", label: "All" },
+          { value: "draft", label: "Draft" },
+          { value: "confirmed", label: "Confirmed" },
+          { value: "closed", label: "Closed" },
+          { value: "void", label: "Void" },
+        ]}
+        activeView={view}
         newHref="/sales/orders/new"
         newLabel="New"
         importHref="/sales/orders/import"

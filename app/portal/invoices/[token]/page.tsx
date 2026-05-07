@@ -47,7 +47,7 @@ export default async function InvoicePortalPage({
     new Intl.NumberFormat("en-IN", { style: "currency", currency: ccy }).format(n);
 
   return (
-    <div className="min-h-screen bg-muted/20 py-12 px-4">
+    <main className="min-h-screen bg-muted/20 py-12 px-4">
       <div className="max-w-3xl mx-auto space-y-6">
         <header className="flex items-center justify-between">
           <div>
@@ -162,7 +162,7 @@ export default async function InvoicePortalPage({
           </Card>
         ) : null}
       </div>
-    </div>
+    </main>
   );
 }
 

@@ -23,7 +23,7 @@ const STATUS_VARIANT: Record<string, "secondary" | "outline" | "destructive"> = 
 export default async function InvoicesListPage({
   searchParams,
 }: {
-  searchParams: { q?: string; page?: string; pageSize?: string; sort?: string; dir?: string };
+  searchParams: { q?: string; page?: string; pageSize?: string; sort?: string; dir?: string; view?: string };
 }) {
   const { organization } = await requireOrganization();
   const q = searchParams.q?.trim() ?? "";
@@ -31,10 +31,38 @@ export default async function InvoicesListPage({
   const pageSize = Number(searchParams.pageSize ?? 25);
   const sort = searchParams.sort ?? "issueDate";
   const dir: "asc" | "desc" = searchParams.dir === "asc" ? "asc" : "desc";
+  const view = searchParams.view ?? "all";
+
+  type InvStatus =
+    | "DRAFT"
+    | "SENT"
+    | "PARTIALLY_PAID"
+    | "PAID"
+    | "OVERDUE"
+    | "VOID"
+    | "WRITTEN_OFF";
+
+  const INV_VIEWS: Record<string, InvStatus | InvStatus[]> = {
+    draft: "DRAFT",
+    sent: "SENT",
+    overdue: "OVERDUE",
+    paid: "PAID",
+    void: "VOID",
+    partially_paid: "PARTIALLY_PAID",
+    unpaid: ["SENT", "PARTIALLY_PAID", "OVERDUE"],
+  };
+
+  const viewFilter = INV_VIEWS[view];
+  const statusFilter = Array.isArray(viewFilter)
+    ? { status: { in: viewFilter } }
+    : viewFilter
+    ? { status: viewFilter }
+    : {};
 
   const where = {
     organizationId: organization.id,
     deletedAt: null,
+    ...statusFilter,
     ...(q
       ? {
           OR: [
@@ -119,8 +147,19 @@ export default async function InvoicesListPage({
   return (
     <div className="p-6">
       <TransactionListPage
-        title="All Invoices"
+        title="Invoices"
         view="All invoices"
+        views={[
+          { value: "all", label: "All" },
+          { value: "draft", label: "Draft" },
+          { value: "sent", label: "Sent" },
+          { value: "overdue", label: "Overdue" },
+          { value: "unpaid", label: "Unpaid" },
+          { value: "paid", label: "Paid" },
+          { value: "void", label: "Void" },
+          { value: "partially_paid", label: "Partially Paid" },
+        ]}
+        activeView={view}
         newHref="/sales/invoices/new"
         newLabel="New"
         importHref="/sales/invoices/import"

@@ -1,6 +1,6 @@
 import * as React from "react";
 import Link from "next/link";
-import { Plus, MoreHorizontal } from "lucide-react";
+import { Plus, MoreHorizontal, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DataTable, type ColumnDef, type DataRow } from "@/components/shared/data-table";
 import {
@@ -18,12 +18,20 @@ import {
  * Each sub-module's page.tsx is now a thin server component that fetches
  * the rows and hands them here. DataTable handles search + pagination
  * (URL-state-driven), this wrapper handles the heading, primary CTA,
- * three-dots menu, and empty state.
+ * three-dots menu, saved views, and empty state.
  */
+
+export type SavedView = { value: string; label: string };
+
 export type TransactionListPageProps = {
   title: string;
-  /** Optional saved-views chevron — Phase S8 wires the dropdown; v1 just renders the label. */
+  /** Subtitle line under the heading (e.g. "Showing all customers"). */
   view?: string;
+  /** Saved views — when present the heading becomes a clickable dropdown
+   *  that links to `?view=<value>`. The first entry should be "all". */
+  views?: SavedView[];
+  /** Currently active saved view value (matches one of `views.value`). */
+  activeView?: string;
   newHref?: string;
   newLabel?: string;
   importHref?: string;
@@ -46,13 +54,51 @@ export type TransactionListPageProps = {
 
 export function TransactionListPage(props: TransactionListPageProps) {
   const isEmpty = props.rows.length === 0 && !props.search;
+  const hasViews = props.views && props.views.length > 0;
+  const activeViewLabel =
+    hasViews && props.activeView
+      ? props.views!.find((v) => v.value === props.activeView)?.label
+      : undefined;
+
   return (
     <div className="space-y-6">
       <header className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">{props.title}</h1>
-          {props.view ? (
-            <div className="text-xs text-muted-foreground">{props.view}</div>
+          {hasViews ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-1 text-2xl font-semibold tracking-tight hover:text-foreground/80"
+                  aria-label="Select saved view"
+                >
+                  <span>{props.title}</span>
+                  <ChevronDown className="h-5 w-5" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-56">
+                <DropdownMenuLabel>Saved views</DropdownMenuLabel>
+                {props.views!.map((v) => (
+                  <DropdownMenuItem key={v.value} asChild>
+                    <Link
+                      href={`?view=${encodeURIComponent(v.value)}`}
+                      className={
+                        v.value === props.activeView ? "font-semibold" : ""
+                      }
+                    >
+                      {v.label}
+                    </Link>
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : (
+            <h1 className="text-2xl font-semibold tracking-tight">{props.title}</h1>
+          )}
+          {props.view || activeViewLabel ? (
+            <div className="text-xs text-muted-foreground">
+              {activeViewLabel ?? props.view}
+            </div>
           ) : null}
         </div>
         <div className="flex items-center gap-2">

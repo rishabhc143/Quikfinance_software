@@ -150,8 +150,14 @@ export default async function CustomersListPage({
   return (
     <div className="p-6">
       <TransactionListPage
-        title="All Customers"
+        title="Customers"
         view={viewLabel(view)}
+        views={[
+          { value: "all", label: "All" },
+          { value: "active", label: "Active" },
+          { value: "inactive", label: "Inactive" },
+        ]}
+        activeView={view}
         newHref="/sales/customers/new"
         newLabel="New"
         importHref="/sales/customers/import"
