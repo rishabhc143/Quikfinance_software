@@ -75,6 +75,17 @@ export async function createSalesOrderAction(
       customerNotes: data.customerNotes ?? null,
       termsAndConditions: data.termsAndConditions ?? null,
       pdfTemplateId: data.pdfTemplateId ?? null,
+      attachments:
+        data.attachments && data.attachments.length > 0
+          ? {
+              create: data.attachments.map((a) => ({
+                fileName: a.fileName,
+                fileUrl: a.fileUrl,
+                fileSize: a.fileSize,
+                mimeType: a.mimeType,
+              })),
+            }
+          : undefined,
       lineItems: {
         create: data.lines.map((l, i) => ({
           itemId: l.itemId || null,

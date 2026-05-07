@@ -11,7 +11,7 @@ export const metadata = { title: "New Delivery Challan" };
 
 export default async function NewChallanPage() {
   const { organization } = await requireOrganization();
-  const [contacts, items, taxes] = await Promise.all([
+  const [contacts, items, taxes, pdfTemplates] = await Promise.all([
     db.contact.findMany({
       where: {
         organizationId: organization.id,
@@ -29,6 +29,10 @@ export default async function NewChallanPage() {
     db.tax.findMany({
       where: { organizationId: organization.id, isActive: true },
       orderBy: { rate: "asc" },
+    }),
+    db.pdfTemplate.findMany({
+      where: { organizationId: organization.id, documentType: "DELIVERY_CHALLAN" },
+      orderBy: { name: "asc" },
     }),
   ]);
 
@@ -65,6 +69,7 @@ export default async function NewChallanPage() {
           label: `${t.name} (${Number(t.rate)}%)`,
           rate: Number(t.rate),
         }))}
+        pdfTemplateOptions={pdfTemplates.map((t) => ({ value: t.id, label: t.name }))}
         onSubmitAction={submit}
       />
     </div>

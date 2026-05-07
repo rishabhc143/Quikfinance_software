@@ -15,6 +15,8 @@ import {
   type ItemOption,
   type TaxOption,
 } from "@/components/shared/transaction-line-items-table";
+import { AttachFilesField, type AttachedFile } from "@/components/shared/attach-files-field";
+import { PdfTemplatePicker } from "@/components/shared/pdf-template-picker";
 import type { DeliveryChallanInput } from "@/lib/validations/delivery-challan";
 import { format } from "date-fns";
 import { toast } from "sonner";
@@ -30,12 +32,14 @@ export function ChallanForm({
   contactOptions,
   itemOptions,
   taxOptions,
+  pdfTemplateOptions = [],
   onSubmitAction,
   cancelHref = "/sales/delivery-challans",
 }: {
   contactOptions: ComboboxOption[];
   itemOptions: ItemOption[];
   taxOptions: TaxOption[];
+  pdfTemplateOptions?: ComboboxOption[];
   onSubmitAction: (values: DeliveryChallanInput) => Promise<unknown>;
   cancelHref?: string;
 }) {
@@ -47,6 +51,8 @@ export function ChallanForm({
   const [challanType, setChallanType] = React.useState<DeliveryChallanInput["challanType"]>("others");
   const [customerNotes, setCustomerNotes] = React.useState("");
   const [terms, setTerms] = React.useState("");
+  const [pdfTemplateId, setPdfTemplateId] = React.useState<string | null>(null);
+  const [attachments, setAttachments] = React.useState<AttachedFile[]>([]);
   const [lines, setLines] = React.useState<LineItem[]>([]);
 
   async function submit() {
@@ -67,6 +73,8 @@ export function ChallanForm({
         challanType,
         customerNotes,
         termsAndConditions: terms || null,
+        pdfTemplateId,
+        attachments,
         lines: lines
           .filter((l) => l.name.trim())
           .map((l, i) => ({
@@ -124,6 +132,25 @@ export function ChallanForm({
           <Label>Terms & Conditions</Label>
           <Textarea value={terms} onChange={(e) => setTerms(e.target.value)} rows={3} />
         </div>
+      </section>
+
+      <section className="grid gap-4 md:grid-cols-2">
+        <div>
+          <AttachFilesField
+            initial={attachments}
+            onChange={setAttachments}
+            maxFiles={10}
+            maxSizeMb={10}
+            label="Attach files to Delivery Challan"
+          />
+        </div>
+        {pdfTemplateOptions.length > 0 ? (
+          <PdfTemplatePicker
+            templates={pdfTemplateOptions}
+            value={pdfTemplateId}
+            onChange={setPdfTemplateId}
+          />
+        ) : null}
       </section>
 
       <div className="flex items-center gap-2 sticky bottom-0 bg-background border-t -mx-6 px-6 py-3">

@@ -12,7 +12,7 @@ export const metadata = { title: "New Sales Order" };
 
 export default async function NewSalesOrderPage() {
   const { organization } = await requireOrganization();
-  const [contacts, items, taxes, salespeople, paymentTerms, deliveryMethods, nextNumber] = await Promise.all([
+  const [contacts, items, taxes, salespeople, paymentTerms, deliveryMethods, pdfTemplates, nextNumber] = await Promise.all([
     db.contact.findMany({
       where: {
         organizationId: organization.id,
@@ -41,6 +41,10 @@ export default async function NewSalesOrderPage() {
     }),
     db.deliveryMethod.findMany({
       where: { organizationId: organization.id, isInactive: false },
+      orderBy: { name: "asc" },
+    }),
+    db.pdfTemplate.findMany({
+      where: { organizationId: organization.id, documentType: "SALES_ORDER" },
       orderBy: { name: "asc" },
     }),
     peekNextDocumentNumber(organization.id, "SALES_ORDER"),
@@ -95,6 +99,7 @@ export default async function NewSalesOrderPage() {
           hint: p.numberOfDays === 0 ? "Due on receipt" : `${p.numberOfDays} days`,
         }))}
         deliveryMethodOptions={deliveryMethods.map((d) => ({ value: d.id, label: d.name }))}
+        pdfTemplateOptions={pdfTemplates.map((t) => ({ value: t.id, label: t.name }))}
         onSubmitAction={submit}
         submitLabel="Save as Draft"
       />

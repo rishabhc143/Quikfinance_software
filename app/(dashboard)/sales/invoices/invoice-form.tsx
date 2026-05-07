@@ -16,6 +16,8 @@ import {
   type ItemOption,
   type TaxOption,
 } from "@/components/shared/transaction-line-items-table";
+import { AttachFilesField, type AttachedFile } from "@/components/shared/attach-files-field";
+import { PdfTemplatePicker } from "@/components/shared/pdf-template-picker";
 import type { InvoiceInput } from "@/lib/validations/invoice";
 import { format } from "date-fns";
 import { toast } from "sonner";
@@ -29,6 +31,7 @@ export type InvoiceFormProps = {
   taxOptions: TaxOption[];
   salespersonOptions: ComboboxOption[];
   paymentTermsOptions: { value: string; label: string; numberOfDays: number }[];
+  pdfTemplateOptions?: ComboboxOption[];
   defaultCurrency: string;
   onSubmitAction: (
     values: InvoiceInput,
@@ -53,6 +56,7 @@ export function InvoiceForm({
   taxOptions,
   salespersonOptions,
   paymentTermsOptions,
+  pdfTemplateOptions = [],
   defaultCurrency,
   onSubmitAction,
   submitLabel = "Save as Draft",
@@ -88,6 +92,12 @@ export function InvoiceForm({
   );
   const [customerNotes, setCustomerNotes] = React.useState(initial?.customerNotes ?? "");
   const [terms, setTerms] = React.useState(initial?.termsAndConditions ?? "");
+  const [pdfTemplateId, setPdfTemplateId] = React.useState<string | null>(
+    initial?.pdfTemplateId ?? null
+  );
+  const [attachments, setAttachments] = React.useState<AttachedFile[]>(
+    (initial?.attachments as AttachedFile[] | undefined) ?? []
+  );
   const [lines, setLines] = React.useState<LineItem[]>(initialLines ?? []);
 
   // When payment terms change, recompute due date from invoice date.
@@ -123,6 +133,8 @@ export function InvoiceForm({
       adjustmentValue: Number(adjustmentValue || 0),
       customerNotes,
       termsAndConditions: terms || null,
+      pdfTemplateId,
+      attachments,
       lines: lines
         .filter((l) => l.name.trim())
         .map((l, i) => ({
@@ -232,6 +244,25 @@ export function InvoiceForm({
             <MoneyInput value={adjustmentValue} onChange={setAdjustmentValue} allowNegative />
           </div>
         </div>
+      </section>
+
+      <section className="grid gap-4 md:grid-cols-2">
+        <div>
+          <AttachFilesField
+            initial={attachments}
+            onChange={setAttachments}
+            maxFiles={10}
+            maxSizeMb={10}
+            label="Attach files to Invoice"
+          />
+        </div>
+        {pdfTemplateOptions.length > 0 ? (
+          <PdfTemplatePicker
+            templates={pdfTemplateOptions}
+            value={pdfTemplateId}
+            onChange={setPdfTemplateId}
+          />
+        ) : null}
       </section>
 
       <div className="flex items-center gap-2 sticky bottom-0 bg-background border-t -mx-6 px-6 py-3">
