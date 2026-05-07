@@ -34,6 +34,7 @@ const LANGUAGES = [
 export type CustomerFormProps = {
   initial?: Partial<CustomerInput>;
   paymentTermsOptions: ComboboxOption[];
+  customerOwnerOptions?: ComboboxOption[];
   defaultCurrency: string;
   /** Optional preview of what the next display name would be from the name fields. */
   onSubmitAction: (values: CustomerInput) => Promise<unknown>;
@@ -70,6 +71,7 @@ const blankContactPerson = {
 export function CustomerForm({
   initial,
   paymentTermsOptions,
+  customerOwnerOptions = [],
   defaultCurrency,
   onSubmitAction,
   submitLabel = "Save",
@@ -404,6 +406,25 @@ export function CustomerForm({
 
             <Label className="pt-2">Facebook</Label>
             <Input {...form.register("facebookUrl")} placeholder="https://facebook.com/..." />
+
+            <Label className="pt-2">Customer Owner</Label>
+            <Controller
+              name="customerOwnerId"
+              control={form.control}
+              render={({ field }) => (
+                <div className="space-y-1">
+                  <Combobox
+                    options={customerOwnerOptions}
+                    value={field.value ?? null}
+                    onChange={(v) => field.onChange(v)}
+                    placeholder="(Unassigned)"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Assign a user as the customer owner to provide access only to the data of this customer.
+                  </p>
+                </div>
+              )}
+            />
 
             <Label className="pt-2 flex items-start gap-2">
               <span>Enable Portal?</span>
