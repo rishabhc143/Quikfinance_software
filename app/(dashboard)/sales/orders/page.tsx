@@ -6,7 +6,12 @@ import { requireOrganization } from "@/lib/auth-helpers";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { TransactionListPage } from "@/components/shared/transaction-list-page";
+import { BulkAwareDataTable } from "@/components/shared/bulk-aware-data-table";
 import { formatMoney } from "@/lib/money";
+import {
+  bulkDeleteSalesOrdersAction,
+  bulkMarkSalesOrdersOpenAction,
+} from "./actions";
 
 export const metadata = { title: "Sales Orders" };
 
@@ -189,6 +194,43 @@ export default async function SalesOrdersListPage({
         dir={dir}
         search={q}
         empty={empty}
+        customTable={
+          <BulkAwareDataTable
+            columns={[
+              { key: "date", header: "Date", sortable: true },
+              { key: "number", header: "Sales order #", sortable: true },
+              { key: "ref", header: "Reference #" },
+              { key: "cust", header: "Customer name" },
+              { key: "status", header: "Status" },
+              { key: "amount", header: "Amount", align: "right", sortable: true },
+              { key: "invoiced", header: "Invoiced?" },
+            ]}
+            rows={rows}
+            total={total}
+            page={page}
+            pageSize={pageSize}
+            sort={sort}
+            dir={dir}
+            search={q}
+            rowNoun="sales order"
+            bulkActions={[
+              {
+                label: "Mark as Open",
+                doneVerb: "Marked",
+                noun: "order as open",
+                action: async (ids) => bulkMarkSalesOrdersOpenAction({ ids }),
+              },
+              {
+                label: "Delete",
+                variant: "destructive",
+                doneVerb: "Deleted",
+                noun: "sales order",
+                confirm: "Delete the selected sales orders? This is reversible (soft delete).",
+                action: async (ids) => bulkDeleteSalesOrdersAction({ ids }),
+              },
+            ]}
+          />
+        }
       />
     </div>
   );

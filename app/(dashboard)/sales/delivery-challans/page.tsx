@@ -6,6 +6,11 @@ import { requireOrganization } from "@/lib/auth-helpers";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { TransactionListPage } from "@/components/shared/transaction-list-page";
+import { BulkAwareDataTable } from "@/components/shared/bulk-aware-data-table";
+import {
+  bulkDeleteDeliveryChallansAction,
+  bulkMarkChallansOpenAction,
+} from "./actions";
 
 export const metadata = { title: "Delivery Challans" };
 
@@ -94,6 +99,40 @@ export default async function DeliveryChallansListPage({
         pageSize={pageSize}
         search={q}
         empty={empty}
+        customTable={
+          <BulkAwareDataTable
+            columns={[
+              { key: "date", header: "Date", sortable: true },
+              { key: "number", header: "Challan #", sortable: true },
+              { key: "cust", header: "Customer name" },
+              { key: "ref", header: "Reference #" },
+              { key: "type", header: "Challan type" },
+              { key: "status", header: "Status" },
+            ]}
+            rows={rows}
+            total={total}
+            page={page}
+            pageSize={pageSize}
+            search={q}
+            rowNoun="challan"
+            bulkActions={[
+              {
+                label: "Mark as Open",
+                doneVerb: "Marked",
+                noun: "challan as open",
+                action: async (ids) => bulkMarkChallansOpenAction({ ids }),
+              },
+              {
+                label: "Delete",
+                variant: "destructive",
+                doneVerb: "Deleted",
+                noun: "challan",
+                confirm: "Delete the selected challans? Invoiced challans cannot be deleted.",
+                action: async (ids) => bulkDeleteDeliveryChallansAction({ ids }),
+              },
+            ]}
+          />
+        }
       />
     </div>
   );

@@ -6,7 +6,12 @@ import { requireOrganization } from "@/lib/auth-helpers";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { TransactionListPage } from "@/components/shared/transaction-list-page";
+import { BulkAwareDataTable } from "@/components/shared/bulk-aware-data-table";
 import { formatMoney } from "@/lib/money";
+import {
+  bulkDeleteCreditNotesAction,
+  bulkMarkCreditNotesOpenAction,
+} from "./actions";
 
 export const metadata = { title: "Credit Notes" };
 
@@ -105,6 +110,41 @@ export default async function CreditNotesListPage({
         pageSize={pageSize}
         search={q}
         empty={empty}
+        customTable={
+          <BulkAwareDataTable
+            columns={[
+              { key: "date", header: "Date", sortable: true },
+              { key: "number", header: "Credit note #" },
+              { key: "ref", header: "Reference #" },
+              { key: "cust", header: "Customer name" },
+              { key: "status", header: "Status" },
+              { key: "amount", header: "Amount", align: "right" },
+              { key: "balance", header: "Balance", align: "right" },
+            ]}
+            rows={rows}
+            total={total}
+            page={page}
+            pageSize={pageSize}
+            search={q}
+            rowNoun="credit note"
+            bulkActions={[
+              {
+                label: "Mark as Open",
+                doneVerb: "Marked",
+                noun: "credit note as open",
+                action: async (ids) => bulkMarkCreditNotesOpenAction({ ids }),
+              },
+              {
+                label: "Delete",
+                variant: "destructive",
+                doneVerb: "Deleted",
+                noun: "credit note",
+                confirm: "Delete the selected credit notes? Notes with applications/refunds cannot be deleted.",
+                action: async (ids) => bulkDeleteCreditNotesAction({ ids }),
+              },
+            ]}
+          />
+        }
       />
     </div>
   );

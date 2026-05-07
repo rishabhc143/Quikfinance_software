@@ -5,7 +5,9 @@ import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
 import { Button } from "@/components/ui/button";
 import { TransactionListPage } from "@/components/shared/transaction-list-page";
+import { BulkAwareDataTable } from "@/components/shared/bulk-aware-data-table";
 import { formatMoney } from "@/lib/money";
+import { bulkDeletePaymentsAction } from "./actions";
 
 export const metadata = { title: "Payments Received" };
 
@@ -110,6 +112,36 @@ export default async function PaymentsReceivedListPage({
         pageSize={pageSize}
         search={q}
         empty={empty}
+        customTable={
+          <BulkAwareDataTable
+            columns={[
+              { key: "date", header: "Date", sortable: true },
+              { key: "number", header: "Payment #" },
+              { key: "ref", header: "Reference #" },
+              { key: "cust", header: "Customer name" },
+              { key: "inv", header: "Invoice #" },
+              { key: "mode", header: "Mode" },
+              { key: "amount", header: "Amount", align: "right" },
+              { key: "unused", header: "Unused", align: "right" },
+            ]}
+            rows={rows}
+            total={total}
+            page={page}
+            pageSize={pageSize}
+            search={q}
+            rowNoun="payment"
+            bulkActions={[
+              {
+                label: "Delete",
+                variant: "destructive",
+                doneVerb: "Deleted",
+                noun: "payment",
+                confirm: "Delete the selected payments? Payments with allocations cannot be deleted.",
+                action: async (ids) => bulkDeletePaymentsAction({ ids }),
+              },
+            ]}
+          />
+        }
       />
     </div>
   );

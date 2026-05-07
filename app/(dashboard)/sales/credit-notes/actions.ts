@@ -284,3 +284,76 @@ export async function deleteCreditNoteAction(id: string) {
   revalidatePath("/sales/credit-notes");
   return { ok: true };
 }
+
+/**
+ * Bulk actions per <credit_notes_spec> "Bulk: Print, Email, Delete".
+ * Print/Email deferred. Mark Open is included for VOID rows that need
+ * to be reopened.
+ */
+export async function bulkMarkCreditNotesOpenAction(input: {
+  ids: string[];
+}): Promise<{ ok: boolean; updated?: number; error?: string }> {
+  const { user, organization } = await requireOrganization();
+  if (!input.ids?.length) return { ok: true, updated: 0 };
+  const result = await db.creditNote.updateMany({
+    where: {
+      id: { in: input.ids },
+      organizationId: organization.id,
+      deletedAt: null,
+      status: { in: ["VOID", "CLOSED"] },
+    },
+    data: { status: "OPEN" },
+  });
+  await writeAuditLog({
+    organizationId: organization.id,
+    userId: user.id,
+    action: "UPDATE",
+    entityType: "CreditNote",
+    entityId: `bulk-${Date.now()}`,
+    after: { status: "OPEN", count: result.count, ids: input.ids },
+  });
+  revalidatePath("/sales/credit-notes");
+  return { ok: true, updated: result.count };
+}
+
+export async function bulkDeleteCreditNotesAction(input: {
+  ids: string[];
+}): Promise<{ ok: boolean; updated?: number; error?: string }> {
+  const { user, organization } = await requireOrganization();
+  if (!input.ids?.length) return { ok: true, updated: 0 };
+  // Block delete on credit notes that have applications or refunds
+  const blocked = await db.creditNote.count({
+    where: {
+      id: { in: input.ids },
+      organizationId: organization.id,
+      OR: [
+        { amountApplied: { gt: 0 } },
+        { amountRefunded: { gt: 0 } },
+      ],
+    },
+  });
+  if (blocked > 0) {
+    return {
+      ok: false,
+      error: `${blocked} credit note${blocked === 1 ? "" : "s"} with applications/refunds cannot be deleted`,
+    };
+  }
+  const result = await db.creditNote.updateMany({
+    where: {
+      id: { in: input.ids },
+      organizationId: organization.id,
+      deletedAt: null,
+    },
+    data: { deletedAt: new Date() },
+  });
+  await writeAuditLog({
+    organizationId: organization.id,
+    userId: user.id,
+    action: "DELETE",
+    entityType: "CreditNote",
+    entityId: `bulk-${Date.now()}`,
+    before: { count: result.count, ids: input.ids },
+  });
+  revalidatePath("/sales/credit-notes");
+  return { ok: true, updated: result.count };
+}

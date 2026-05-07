@@ -225,4 +225,85 @@ export async function deleteRecurringInvoiceAction(id: string) {
   return { ok: true };
 }
 
+/**
+ * Bulk actions per <recurring_invoices_spec> "Bulk: Stop, Resume, Delete".
+ * Stop: ACTIVE → STOPPED. Resume: STOPPED/PAUSED → ACTIVE.
+ */
+export async function bulkStopRecurringAction(input: {
+  ids: string[];
+}): Promise<{ ok: boolean; updated?: number; error?: string }> {
+  const { user, organization } = await requireOrganization();
+  if (!input.ids?.length) return { ok: true, updated: 0 };
+  const result = await db.recurringInvoice.updateMany({
+    where: {
+      id: { in: input.ids },
+      organizationId: organization.id,
+      deletedAt: null,
+      status: "ACTIVE",
+    },
+    data: { status: "STOPPED", isActive: false },
+  });
+  await writeAuditLog({
+    organizationId: organization.id,
+    userId: user.id,
+    action: "UPDATE",
+    entityType: "RecurringInvoice",
+    entityId: `bulk-${Date.now()}`,
+    after: { status: "STOPPED", count: result.count, ids: input.ids },
+  });
+  revalidatePath("/sales/recurring-invoices");
+  return { ok: true, updated: result.count };
+}
+
+export async function bulkResumeRecurringAction(input: {
+  ids: string[];
+}): Promise<{ ok: boolean; updated?: number; error?: string }> {
+  const { user, organization } = await requireOrganization();
+  if (!input.ids?.length) return { ok: true, updated: 0 };
+  const result = await db.recurringInvoice.updateMany({
+    where: {
+      id: { in: input.ids },
+      organizationId: organization.id,
+      deletedAt: null,
+      status: { in: ["STOPPED", "PAUSED"] },
+    },
+    data: { status: "ACTIVE", isActive: true },
+  });
+  await writeAuditLog({
+    organizationId: organization.id,
+    userId: user.id,
+    action: "UPDATE",
+    entityType: "RecurringInvoice",
+    entityId: `bulk-${Date.now()}`,
+    after: { status: "ACTIVE", count: result.count, ids: input.ids },
+  });
+  revalidatePath("/sales/recurring-invoices");
+  return { ok: true, updated: result.count };
+}
+
+export async function bulkDeleteRecurringAction(input: {
+  ids: string[];
+}): Promise<{ ok: boolean; updated?: number; error?: string }> {
+  const { user, organization } = await requireOrganization();
+  if (!input.ids?.length) return { ok: true, updated: 0 };
+  const result = await db.recurringInvoice.updateMany({
+    where: {
+      id: { in: input.ids },
+      organizationId: organization.id,
+      deletedAt: null,
+    },
+    data: { deletedAt: new Date(), isActive: false, status: "STOPPED" },
+  });
+  await writeAuditLog({
+    organizationId: organization.id,
+    userId: user.id,
+    action: "DELETE",
+    entityType: "RecurringInvoice",
+    entityId: `bulk-${Date.now()}`,
+    before: { count: result.count, ids: input.ids },
+  });
+  revalidatePath("/sales/recurring-invoices");
+  return { ok: true, updated: result.count };
+}
+
 export { computeNextOccurrence };
