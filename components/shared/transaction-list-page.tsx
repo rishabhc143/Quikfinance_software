@@ -50,6 +50,11 @@ export type TransactionListPageProps = {
   dir?: "asc" | "desc";
   search?: string;
   empty: React.ReactNode;
+  /** Optional override to render a custom table component instead of the
+   *  default <DataTable>. Used by Customer list to inject row-checkbox
+   *  bulk-selection. The columns/rows props above are still passed to
+   *  the wrapper so it can supply them to the custom component. */
+  customTable?: React.ReactNode;
 };
 
 export function TransactionListPage(props: TransactionListPageProps) {
@@ -156,6 +161,8 @@ export function TransactionListPage(props: TransactionListPageProps) {
 
       {isEmpty ? (
         <div className="rounded-lg border bg-card p-10 text-center">{props.empty}</div>
+      ) : props.customTable ? (
+        props.customTable
       ) : (
         <DataTable
           columns={props.columns}

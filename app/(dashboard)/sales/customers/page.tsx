@@ -5,6 +5,8 @@ import { requireOrganization } from "@/lib/auth-helpers";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { TransactionListPage } from "@/components/shared/transaction-list-page";
+import { CustomersTable } from "./customers-table";
+import { bulkSetCustomerActiveAction } from "./actions";
 import { formatMoney } from "@/lib/money";
 
 export const metadata = { title: "Customers" };
@@ -39,6 +41,7 @@ export default async function CustomersListPage({
     deletedAt: null,
     ...(view === "active" ? { isInactive: false } : {}),
     ...(view === "inactive" ? { isInactive: true } : {}),
+    ...(view === "portal_enabled" ? { enablePortal: true } : {}),
     ...(q
       ? {
           OR: [
@@ -156,6 +159,7 @@ export default async function CustomersListPage({
           { value: "all", label: "All" },
           { value: "active", label: "Active" },
           { value: "inactive", label: "Inactive" },
+          { value: "portal_enabled", label: "Portal-enabled" },
         ]}
         activeView={view}
         newHref="/sales/customers/new"
@@ -186,6 +190,26 @@ export default async function CustomersListPage({
         dir={dir as "asc" | "desc"}
         search={q}
         empty={empty}
+        customTable={
+          <CustomersTable
+            rows={rows}
+            columns={[
+              { key: "name", header: "Name", sortable: true },
+              { key: "company", header: "Company name" },
+              { key: "email", header: "Email" },
+              { key: "phone", header: "Work phone" },
+              { key: "receivables", header: "Receivables (BCY)", align: "right" },
+              { key: "unpaid", header: "Unpaid", align: "right" },
+            ]}
+            total={total}
+            page={page}
+            pageSize={pageSize}
+            sort={sort}
+            dir={dir as "asc" | "desc"}
+            search={q}
+            bulkSetActive={bulkSetCustomerActiveAction}
+          />
+        }
       />
     </div>
   );
@@ -214,6 +238,8 @@ function viewLabel(view: string) {
       return "Active customers";
     case "inactive":
       return "Inactive customers";
+    case "portal_enabled":
+      return "Customers with portal access";
     default:
       return "All customers";
   }

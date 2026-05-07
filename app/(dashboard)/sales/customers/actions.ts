@@ -244,6 +244,36 @@ export async function restoreCustomerAction(id: string) {
   return { ok: true };
 }
 
+/**
+ * Bulk mark a list of customers active or inactive. Per <customers_spec>
+ * Bulk actions: Mark Active, Mark Inactive.
+ */
+export async function bulkSetCustomerActiveAction(input: {
+  ids: string[];
+  isInactive: boolean;
+}): Promise<{ updated: number }> {
+  const { user, organization } = await requireOrganization();
+  if (!input.ids || input.ids.length === 0) return { updated: 0 };
+  const result = await db.contact.updateMany({
+    where: {
+      id: { in: input.ids },
+      organizationId: organization.id,
+      deletedAt: null,
+    },
+    data: { isInactive: input.isInactive },
+  });
+  await writeAuditLog({
+    organizationId: organization.id,
+    userId: user.id,
+    action: "UPDATE",
+    entityType: "Contact",
+    entityId: `bulk-${Date.now()}`,
+    after: { isInactive: input.isInactive, count: result.count },
+  });
+  revalidatePath("/sales/customers");
+  return { updated: result.count };
+}
+
 export async function setCustomerActiveAction(id: string, isInactive: boolean) {
   const { user, organization } = await requireOrganization();
   await db.contact.update({
