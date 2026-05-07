@@ -4,6 +4,10 @@ import { lineItemSchema } from "./quote";
 export const recurringInvoiceSchema = z.object({
   profileName: z.string().min(1, "Profile name required").max(120),
   contactId: z.string().min(1, "Customer required"),
+  /** Reference field per <recurring_invoices_spec>: "Order Number
+   *  (reference)". Stored on the templateJson so each generated
+   *  invoice can use it as its referenceNumber. */
+  orderNumber: z.string().max(80).nullable().optional(),
   frequency: z.enum(["DAILY", "WEEKLY", "MONTHLY", "EVERY_N_MONTHS", "YEARLY"]),
   intervalN: z.coerce.number().int().min(1).default(1),
   startDate: z.coerce.date(),

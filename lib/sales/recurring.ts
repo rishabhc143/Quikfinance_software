@@ -51,6 +51,7 @@ type RecurringTemplateLine = {
 };
 
 type RecurringTemplate = {
+  orderNumber?: string | null;
   paymentTermsId: string | null;
   salespersonId: string | null;
   currency: string;
@@ -120,6 +121,7 @@ export async function generateRecurringOccurrence(
       data: {
         organizationId: r.organizationId,
         number: invoiceNumber,
+        referenceNumber: tpl.orderNumber ?? null,
         contactId: r.contactId,
         status: r.emailAutomatically ? "SENT" : "DRAFT",
         issueDate: today,

@@ -49,6 +49,10 @@ export function NewPaymentForm({
   const [paymentMode, setPaymentMode] = React.useState("bank_transfer");
   const [depositToAccountId, setDepositToAccountId] = React.useState<string | null>(null);
   const [bankCharges, setBankCharges] = React.useState("0");
+  const [tdsRate, setTdsRate] = React.useState("0");
+  const [tdsAmount, setTdsAmount] = React.useState("0");
+  const [emailNotification, setEmailNotification] = React.useState(false);
+  const [useExcessAsCredit, setUseExcessAsCredit] = React.useState(true);
   const [reference, setReference] = React.useState("");
   const [notes, setNotes] = React.useState("");
   const [openInvoices, setOpenInvoices] = React.useState<OpenInvoiceLite[]>([]);
@@ -100,6 +104,10 @@ export function NewPaymentForm({
         paymentMode: paymentMode as RecordPaymentInput["paymentMode"],
         depositToAccountId,
         bankCharges: Number(bankCharges || 0),
+        tdsRate: Number(tdsRate || 0),
+        tdsAmount: Number(tdsAmount || 0),
+        emailNotification,
+        useExcessAsCredit,
         reference: reference || null,
         notes: notes || null,
         allocations: Object.entries(allocations)
@@ -144,11 +152,47 @@ export function NewPaymentForm({
         <Label className="pt-2">Bank charges</Label>
         <MoneyInput value={bankCharges} onChange={setBankCharges} />
 
+        <Label className="pt-2">Tax Deducted (TDS)</Label>
+        <div className="grid grid-cols-2 gap-2">
+          <div className="space-y-1">
+            <span className="text-xs text-muted-foreground">Rate (%)</span>
+            <Input
+              inputMode="decimal"
+              value={tdsRate}
+              onChange={(e) => setTdsRate(e.target.value)}
+            />
+          </div>
+          <div className="space-y-1">
+            <span className="text-xs text-muted-foreground">Amount</span>
+            <MoneyInput value={tdsAmount} onChange={setTdsAmount} />
+          </div>
+        </div>
+
         <Label className="pt-2">Reference #</Label>
         <Input value={reference} onChange={(e) => setReference(e.target.value)} />
 
         <Label className="pt-2">Notes</Label>
         <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} />
+
+        <Label className="pt-2">Excess handling</Label>
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={useExcessAsCredit}
+            onChange={(e) => setUseExcessAsCredit(e.target.checked)}
+          />
+          Use excess amount as customer credit (otherwise mark for refund)
+        </label>
+
+        <Label className="pt-2">Email Notification</Label>
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={emailNotification}
+            onChange={(e) => setEmailNotification(e.target.checked)}
+          />
+          Email a payment confirmation to the customer
+        </label>
       </section>
 
       {contactId ? (

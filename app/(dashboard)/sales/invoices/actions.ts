@@ -260,6 +260,19 @@ export async function recordPaymentAction(input: RecordPaymentInput): Promise<vo
   const totalAllocated = data.allocations.reduce((s, a) => s + Number(a.amount), 0);
   const inExcess = Math.max(0, data.amountReceived - totalAllocated);
 
+  // Compose any TDS / excess notes into the payment.notes field. Once we
+  // add dedicated columns we'll store them structurally; for v1 a notes
+  // prefix keeps the data captured + visible without a migration.
+  const noteParts: string[] = [];
+  if (data.tdsAmount > 0 || data.tdsRate > 0) {
+    noteParts.push(`TDS: ${data.tdsRate}% / ${Number(data.tdsAmount).toFixed(2)}`);
+  }
+  if (!data.useExcessAsCredit && inExcess > 0) {
+    noteParts.push(`Excess (${inExcess.toFixed(2)}) marked for refund.`);
+  }
+  if (data.notes) noteParts.push(data.notes);
+  const composedNotes = noteParts.length > 0 ? noteParts.join("\n") : null;
+
   await db.$transaction(async (tx) => {
     const payment = await tx.paymentReceived.create({
       data: {
@@ -275,7 +288,7 @@ export async function recordPaymentAction(input: RecordPaymentInput): Promise<vo
         method: data.paymentMode,
         depositToAccountId: data.depositToAccountId ?? null,
         reference: data.reference ?? null,
-        notes: data.notes ?? null,
+        notes: composedNotes,
       },
     });
 
@@ -315,8 +328,38 @@ export async function recordPaymentAction(input: RecordPaymentInput): Promise<vo
     action: "CREATE",
     entityType: "PaymentReceived",
     entityId: number,
-    after: { amount: data.amountReceived, allocations: data.allocations.length },
+    after: {
+      amount: data.amountReceived,
+      allocations: data.allocations.length,
+      tdsRate: data.tdsRate || undefined,
+      tdsAmount: data.tdsAmount || undefined,
+    },
   });
+
+  // Customer email confirmation (Email Notification checkbox per spec)
+  if (data.emailNotification) {
+    const contact = await db.contact.findFirst({
+      where: {
+        id: data.contactId,
+        organizationId: organization.id,
+        deletedAt: null,
+      },
+      select: { displayName: true, email: true },
+    });
+    if (contact?.email) {
+      await enqueueEmail({
+        organizationId: organization.id,
+        toEmail: contact.email,
+        subject: `Payment receipt ${number} from ${organization.name}`,
+        bodyHtml: `<p>Hello ${contact.displayName},</p>
+<p>We have received your payment of <strong>${Number(data.amountReceived).toFixed(2)}</strong> on
+${data.paymentDate.toLocaleDateString()} via ${data.paymentMode}. Thank you.</p>`,
+        documentType: "PAYMENT_RECEIVED",
+        documentId: number,
+      });
+    }
+  }
+
   revalidatePath("/sales/invoices");
   revalidatePath("/sales/payments-received");
 }
