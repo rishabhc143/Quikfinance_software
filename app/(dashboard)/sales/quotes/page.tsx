@@ -22,7 +22,7 @@ const STATUS_VARIANT: Record<string, "secondary" | "outline" | "destructive"> = 
 export default async function QuotesListPage({
   searchParams,
 }: {
-  searchParams: { q?: string; page?: string; pageSize?: string; sort?: string; dir?: string };
+  searchParams: { q?: string; page?: string; pageSize?: string; sort?: string; dir?: string; view?: string };
 }) {
   const { organization } = await requireOrganization();
   const q = searchParams.q?.trim() ?? "";
@@ -30,10 +30,23 @@ export default async function QuotesListPage({
   const pageSize = Number(searchParams.pageSize ?? 25);
   const sort = searchParams.sort ?? "issueDate";
   const dir: "asc" | "desc" = searchParams.dir === "asc" ? "asc" : "desc";
+  const view = searchParams.view ?? "all";
+
+  const STATUS_VIEWS: Record<string, string> = {
+    draft: "DRAFT",
+    sent: "SENT",
+    accepted: "ACCEPTED",
+    declined: "DECLINED",
+    expired: "EXPIRED",
+    invoiced: "INVOICED",
+  };
 
   const where = {
     organizationId: organization.id,
     deletedAt: null,
+    ...(STATUS_VIEWS[view]
+      ? { status: STATUS_VIEWS[view] as "DRAFT" | "SENT" | "ACCEPTED" | "DECLINED" | "EXPIRED" | "INVOICED" }
+      : {}),
     ...(q
       ? {
           OR: [
@@ -177,8 +190,18 @@ export default async function QuotesListPage({
   return (
     <div className="p-6">
       <TransactionListPage
-        title="All Quotes"
+        title="Quotes"
         view="All quotes"
+        views={[
+          { value: "all", label: "All" },
+          { value: "draft", label: "Draft" },
+          { value: "sent", label: "Sent" },
+          { value: "accepted", label: "Accepted" },
+          { value: "declined", label: "Declined" },
+          { value: "expired", label: "Expired" },
+          { value: "invoiced", label: "Invoiced" },
+        ]}
+        activeView={view}
         newHref="/sales/quotes/new"
         newLabel="New"
         importHref="/sales/quotes/import"
