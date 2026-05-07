@@ -24,9 +24,42 @@ export async function GET(req: NextRequest) {
       : [];
   const cap = mode === "all" ? 25_000 : mode === "current_view" ? 10_000 : 1_000;
 
+  // M17f: Invoice export modal adds Status + Date Range filters per
+  // Invoices Refinement Patch. Both apply across all three modes.
+  const status = sp.get("status")?.trim();
+  const fromDate = sp.get("from")?.trim();
+  const toDate = sp.get("to")?.trim();
+  type InvStatus =
+    | "DRAFT"
+    | "SENT"
+    | "PARTIALLY_PAID"
+    | "PAID"
+    | "OVERDUE"
+    | "VOID"
+    | "WRITTEN_OFF";
+  const statusFilter =
+    status && status !== "all"
+      ? status === "unpaid"
+        ? {
+            status: {
+              in: ["SENT", "PARTIALLY_PAID", "OVERDUE"] as InvStatus[],
+            },
+          }
+        : { status: status as InvStatus }
+      : {};
+  const dateFilter: { issueDate?: { gte?: Date; lte?: Date } } = {};
+  if (fromDate) dateFilter.issueDate = { gte: new Date(fromDate) };
+  if (toDate)
+    dateFilter.issueDate = {
+      ...(dateFilter.issueDate ?? {}),
+      lte: new Date(toDate),
+    };
+
   const where = {
     organizationId: organization.id,
     deletedAt: null,
+    ...statusFilter,
+    ...dateFilter,
     ...(mode === "selected" ? { id: { in: ids } } : {}),
     ...(mode === "current_view" && q
       ? {

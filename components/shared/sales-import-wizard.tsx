@@ -30,6 +30,8 @@ export function SalesImportWizard({
   sampleFilename,
   redirectAfter,
   action,
+  extraOptions,
+  pageTips,
 }: {
   entityLabel: string;
   sampleCsv: string;
@@ -39,6 +41,16 @@ export function SalesImportWizard({
     csvText: string;
     dupHandling: "skip" | "overwrite";
   }) => Promise<SalesImportResult>;
+  /**
+   * M17f: optional extra option slot rendered above the duplicate-handling
+   * radio. Used by the Invoices import to surface the 3 spec'd checkboxes
+   * (Auto-Generate Numbers, Link to Sales Orders, Map Customer Addresses).
+   */
+  extraOptions?: React.ReactNode;
+  /**
+   * M17f: optional 4-bullet "Page Tips" list per the Invoices import spec.
+   */
+  pageTips?: string[];
 }) {
   const router = useRouter();
   const [step, setStep] = React.useState(0);
@@ -154,6 +166,10 @@ export function SalesImportWizard({
               </Button>
             </div>
 
+            {extraOptions ? (
+              <div className="space-y-2">{extraOptions}</div>
+            ) : null}
+
             <div>
               <Label>Duplicate Handling</Label>
               <div className="mt-2 space-y-2 text-sm">
@@ -177,6 +193,19 @@ export function SalesImportWizard({
                 </label>
               </div>
             </div>
+
+            {pageTips && pageTips.length > 0 ? (
+              <aside className="rounded-md border bg-muted/30 p-4">
+                <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+                  Page Tips
+                </div>
+                <ul className="text-sm space-y-1 list-disc list-inside text-muted-foreground">
+                  {pageTips.map((t, i) => (
+                    <li key={i}>{t}</li>
+                  ))}
+                </ul>
+              </aside>
+            ) : null}
 
             <div className="flex justify-end gap-2">
               <Button variant="ghost" onClick={() => router.push(redirectAfter)}>
