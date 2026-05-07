@@ -5,6 +5,10 @@ import { requireOrganization } from "@/lib/auth-helpers";
 import { Button } from "@/components/ui/button";
 import { QuoteForm } from "../quote-form";
 import { createQuoteAction } from "../actions";
+import {
+  createSalespersonInlineAction,
+  createCustomerInlineAction,
+} from "../../_inline-create/actions";
 import { peekNextDocumentNumber } from "@/lib/sales/numbering";
 import type { QuoteInput } from "@/lib/validations/quote";
 
@@ -86,6 +90,8 @@ export default async function NewQuotePage() {
         }))}
         salespersonOptions={salespeople.map((s) => ({ value: s.id, label: s.name }))}
         pdfTemplateOptions={pdfTemplates.map((t) => ({ value: t.id, label: t.name }))}
+        createSalesperson={createSalespersonInlineAction}
+        createCustomer={createCustomerInlineAction}
         onSubmitAction={submit}
         submitLabel="Save as Draft"
       />

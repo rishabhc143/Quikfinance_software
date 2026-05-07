@@ -30,6 +30,10 @@ export type QuoteFormProps = {
   taxOptions: TaxOption[];
   salespersonOptions: ComboboxOption[];
   pdfTemplateOptions?: ComboboxOption[];
+  /** Server action that creates a new Salesperson row inline. */
+  createSalesperson?: (input: { name: string }) => Promise<{ id: string; name: string }>;
+  /** Server action that creates a minimal Customer inline. */
+  createCustomer?: (input: { displayName: string; email?: string | null }) => Promise<{ id: string; displayName: string }>;
   defaultCurrency: string;
   onSubmitAction: (
     values: QuoteInput,
@@ -48,6 +52,8 @@ export function QuoteForm({
   taxOptions,
   salespersonOptions,
   pdfTemplateOptions = [],
+  createSalesperson,
+  createCustomer,
   defaultCurrency,
   onSubmitAction,
   submitLabel = "Save as Draft",
@@ -94,6 +100,11 @@ export function QuoteForm({
   const [attachments, setAttachments] = React.useState<AttachedFile[]>(
     (initial?.attachments as AttachedFile[] | undefined) ?? []
   );
+  // Mutable state for the inline-create patterns — the parent passes the
+  // initial server-loaded list; we append on inline create so the new
+  // option is selectable in the same submit cycle.
+  const [contactsState, setContactsState] = React.useState(contactOptions);
+  const [salespeopleState, setSalespeopleState] = React.useState(salespersonOptions);
   const [lines, setLines] = React.useState<LineItem[]>(initialLines ?? []);
 
   async function submit(send: boolean) {
@@ -154,10 +165,32 @@ export function QuoteForm({
       <section className="rounded-md border bg-card p-6 grid gap-4 md:grid-cols-[10rem_1fr]">
         <Label className="pt-2">Customer Name *</Label>
         <Combobox
-          options={contactOptions}
+          options={contactsState}
           value={contactId}
           onChange={(v) => setContactId(v)}
           placeholder="Select customer…"
+          allowCreate={!!createCustomer}
+          onCreate={
+            createCustomer
+              ? async (input: string) => {
+                  try {
+                    const created = await createCustomer({
+                      displayName: input,
+                      email: null,
+                    });
+                    setContactsState((prev) => [
+                      ...prev,
+                      { value: created.id, label: created.displayName },
+                    ]);
+                    setContactId(created.id);
+                  } catch (err) {
+                    toast.error(
+                      err instanceof Error ? err.message : "Couldn't create customer"
+                    );
+                  }
+                }
+              : undefined
+          }
         />
 
         <Label className="pt-2">Quote #</Label>
@@ -178,10 +211,29 @@ export function QuoteForm({
 
         <Label className="pt-2">Salesperson</Label>
         <Combobox
-          options={salespersonOptions}
+          options={salespeopleState}
           value={salespersonId}
           onChange={(v) => setSalespersonId(v)}
           placeholder="Optional"
+          allowCreate={!!createSalesperson}
+          onCreate={
+            createSalesperson
+              ? async (input: string) => {
+                  try {
+                    const created = await createSalesperson({ name: input });
+                    setSalespeopleState((prev) => [
+                      ...prev,
+                      { value: created.id, label: created.name },
+                    ]);
+                    setSalespersonId(created.id);
+                  } catch (err) {
+                    toast.error(
+                      err instanceof Error ? err.message : "Couldn't add salesperson"
+                    );
+                  }
+                }
+              : undefined
+          }
         />
 
         <Label className="pt-2">Subject</Label>
