@@ -76,6 +76,7 @@ export default async function QuoteDetailPage({ params }: { params: { id: string
               action={markQuoteSentAction.bind(null, q.id)}
               label="Mark as Sent"
               variant="outline"
+              testId="mark-as-sent-button"
             />
           ) : null}
           {q.contact.email && q.status !== "INVOICED" ? (
@@ -116,6 +117,7 @@ export default async function QuoteDetailPage({ params }: { params: { id: string
             <QuoteActionButton
               action={convertQuoteToInvoiceAction.bind(null, q.id)}
               label="Convert to Invoice"
+              testId="convert-to-invoice-button"
             />
           ) : null}
           {q.convertedInvoiceId ? (

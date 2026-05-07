@@ -10,10 +10,13 @@ export function InvoiceActionButton({
   action,
   label,
   variant = "default",
+  testId,
 }: {
   action: () => Promise<unknown>;
   label: string;
   variant?: "default" | "outline";
+  /** M19: optional data-testid for E2E selectors. */
+  testId?: string;
 }) {
   const router = useRouter();
   const [busy, setBusy] = React.useState(false);
@@ -21,6 +24,7 @@ export function InvoiceActionButton({
     <Button
       variant={variant}
       size="sm"
+      data-testid={testId}
       onClick={async () => {
         setBusy(true);
         try {

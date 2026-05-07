@@ -19,6 +19,7 @@ export function Combobox({
   onCreate,
   className,
   disabled,
+  testId,
 }: {
   options: ComboboxOption[];
   value: string | null | undefined;
@@ -29,6 +30,8 @@ export function Combobox({
   onCreate?: (input: string) => void | Promise<void>;
   className?: string;
   disabled?: boolean;
+  /** M19: optional data-testid on the popover trigger for E2E tests. */
+  testId?: string;
 }) {
   const [open, setOpen] = React.useState(false);
   const [search, setSearch] = React.useState("");
@@ -48,6 +51,7 @@ export function Combobox({
           variant="outline"
           role="combobox"
           disabled={disabled}
+          data-testid={testId}
           className={cn("w-full justify-between font-normal", !selected && "text-muted-foreground", className)}
         >
           <span className="truncate">{selected?.label ?? placeholder}</span>
