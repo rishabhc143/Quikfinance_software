@@ -241,6 +241,21 @@ function SalesDocumentPdf({ doc }: { doc: RenderableSalesDocument }): React.Reac
           </View>
         </View>
 
+        {doc.customFields && doc.customFields.length > 0 ? (
+          <View style={styles.notesSection}>
+            <Text style={styles.notesHeader}>Additional Information</Text>
+            {doc.customFields.map((cf, i) => (
+              <View
+                key={`cf-${i}`}
+                style={{ flexDirection: "row", marginTop: 2 }}
+              >
+                <Text style={{ width: "30%", color: "#777" }}>{cf.label}</Text>
+                <Text style={{ flex: 1 }}>{cf.value}</Text>
+              </View>
+            ))}
+          </View>
+        ) : null}
+
         {doc.notes ? (
           <View style={styles.notesSection}>
             <Text style={styles.notesHeader}>Notes</Text>

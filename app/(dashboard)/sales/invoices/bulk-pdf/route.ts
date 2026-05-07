@@ -3,6 +3,7 @@ import { format } from "date-fns";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
 import { renderSalesDocumentPdf } from "@/lib/sales/pdf-document";
+import { loadVisibleCustomFields } from "@/lib/sales/custom-fields-loader";
 import { parseIds, zipPdfs } from "@/lib/sales/bulk-pdf";
 
 export const runtime = "nodejs";
@@ -36,6 +37,12 @@ export async function GET(req: NextRequest) {
     invoices.map(async (inv) => ({
       filename: `invoice-${inv.number}.pdf`,
       bytes: await renderSalesDocumentPdf({
+        customFields: await loadVisibleCustomFields({
+          organizationId: organization.id,
+          entityType: "INVOICE",
+          entityId: inv.id,
+          surface: "pdf",
+        }),
         type: "INVOICE",
         organization: { name: inv.organization.name },
         document: {
