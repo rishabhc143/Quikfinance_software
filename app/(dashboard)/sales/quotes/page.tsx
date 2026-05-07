@@ -182,6 +182,7 @@ export default async function QuotesListPage({
         newHref="/sales/quotes/new"
         newLabel="New"
         importHref="/sales/quotes/import"
+        exportHref="/api/sales/quotes/export"
         preferencesHref="/settings/preferences/quotes"
         sortOptions={[
           { label: "Date", value: "issueDate" },

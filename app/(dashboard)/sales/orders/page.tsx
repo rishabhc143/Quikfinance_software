@@ -147,6 +147,7 @@ export default async function SalesOrdersListPage({
         newHref="/sales/orders/new"
         newLabel="New"
         importHref="/sales/orders/import"
+        exportHref="/api/sales/orders/export"
         preferencesHref="/settings/preferences/sales-orders"
         sortOptions={[
           { label: "Date", value: "orderDate" },

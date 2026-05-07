@@ -27,6 +27,9 @@ export type TransactionListPageProps = {
   newHref?: string;
   newLabel?: string;
   importHref?: string;
+  /** Base URL for the export route handler. Two menu entries are added:
+   *  Export All (mode=all) and Export Current View (mode=current_view). */
+  exportHref?: string;
   preferencesHref?: string;
   /** Three-dots Sort By options. Each emits a query param ?sort= when clicked. */
   sortOptions?: { label: string; value: string }[];
@@ -82,6 +85,18 @@ export function TransactionListPage(props: TransactionListPageProps) {
                 <DropdownMenuItem asChild>
                   <Link href={props.importHref}>Import</Link>
                 </DropdownMenuItem>
+              ) : null}
+              {props.exportHref ? (
+                <>
+                  <DropdownMenuItem asChild>
+                    <a href={`${props.exportHref}?mode=all`}>Export all</a>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <a href={`${props.exportHref}?mode=current_view`}>
+                      Export current view
+                    </a>
+                  </DropdownMenuItem>
+                </>
               ) : null}
               {props.preferencesHref ? (
                 <DropdownMenuItem asChild>

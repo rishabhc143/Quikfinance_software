@@ -93,6 +93,7 @@ export default async function PaymentsReceivedListPage({
         view="All payments"
         newHref="/sales/payments-received/new"
         newLabel="New payment"
+        exportHref="/api/sales/payments-received/export"
         columns={[
           { key: "date", header: "Date", sortable: true },
           { key: "number", header: "Payment #" },

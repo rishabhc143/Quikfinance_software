@@ -124,6 +124,7 @@ export default async function InvoicesListPage({
         newHref="/sales/invoices/new"
         newLabel="New"
         importHref="/sales/invoices/import"
+        exportHref="/api/sales/invoices/export"
         preferencesHref="/settings/preferences/invoices"
         sortOptions={[
           { label: "Date", value: "issueDate" },
