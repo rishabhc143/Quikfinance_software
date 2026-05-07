@@ -1,8 +1,10 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Loader2 } from "lucide-react";
+import { Loader2, Repeat } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -24,6 +26,7 @@ import { updateNumberSeriesInlineAction } from "@/app/(dashboard)/settings/numbe
 import {
   createSalespersonInlineAction,
   createCustomerInlineAction,
+  findItemBySkuAction,
 } from "@/app/(dashboard)/sales/_inline-create/actions";
 import type { InvoiceInput } from "@/lib/validations/invoice";
 import { format } from "date-fns";
@@ -60,6 +63,12 @@ export type InvoiceFormProps = {
     isRequired: boolean;
   }[];
   customFieldInitialValues?: Record<string, unknown>;
+  /**
+   * M17e: when editing a saved invoice, pass its id so the bottom bar
+   * shows a "Make Recurring" link → routes to
+   * /sales/recurring-invoices/new?fromInvoiceId=<id>. Hidden on create.
+   */
+  existingInvoiceId?: string;
   onSubmitAction: (
     values: InvoiceInput,
     opts?: { send?: boolean }
@@ -88,6 +97,7 @@ export function InvoiceForm({
   defaultCurrency,
   customFieldDefinitions = [],
   customFieldInitialValues = {},
+  existingInvoiceId,
   onSubmitAction,
   submitLabel = "Save as Draft",
   cancelHref = "/sales/invoices",
@@ -299,6 +309,7 @@ export function InvoiceForm({
         adjustment={adjustmentValue}
         onChange={(ls) => setLines(ls)}
         initialLines={initialLines}
+        scanItemAction={findItemBySkuAction}
       />
 
       {customFieldDefinitions.length > 0 ? (
@@ -384,6 +395,23 @@ export function InvoiceForm({
         <Button type="button" variant="ghost" onClick={() => router.push(cancelHref)}>
           Cancel
         </Button>
+        {existingInvoiceId ? (
+          <Link
+            href={`/sales/recurring-invoices/new?fromInvoiceId=${existingInvoiceId}`}
+            className={cn(
+              "ml-auto inline-flex items-center gap-1 text-sm text-primary hover:underline",
+              lines.length === 0 || lines.every((l) => !l.name.trim())
+                ? "pointer-events-none opacity-50"
+                : ""
+            )}
+            aria-disabled={
+              lines.length === 0 || lines.every((l) => !l.name.trim())
+            }
+          >
+            <Repeat className="h-4 w-4" />
+            Make Recurring
+          </Link>
+        ) : null}
       </div>
     </div>
   );

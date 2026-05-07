@@ -172,6 +172,7 @@ export default async function EditInvoicePage({
           isRequired: d.isRequired,
         }))}
         customFieldInitialValues={initialCustomFieldValues}
+        existingInvoiceId={inv.id}
         onSubmitAction={submit}
         submitLabel="Update invoice"
         cancelHref={`/sales/invoices/${inv.id}`}
