@@ -59,6 +59,7 @@ export function RecurringForm({
   const router = useRouter();
   const [busy, setBusy] = React.useState(false);
   const [profileName, setProfileName] = React.useState(initial?.profileName ?? "");
+  const [orderNumber, setOrderNumber] = React.useState(initial?.orderNumber ?? "");
   const [contactId, setContactId] = React.useState<string | null>(initial?.contactId ?? null);
   const [frequency, setFrequency] = React.useState<RecurringInvoiceInput["frequency"]>(
     initial?.frequency ?? "MONTHLY"
@@ -110,6 +111,7 @@ export function RecurringForm({
     try {
       await onSubmitAction({
         profileName,
+        orderNumber: orderNumber || null,
         contactId,
         frequency,
         intervalN: Number(intervalN || 1),
@@ -156,6 +158,13 @@ export function RecurringForm({
       <section className="rounded-md border bg-card p-6 grid gap-4 md:grid-cols-[10rem_1fr]">
         <Label className="pt-2">Profile Name *</Label>
         <Input value={profileName} onChange={(e) => setProfileName(e.target.value)} />
+
+        <Label className="pt-2">Order Number</Label>
+        <Input
+          value={orderNumber}
+          onChange={(e) => setOrderNumber(e.target.value)}
+          placeholder="Customer's PO or reference"
+        />
 
         <Label className="pt-2">Customer *</Label>
         <Combobox options={contactOptions} value={contactId} onChange={setContactId} placeholder="Select customer…" />

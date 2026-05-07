@@ -36,6 +36,7 @@ async function buildTemplate(orgId: string, input: RecurringInvoiceInput) {
     adjustment: input.adjustmentValue ?? 0,
   });
   return {
+    orderNumber: input.orderNumber ?? null,
     paymentTermsId: input.paymentTermsId ?? null,
     salespersonId: input.salespersonId ?? null,
     currency: input.currency,

@@ -61,6 +61,19 @@ export const recordPaymentSchema = z.object({
     .default("bank_transfer"),
   depositToAccountId: z.string().nullable().optional(),
   bankCharges: z.coerce.number().nonnegative().default(0),
+  /** Tax Deducted at Source (per <payments_received_spec> Tax Deducted
+   *  if TDS: rate + amount). Stored on the PaymentReceived row's notes
+   *  prefix until a dedicated column lands. */
+  tdsRate: z.coerce.number().nonnegative().default(0),
+  tdsAmount: z.coerce.number().nonnegative().default(0),
+  /** Whether the customer should receive an email confirmation when
+   *  this payment is recorded (default off — per spec checkbox). */
+  emailNotification: z.boolean().default(false),
+  /** Whether excess (amountReceived - sum(allocations)) should be
+   *  retained as customer credit (default true) or refunded
+   *  immediately. v1 always retains; the toggle is recorded for
+   *  future "auto-refund excess" wiring. */
+  useExcessAsCredit: z.boolean().default(true),
   reference: z.string().max(80).nullable().optional(),
   notes: z.string().max(2000).nullable().optional(),
   allocations: z
