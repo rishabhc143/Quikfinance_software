@@ -562,3 +562,103 @@ async function enqueueAndAttach(orgId: string, quoteId: string) {
     documentId: q.id,
   });
 }
+
+/**
+ * Bulk actions per <quotes_spec> "Bulk actions: Mark Sent, Mark Accepted,
+ * Print, Email, Delete". Print/Email are deferred — they need PDF-batch +
+ * email-fanout plumbing.
+ *
+ * Each action is multi-tenant (orgId guard), writes a single AuditLog
+ * row per call (with the count + ids in `after`), and revalidates the
+ * list path. INVOICED quotes are immutable so they're skipped by status.
+ */
+export async function bulkMarkQuotesSentAction(input: {
+  ids: string[];
+}): Promise<{ ok: boolean; updated?: number; error?: string }> {
+  const { user, organization } = await requireOrganization();
+  if (!input.ids?.length) return { ok: true, updated: 0 };
+  const result = await db.quote.updateMany({
+    where: {
+      id: { in: input.ids },
+      organizationId: organization.id,
+      deletedAt: null,
+      status: "DRAFT",
+    },
+    data: { status: "SENT", sentAt: new Date() },
+  });
+  await writeAuditLog({
+    organizationId: organization.id,
+    userId: user.id,
+    action: "UPDATE",
+    entityType: "Quote",
+    entityId: `bulk-${Date.now()}`,
+    after: { status: "SENT", count: result.count, ids: input.ids },
+  });
+  revalidatePath("/sales/quotes");
+  return { ok: true, updated: result.count };
+}
+
+export async function bulkMarkQuotesAcceptedAction(input: {
+  ids: string[];
+}): Promise<{ ok: boolean; updated?: number; error?: string }> {
+  const { user, organization } = await requireOrganization();
+  if (!input.ids?.length) return { ok: true, updated: 0 };
+  const result = await db.quote.updateMany({
+    where: {
+      id: { in: input.ids },
+      organizationId: organization.id,
+      deletedAt: null,
+      status: { in: ["DRAFT", "SENT"] },
+    },
+    data: { status: "ACCEPTED" },
+  });
+  await writeAuditLog({
+    organizationId: organization.id,
+    userId: user.id,
+    action: "UPDATE",
+    entityType: "Quote",
+    entityId: `bulk-${Date.now()}`,
+    after: { status: "ACCEPTED", count: result.count, ids: input.ids },
+  });
+  revalidatePath("/sales/quotes");
+  return { ok: true, updated: result.count };
+}
+
+export async function bulkDeleteQuotesAction(input: {
+  ids: string[];
+}): Promise<{ ok: boolean; updated?: number; error?: string }> {
+  const { user, organization } = await requireOrganization();
+  if (!input.ids?.length) return { ok: true, updated: 0 };
+  // Block delete on INVOICED quotes (mirrors per-row guard)
+  const blocked = await db.quote.count({
+    where: {
+      id: { in: input.ids },
+      organizationId: organization.id,
+      status: "INVOICED",
+    },
+  });
+  if (blocked > 0) {
+    return {
+      ok: false,
+      error: `${blocked} invoiced quote${blocked === 1 ? "" : "s"} cannot be deleted`,
+    };
+  }
+  const result = await db.quote.updateMany({
+    where: {
+      id: { in: input.ids },
+      organizationId: organization.id,
+      deletedAt: null,
+    },
+    data: { deletedAt: new Date() },
+  });
+  await writeAuditLog({
+    organizationId: organization.id,
+    userId: user.id,
+    action: "DELETE",
+    entityType: "Quote",
+    entityId: `bulk-${Date.now()}`,
+    before: { count: result.count, ids: input.ids },
+  });
+  revalidatePath("/sales/quotes");
+  return { ok: true, updated: result.count };
+}

@@ -181,3 +181,45 @@ export async function deletePaymentReceivedAction(id: string) {
   revalidatePath("/sales/payments-received");
   return { ok: true };
 }
+
+/**
+ * Bulk delete per <payments_received_spec>. Mirrors the per-row guard:
+ * payments with allocations are kept (financial integrity).
+ */
+export async function bulkDeletePaymentsAction(input: {
+  ids: string[];
+}): Promise<{ ok: boolean; updated?: number; error?: string }> {
+  const { user, organization } = await requireOrganization();
+  if (!input.ids?.length) return { ok: true, updated: 0 };
+  const blocked = await db.paymentReceived.count({
+    where: {
+      id: { in: input.ids },
+      organizationId: organization.id,
+      allocations: { some: {} },
+    },
+  });
+  if (blocked > 0) {
+    return {
+      ok: false,
+      error: `${blocked} payment${blocked === 1 ? "" : "s"} with allocations cannot be deleted`,
+    };
+  }
+  const result = await db.paymentReceived.updateMany({
+    where: {
+      id: { in: input.ids },
+      organizationId: organization.id,
+      deletedAt: null,
+    },
+    data: { deletedAt: new Date() },
+  });
+  await writeAuditLog({
+    organizationId: organization.id,
+    userId: user.id,
+    action: "DELETE",
+    entityType: "PaymentReceived",
+    entityId: `bulk-${Date.now()}`,
+    before: { count: result.count, ids: input.ids },
+  });
+  revalidatePath("/sales/payments-received");
+  return { ok: true, updated: result.count };
+}

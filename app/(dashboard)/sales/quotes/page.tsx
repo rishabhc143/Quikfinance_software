@@ -6,7 +6,13 @@ import { requireOrganization } from "@/lib/auth-helpers";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { TransactionListPage } from "@/components/shared/transaction-list-page";
+import { BulkAwareDataTable } from "@/components/shared/bulk-aware-data-table";
 import { formatMoney } from "@/lib/money";
+import {
+  bulkDeleteQuotesAction,
+  bulkMarkQuotesAcceptedAction,
+  bulkMarkQuotesSentAction,
+} from "./actions";
 
 export const metadata = { title: "Quotes" };
 
@@ -230,6 +236,49 @@ export default async function QuotesListPage({
         dir={dir}
         search={q}
         empty={empty}
+        customTable={
+          <BulkAwareDataTable
+            columns={[
+              { key: "date", header: "Date", sortable: true },
+              { key: "number", header: "Quote #", sortable: true },
+              { key: "ref", header: "Reference #" },
+              { key: "cust", header: "Customer name" },
+              { key: "status", header: "Status" },
+              { key: "amount", header: "Amount", align: "right", sortable: true },
+              { key: "expiry", header: "Expiry date" },
+            ]}
+            rows={rows}
+            total={total}
+            page={page}
+            pageSize={pageSize}
+            sort={sort}
+            dir={dir}
+            search={q}
+            rowNoun="quote"
+            bulkActions={[
+              {
+                label: "Mark as Sent",
+                doneVerb: "Marked",
+                noun: "quote as sent",
+                action: async (ids) => bulkMarkQuotesSentAction({ ids }),
+              },
+              {
+                label: "Mark as Accepted",
+                doneVerb: "Marked",
+                noun: "quote as accepted",
+                action: async (ids) => bulkMarkQuotesAcceptedAction({ ids }),
+              },
+              {
+                label: "Delete",
+                variant: "destructive",
+                doneVerb: "Deleted",
+                noun: "quote",
+                confirm: "Delete the selected quotes? This is reversible (soft delete).",
+                action: async (ids) => bulkDeleteQuotesAction({ ids }),
+              },
+            ]}
+          />
+        }
       />
     </div>
   );

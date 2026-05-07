@@ -590,3 +590,119 @@ async function enqueueAndAttach(orgId: string, invoiceId: string) {
     documentId: inv.id,
   });
 }
+
+/**
+ * Bulk actions per <invoices_spec> "Bulk actions: Mark as Sent, Send
+ * Reminder, Print, Email, Delete". Print/Email deferred.
+ *
+ * Bulk Mark Sent: only DRAFT rows transition to SENT.
+ * Bulk Send Reminder: enqueues a payment-reminder email per overdue/sent
+ *   invoice that has a customer email on file.
+ * Bulk Delete: blocked when any selected invoice has amountPaid > 0.
+ */
+export async function bulkMarkInvoicesSentAction(input: {
+  ids: string[];
+}): Promise<{ ok: boolean; updated?: number; error?: string }> {
+  const { user, organization } = await requireOrganization();
+  if (!input.ids?.length) return { ok: true, updated: 0 };
+  const result = await db.invoice.updateMany({
+    where: {
+      id: { in: input.ids },
+      organizationId: organization.id,
+      deletedAt: null,
+      status: "DRAFT",
+    },
+    data: { status: "SENT" },
+  });
+  await writeAuditLog({
+    organizationId: organization.id,
+    userId: user.id,
+    action: "UPDATE",
+    entityType: "Invoice",
+    entityId: `bulk-${Date.now()}`,
+    after: { status: "SENT", count: result.count, ids: input.ids },
+  });
+  revalidatePath("/sales/invoices");
+  return { ok: true, updated: result.count };
+}
+
+export async function bulkSendRemindersAction(input: {
+  ids: string[];
+}): Promise<{ ok: boolean; updated?: number; error?: string }> {
+  const { user, organization } = await requireOrganization();
+  if (!input.ids?.length) return { ok: true, updated: 0 };
+  const targets = await db.invoice.findMany({
+    where: {
+      id: { in: input.ids },
+      organizationId: organization.id,
+      deletedAt: null,
+      status: { in: ["SENT", "PARTIALLY_PAID", "OVERDUE"] },
+    },
+    include: { contact: true, organization: true },
+  });
+  let queued = 0;
+  for (const inv of targets) {
+    if (!inv.contact.email) continue;
+    const balance = Number(inv.total) - Number(inv.amountPaid);
+    await enqueueEmail({
+      organizationId: organization.id,
+      toEmail: inv.contact.email,
+      subject: `Payment reminder — Invoice ${inv.number}`,
+      bodyHtml: `<p>Hello ${inv.contact.displayName},</p>
+<p>This is a friendly reminder that invoice <strong>${inv.number}</strong> for ${balance} is due on ${format(inv.dueDate, "dd MMM yyyy")}.</p>
+<p>Thank you,<br/>${inv.organization.name}</p>`,
+      documentType: "INVOICE_REMINDER",
+      documentId: inv.id,
+    });
+    queued += 1;
+  }
+  await writeAuditLog({
+    organizationId: organization.id,
+    userId: user.id,
+    action: "CREATE",
+    entityType: "InvoiceReminderBulk",
+    entityId: `bulk-${Date.now()}`,
+    after: { queued, ids: input.ids },
+  });
+  revalidatePath("/sales/invoices");
+  return { ok: true, updated: queued };
+}
+
+export async function bulkDeleteInvoicesAction(input: {
+  ids: string[];
+}): Promise<{ ok: boolean; updated?: number; error?: string }> {
+  const { user, organization } = await requireOrganization();
+  if (!input.ids?.length) return { ok: true, updated: 0 };
+  // Block delete when any selected invoice has payments applied
+  const blocked = await db.invoice.count({
+    where: {
+      id: { in: input.ids },
+      organizationId: organization.id,
+      amountPaid: { gt: 0 },
+    },
+  });
+  if (blocked > 0) {
+    return {
+      ok: false,
+      error: `${blocked} invoice${blocked === 1 ? "" : "s"} with payments applied cannot be deleted`,
+    };
+  }
+  const result = await db.invoice.updateMany({
+    where: {
+      id: { in: input.ids },
+      organizationId: organization.id,
+      deletedAt: null,
+    },
+    data: { deletedAt: new Date() },
+  });
+  await writeAuditLog({
+    organizationId: organization.id,
+    userId: user.id,
+    action: "DELETE",
+    entityType: "Invoice",
+    entityId: `bulk-${Date.now()}`,
+    before: { count: result.count, ids: input.ids },
+  });
+  revalidatePath("/sales/invoices");
+  return { ok: true, updated: result.count };
+}

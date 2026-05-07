@@ -227,3 +227,73 @@ export async function deleteDeliveryChallanAction(id: string) {
   revalidatePath("/sales/delivery-challans");
   return { ok: true };
 }
+
+/**
+ * Bulk actions per <delivery_challans_spec> "Bulk: Mark Open, Print,
+ * Email, Delete". DRAFT rows transition to OPEN; INVOICED/DELIVERED
+ * rows are immutable so they're skipped.
+ */
+export async function bulkMarkChallansOpenAction(input: {
+  ids: string[];
+}): Promise<{ ok: boolean; updated?: number; error?: string }> {
+  const { user, organization } = await requireOrganization();
+  if (!input.ids?.length) return { ok: true, updated: 0 };
+  const result = await db.deliveryChallan.updateMany({
+    where: {
+      id: { in: input.ids },
+      organizationId: organization.id,
+      deletedAt: null,
+      status: "DRAFT",
+    },
+    data: { status: "OPEN" },
+  });
+  await writeAuditLog({
+    organizationId: organization.id,
+    userId: user.id,
+    action: "UPDATE",
+    entityType: "DeliveryChallan",
+    entityId: `bulk-${Date.now()}`,
+    after: { status: "OPEN", count: result.count, ids: input.ids },
+  });
+  revalidatePath("/sales/delivery-challans");
+  return { ok: true, updated: result.count };
+}
+
+export async function bulkDeleteDeliveryChallansAction(input: {
+  ids: string[];
+}): Promise<{ ok: boolean; updated?: number; error?: string }> {
+  const { user, organization } = await requireOrganization();
+  if (!input.ids?.length) return { ok: true, updated: 0 };
+  // Block delete on INVOICED challans (mirrors per-row guard)
+  const blocked = await db.deliveryChallan.count({
+    where: {
+      id: { in: input.ids },
+      organizationId: organization.id,
+      status: "INVOICED",
+    },
+  });
+  if (blocked > 0) {
+    return {
+      ok: false,
+      error: `${blocked} invoiced challan${blocked === 1 ? "" : "s"} cannot be deleted`,
+    };
+  }
+  const result = await db.deliveryChallan.updateMany({
+    where: {
+      id: { in: input.ids },
+      organizationId: organization.id,
+      deletedAt: null,
+    },
+    data: { deletedAt: new Date() },
+  });
+  await writeAuditLog({
+    organizationId: organization.id,
+    userId: user.id,
+    action: "DELETE",
+    entityType: "DeliveryChallan",
+    entityId: `bulk-${Date.now()}`,
+    before: { count: result.count, ids: input.ids },
+  });
+  revalidatePath("/sales/delivery-challans");
+  return { ok: true, updated: result.count };
+}

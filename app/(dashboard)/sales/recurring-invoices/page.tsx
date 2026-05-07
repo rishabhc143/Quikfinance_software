@@ -6,7 +6,13 @@ import { requireOrganization } from "@/lib/auth-helpers";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { TransactionListPage } from "@/components/shared/transaction-list-page";
+import { BulkAwareDataTable } from "@/components/shared/bulk-aware-data-table";
 import { formatMoney } from "@/lib/money";
+import {
+  bulkDeleteRecurringAction,
+  bulkResumeRecurringAction,
+  bulkStopRecurringAction,
+} from "./actions";
 
 export const metadata = { title: "Recurring Invoices" };
 
@@ -110,6 +116,47 @@ export default async function RecurringInvoicesListPage({
         pageSize={pageSize}
         search={q}
         empty={empty}
+        customTable={
+          <BulkAwareDataTable
+            columns={[
+              { key: "profile", header: "Profile name", sortable: true },
+              { key: "cust", header: "Customer name" },
+              { key: "freq", header: "Frequency" },
+              { key: "start", header: "Start date" },
+              { key: "next", header: "Next invoice date" },
+              { key: "status", header: "Status" },
+              { key: "amount", header: "Amount", align: "right" },
+            ]}
+            rows={rows}
+            total={total}
+            page={page}
+            pageSize={pageSize}
+            search={q}
+            rowNoun="profile"
+            bulkActions={[
+              {
+                label: "Stop",
+                doneVerb: "Stopped",
+                noun: "profile",
+                action: async (ids) => bulkStopRecurringAction({ ids }),
+              },
+              {
+                label: "Resume",
+                doneVerb: "Resumed",
+                noun: "profile",
+                action: async (ids) => bulkResumeRecurringAction({ ids }),
+              },
+              {
+                label: "Delete",
+                variant: "destructive",
+                doneVerb: "Deleted",
+                noun: "profile",
+                confirm: "Delete the selected recurring profiles? This is reversible (soft delete).",
+                action: async (ids) => bulkDeleteRecurringAction({ ids }),
+              },
+            ]}
+          />
+        }
       />
     </div>
   );

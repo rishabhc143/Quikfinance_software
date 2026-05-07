@@ -6,7 +6,13 @@ import { requireOrganization } from "@/lib/auth-helpers";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { TransactionListPage } from "@/components/shared/transaction-list-page";
+import { BulkAwareDataTable } from "@/components/shared/bulk-aware-data-table";
 import { formatMoney } from "@/lib/money";
+import {
+  bulkDeleteInvoicesAction,
+  bulkMarkInvoicesSentAction,
+  bulkSendRemindersAction,
+} from "./actions";
 
 export const metadata = { title: "Invoices" };
 
@@ -190,6 +196,50 @@ export default async function InvoicesListPage({
         dir={dir}
         search={q}
         empty={empty}
+        customTable={
+          <BulkAwareDataTable
+            columns={[
+              { key: "date", header: "Date", sortable: true },
+              { key: "number", header: "Invoice #", sortable: true },
+              { key: "ref", header: "Reference #" },
+              { key: "cust", header: "Customer name" },
+              { key: "status", header: "Status" },
+              { key: "due", header: "Due date", sortable: true },
+              { key: "amount", header: "Amount", align: "right", sortable: true },
+              { key: "balance", header: "Balance", align: "right" },
+            ]}
+            rows={rows}
+            total={total}
+            page={page}
+            pageSize={pageSize}
+            sort={sort}
+            dir={dir}
+            search={q}
+            rowNoun="invoice"
+            bulkActions={[
+              {
+                label: "Mark as Sent",
+                doneVerb: "Marked",
+                noun: "invoice as sent",
+                action: async (ids) => bulkMarkInvoicesSentAction({ ids }),
+              },
+              {
+                label: "Send Reminder",
+                doneVerb: "Queued reminders for",
+                noun: "invoice",
+                action: async (ids) => bulkSendRemindersAction({ ids }),
+              },
+              {
+                label: "Delete",
+                variant: "destructive",
+                doneVerb: "Deleted",
+                noun: "invoice",
+                confirm: "Delete the selected invoices? Invoices with payments cannot be deleted.",
+                action: async (ids) => bulkDeleteInvoicesAction({ ids }),
+              },
+            ]}
+          />
+        }
       />
     </div>
   );
