@@ -114,6 +114,87 @@ export async function markChallanReturnedAction(id: string): Promise<void> {
   revalidatePath(`/sales/delivery-challans/${id}`);
 }
 
+/**
+ * Convert a Delivery Challan to an Invoice. Mirrors the Quote → Invoice
+ * conversion shape: copies line items, generates a fresh invoice number,
+ * sets the DC status to INVOICED, and links via the invoice's
+ * referenceNumber field (the DeliveryChallan model has no
+ * convertedInvoiceId column — we reuse referenceNumber for the link).
+ */
+export async function convertChallanToInvoiceAction(
+  challanId: string
+): Promise<void> {
+  const { user, organization } = await requireOrganization();
+  const c = await db.deliveryChallan.findFirst({
+    where: { id: challanId, organizationId: organization.id, deletedAt: null },
+    include: { lineItems: true },
+  });
+  if (!c) throw new Error("Delivery challan not found");
+  if (!c.contactId) throw new Error("Delivery challan has no customer");
+  if (c.status === "INVOICED") {
+    throw new Error("Already invoiced");
+  }
+
+  const invoiceNumber = await getNextDocumentNumber(organization.id, "INVOICE");
+  const today = new Date();
+  const dueDate = new Date(today);
+  dueDate.setDate(dueDate.getDate() + 30);
+
+  const lineTotals = c.lineItems.reduce(
+    (acc, l) => acc + Number(l.amount),
+    0
+  );
+
+  const inv = await db.$transaction(async (tx) => {
+    const created = await tx.invoice.create({
+      data: {
+        organizationId: organization.id,
+        number: invoiceNumber,
+        referenceNumber: c.number,
+        contactId: c.contactId!,
+        status: "DRAFT",
+        issueDate: today,
+        dueDate,
+        currency: "INR",
+        subtotal: lineTotals,
+        total: lineTotals,
+        amountPaid: 0,
+        notes: c.customerNotes,
+        customerNotes: c.customerNotes,
+        termsAndConditions: c.termsAndConditions,
+        pdfTemplateId: c.pdfTemplateId,
+        lineItems: {
+          create: c.lineItems.map((l) => ({
+            itemId: l.itemId,
+            description: l.description ?? l.name,
+            quantity: l.quantity,
+            rate: l.rate,
+            taxId: l.taxId,
+            amount: l.amount,
+          })),
+        },
+      },
+    });
+    await tx.deliveryChallan.update({
+      where: { id: challanId },
+      data: { status: "INVOICED" },
+    });
+    return created;
+  });
+
+  await writeAuditLog({
+    organizationId: organization.id,
+    userId: user.id,
+    action: "CREATE",
+    entityType: "Invoice",
+    entityId: inv.id,
+    after: { number: inv.number, fromChallan: c.number },
+  });
+  revalidatePath("/sales/delivery-challans");
+  revalidatePath("/sales/invoices");
+  redirect(`/sales/invoices/${inv.id}`);
+}
+
 export async function deleteDeliveryChallanAction(id: string) {
   const { user, organization } = await requireOrganization();
   const c = await db.deliveryChallan.findFirst({

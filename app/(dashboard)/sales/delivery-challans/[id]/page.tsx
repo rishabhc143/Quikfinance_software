@@ -18,6 +18,7 @@ import {
   markChallanDeliveredAction,
   markChallanReturnedAction,
   deleteDeliveryChallanAction,
+  convertChallanToInvoiceAction,
 } from "../actions";
 
 export default async function ChallanDetailPage({
@@ -63,6 +64,13 @@ export default async function ChallanDetailPage({
                 <DropdownMenuItem asChild>
                   <form action={markChallanReturnedAction.bind(null, c.id)}>
                     <button className="w-full text-left">Mark as Returned</button>
+                  </form>
+                </DropdownMenuItem>
+              ) : null}
+              {c.status !== "INVOICED" && c.contactId ? (
+                <DropdownMenuItem asChild>
+                  <form action={convertChallanToInvoiceAction.bind(null, c.id)}>
+                    <button className="w-full text-left">Convert to Invoice</button>
                   </form>
                 </DropdownMenuItem>
               ) : null}

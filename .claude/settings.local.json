@@ -1,7 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "Bash(pandoc --version)"
+      "Bash(pandoc --version)",
+      "Bash(gh pr create --base main --head feat/sales-module --title 'feat\\(sales\\): Sales module — Phases S1–S8' --body ' *)"
     ]
   }
 }

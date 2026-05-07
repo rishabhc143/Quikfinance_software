@@ -345,6 +345,91 @@ export async function sendInvoiceReminderAction(id: string): Promise<void> {
   revalidatePath(`/sales/invoices/${id}`);
 }
 
+/**
+ * Apply one or more credit notes to this invoice. Mirrors the Credit Note →
+ * Invoice direction (which is what the Credit Note detail's Apply dialog
+ * uses) but reverses the entry point — the Invoice detail also gets an
+ * "Apply Credits" action per <invoices_spec>.
+ */
+export async function applyCreditsToInvoiceAction(
+  invoiceId: string,
+  applications: { creditNoteId: string; amount: number }[]
+): Promise<void> {
+  const { user, organization } = await requireOrganization();
+  if (!applications || applications.length === 0) {
+    throw new Error("Pick at least one credit note");
+  }
+  const inv = await db.invoice.findFirst({
+    where: { id: invoiceId, organizationId: organization.id, deletedAt: null },
+  });
+  if (!inv) throw new Error("Invoice not found");
+  const totalToApply = applications.reduce((s, a) => s + Number(a.amount), 0);
+  const balance = Number(inv.total) - Number(inv.amountPaid);
+  if (totalToApply > balance + 0.0001) {
+    throw new Error("Total applied exceeds invoice balance");
+  }
+
+  await db.$transaction(async (tx) => {
+    for (const a of applications.filter((a) => Number(a.amount) > 0)) {
+      const cn = await tx.creditNote.findFirst({
+        where: {
+          id: a.creditNoteId,
+          organizationId: organization.id,
+          deletedAt: null,
+        },
+      });
+      if (!cn) continue;
+      const cnBalance =
+        Number(cn.total) - Number(cn.amountApplied) - Number(cn.amountRefunded);
+      if (Number(a.amount) > cnBalance + 0.0001) {
+        throw new Error(`Credit note ${cn.number} balance exceeded`);
+      }
+      await tx.creditNoteApplication.create({
+        data: {
+          creditNoteId: cn.id,
+          invoiceId,
+          amountApplied: a.amount,
+        },
+      });
+      const newCnApplied = Number(cn.amountApplied) + Number(a.amount);
+      const newCnBalance =
+        Number(cn.total) - newCnApplied - Number(cn.amountRefunded);
+      await tx.creditNote.update({
+        where: { id: cn.id },
+        data: {
+          amountApplied: newCnApplied,
+          status: newCnBalance <= 0.0001 ? "CLOSED" : cn.status,
+        },
+      });
+    }
+    const newPaid = Number(inv.amountPaid) + totalToApply;
+    const newStatus =
+      newPaid >= Number(inv.total) - 0.0001
+        ? "PAID"
+        : newPaid > 0
+        ? "PARTIALLY_PAID"
+        : inv.status;
+    await tx.invoice.update({
+      where: { id: invoiceId },
+      data: { amountPaid: newPaid, status: newStatus },
+    });
+  });
+
+  await writeAuditLog({
+    organizationId: organization.id,
+    userId: user.id,
+    action: "UPDATE",
+    entityType: "Invoice",
+    entityId: invoiceId,
+    after: {
+      creditApplied: totalToApply,
+      applications: applications.length,
+    },
+  });
+  revalidatePath(`/sales/invoices/${invoiceId}`);
+  revalidatePath("/sales/credit-notes");
+}
+
 export async function deleteInvoiceAction(id: string) {
   const { user, organization } = await requireOrganization();
   const inv = await db.invoice.findFirst({

@@ -200,6 +200,41 @@ export async function refundCreditNoteAction(
   revalidatePath(`/sales/credit-notes/${creditNoteId}`);
 }
 
+/**
+ * Reopen a Closed credit note. Per <credit_notes_spec> only valid when
+ * applications/refunds have been voided so balance > 0 again.
+ */
+export async function reopenCreditNoteAction(id: string): Promise<void> {
+  const { user, organization } = await requireOrganization();
+  const cn = await db.creditNote.findFirst({
+    where: { id, organizationId: organization.id, deletedAt: null },
+  });
+  if (!cn) throw new Error("Credit note not found");
+  if (cn.status !== "CLOSED") {
+    throw new Error("Only closed credit notes can be reopened");
+  }
+  const balance =
+    Number(cn.total) - Number(cn.amountApplied) - Number(cn.amountRefunded);
+  if (balance <= 0.0001) {
+    throw new Error(
+      "Cannot reopen — balance is zero. Void an application or refund first."
+    );
+  }
+  await db.creditNote.update({
+    where: { id },
+    data: { status: "OPEN" },
+  });
+  await writeAuditLog({
+    organizationId: organization.id,
+    userId: user.id,
+    action: "UPDATE",
+    entityType: "CreditNote",
+    entityId: id,
+    after: { status: "OPEN", reopened: true },
+  });
+  revalidatePath(`/sales/credit-notes/${id}`);
+}
+
 export async function voidCreditNoteAction(id: string): Promise<void> {
   const { user, organization } = await requireOrganization();
   await db.creditNote.update({ where: { id }, data: { status: "VOID" } });
