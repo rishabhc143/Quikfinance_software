@@ -29,10 +29,17 @@ export default async function EditCustomerPage({
   });
   if (!c) notFound();
 
-  const paymentTerms = await db.paymentTerms.findMany({
-    where: { organizationId: organization.id },
-    orderBy: { numberOfDays: "asc" },
-  });
+  const [paymentTerms, members] = await Promise.all([
+    db.paymentTerms.findMany({
+      where: { organizationId: organization.id },
+      orderBy: { numberOfDays: "asc" },
+    }),
+    db.organizationMembership.findMany({
+      where: { organizationId: organization.id },
+      include: { user: { select: { id: true, name: true, email: true } } },
+      orderBy: { createdAt: "asc" },
+    }),
+  ]);
 
   const initial: Partial<CustomerInput> = {
     customerType: c.customerType,
@@ -118,6 +125,11 @@ export default async function EditCustomerPage({
           value: p.id,
           label: p.name,
           hint: p.numberOfDays === 0 ? "Due on receipt" : `${p.numberOfDays} days`,
+        }))}
+        customerOwnerOptions={members.map((m) => ({
+          value: m.user.id,
+          label: m.user.name ?? m.user.email,
+          hint: m.role,
         }))}
         onSubmitAction={submit}
         submitLabel="Update customer"

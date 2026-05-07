@@ -16,8 +16,17 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { DeleteButton } from "@/components/shared/delete-button";
 import { formatMoney } from "@/lib/money";
-import { softDeleteCustomerAction, addRemarkAction } from "../actions";
+import {
+  softDeleteCustomerAction,
+  addRemarkAction,
+  emailCustomerStatementAction,
+  uploadCustomerDocumentsAction,
+  deleteCustomerDocumentAction,
+} from "../actions";
 import { RemarkForm } from "./remark-form";
+import { StatementForm } from "./statement-form";
+import { DocumentsCard } from "./documents-card";
+import { CustomerOverviewChart, type MonthlyPoint } from "./customer-overview-chart";
 
 export default async function CustomerDetailPage({
   params,
@@ -35,6 +44,7 @@ export default async function CustomerDetailPage({
       addresses: true,
       contactPersons: { orderBy: { isPrimary: "desc" } },
       remarks: { orderBy: { createdAt: "desc" }, take: 50 },
+      contactDocuments: { orderBy: { createdAt: "desc" } },
     },
   });
   if (!c) notFound();
@@ -109,6 +119,39 @@ export default async function CustomerDetailPage({
   );
 
   const [invoices, quotes, salesOrders, creditNotes, payments] = allDocs;
+
+  // 12-month rolling income vs payments for the Overview chart
+  const chartData: MonthlyPoint[] = (() => {
+    const now = new Date();
+    const points: MonthlyPoint[] = [];
+    for (let i = 11; i >= 0; i -= 1) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      const label = d.toLocaleString("en-US", { month: "short" }) + " " + String(d.getFullYear()).slice(2);
+      points.push({ month: label, income: 0, payments: 0 });
+      // Inline tag the key for matching below
+      (points[points.length - 1] as MonthlyPoint & { _key: string })._key = key;
+    }
+    function keyOf(date: Date) {
+      return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+    }
+    for (const inv of invoices) {
+      const slot = points.find(
+        (p) => (p as MonthlyPoint & { _key?: string })._key === keyOf(inv.issueDate)
+      );
+      if (slot) slot.income += Number(inv.total);
+    }
+    for (const p of payments) {
+      const slot = points.find(
+        (pt) => (pt as MonthlyPoint & { _key?: string })._key === keyOf(p.paymentDate)
+      );
+      if (slot) slot.payments += Number(p.amount);
+    }
+    return points.map(({ _key, ...rest }: MonthlyPoint & { _key?: string }) => {
+      void _key;
+      return rest;
+    });
+  })();
 
   const transactions = [
     ...invoices.map((d) => ({
@@ -284,6 +327,20 @@ export default async function CustomerDetailPage({
             </Card>
           ) : null}
 
+          <DocumentsCard
+            contactId={c.id}
+            initialDocuments={c.contactDocuments.map((d) => ({
+              id: d.id,
+              fileName: d.fileName,
+              fileUrl: d.fileUrl,
+              fileSize: d.fileSize,
+              mimeType: d.mimeType,
+              createdAt: d.createdAt,
+            }))}
+            uploadAction={uploadCustomerDocumentsAction}
+            deleteAction={deleteCustomerDocumentAction}
+          />
+
           {c.contactPersons.length > 0 ? (
             <Card>
               <CardContent className="pt-6 space-y-2 text-sm">
@@ -341,6 +398,14 @@ export default async function CustomerDetailPage({
                     label="Quotes"
                     value={String(quotes.length)}
                   />
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="pt-6">
+                  <h2 className="text-sm font-semibold mb-3">
+                    Last 12 months — Invoiced vs Paid
+                  </h2>
+                  <CustomerOverviewChart data={chartData} />
                 </CardContent>
               </Card>
               <Card>
@@ -452,10 +517,12 @@ export default async function CustomerDetailPage({
 
             <TabsContent value="statements">
               <Card>
-                <CardContent className="pt-6 space-y-3 text-sm">
-                  <p className="text-muted-foreground">
-                    Customer statements (PDF + email) ship with Phase S8.
-                  </p>
+                <CardContent className="pt-6">
+                  <StatementForm
+                    customerId={c.id}
+                    customerEmail={c.email}
+                    emailAction={emailCustomerStatementAction}
+                  />
                 </CardContent>
               </Card>
             </TabsContent>
