@@ -203,6 +203,7 @@ model OrganizationPreference {
   digitalSignatureEnabled Boolean      @default(false)
   themeDefault            String       @default("system")
   densityDefault          String       @default("comfortable")
+  salesPreferences        Json?
   organization            Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 }
 
