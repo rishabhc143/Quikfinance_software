@@ -137,6 +137,7 @@ export default async function InvoiceDetailPage({
             <InvoiceActionButton
               action={markInvoiceSentAction.bind(null, inv.id)}
               label="Mark as Sent"
+              testId="mark-as-sent-button"
             />
           ) : null}
           {balance > 0.0001 &&
@@ -184,7 +185,7 @@ export default async function InvoiceDetailPage({
               }))}
               action={recordPaymentAction}
               trigger={
-                <Button size="sm" className="gap-1">
+                <Button size="sm" className="gap-1" data-testid="record-payment-trigger">
                   <DollarSign className="h-4 w-4" /> Record Payment
                 </Button>
               }

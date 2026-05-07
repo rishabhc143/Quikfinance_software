@@ -210,6 +210,7 @@ export function TransactionLineItemsTable(props: TransactionLineItemsTableProps)
                           value={l.name}
                           onChange={(e) => patch(l.id, { name: e.target.value })}
                           placeholder="Custom item name"
+                          data-testid={`line-item-name-${idx}`}
                         />
                       ) : null}
                       <button
@@ -233,6 +234,7 @@ export function TransactionLineItemsTable(props: TransactionLineItemsTableProps)
                         <MoneyInput
                           value={l.rate}
                           onChange={(v) => patch(l.id, { rate: v })}
+                          data-testid={`line-item-rate-${idx}`}
                         />
                       </td>
                     ) : null}

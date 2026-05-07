@@ -186,6 +186,7 @@ export function QuoteForm({
               value={contactId}
               onChange={(v) => setContactId(v)}
               placeholder="Select customer…"
+              testId="quote-customer-combobox"
               allowCreate={!!createCustomer}
               onCreate={
                 createCustomer

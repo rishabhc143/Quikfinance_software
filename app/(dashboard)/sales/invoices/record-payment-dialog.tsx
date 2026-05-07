@@ -146,7 +146,11 @@ export function RecordPaymentDialog({
             </div>
             <div>
               <Label>Amount received</Label>
-              <MoneyInput value={amountReceived} onChange={setAmountReceived} />
+              <MoneyInput
+                value={amountReceived}
+                onChange={setAmountReceived}
+                data-testid="payment-amount-input"
+              />
             </div>
             <div>
               <Label>Payment mode</Label>
@@ -238,7 +242,12 @@ export function RecordPaymentDialog({
           <Button variant="ghost" onClick={() => setOpen(false)} disabled={busy}>
             Cancel
           </Button>
-          <Button onClick={submit} disabled={busy} className="gap-1">
+          <Button
+            onClick={submit}
+            disabled={busy}
+            className="gap-1"
+            data-testid="record-payment-submit"
+          >
             {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
             Record payment
           </Button>
