@@ -7,6 +7,7 @@ import { requireOrganization } from "@/lib/auth-helpers";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
+import { ActivityTimeline } from "@/components/shared/activity-timeline";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -33,6 +34,17 @@ export default async function QuoteDetailPage({ params }: { params: { id: string
     include: { contact: true, lineItems: { orderBy: { position: "asc" } } },
   });
   if (!q) notFound();
+
+  const auditLogs = await db.auditLog.findMany({
+    where: {
+      organizationId: organization.id,
+      entityType: "Quote",
+      entityId: q.id,
+    },
+    orderBy: { createdAt: "desc" },
+    take: 50,
+    include: { user: { select: { name: true, email: true } } },
+  });
 
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-4">
@@ -256,6 +268,22 @@ export default async function QuoteDetailPage({ params }: { params: { id: string
           </CardContent>
         </Card>
       ) : null}
+
+      <section className="space-y-2">
+        <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
+          Activity
+        </h2>
+        <ActivityTimeline
+          entries={auditLogs.map((l) => ({
+            id: l.id,
+            action: l.action,
+            createdAt: l.createdAt,
+            userName: l.user?.name ?? l.user?.email ?? null,
+            before: l.before,
+            after: l.after,
+          }))}
+        />
+      </section>
     </div>
   );
 }
