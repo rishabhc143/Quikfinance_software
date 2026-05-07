@@ -98,7 +98,11 @@ export function InvoiceForm({
   const [adjustmentValue, setAdjustmentValue] = React.useState(
     String((initial?.adjustmentValue as number | undefined) ?? "0")
   );
-  const [customerNotes, setCustomerNotes] = React.useState(initial?.customerNotes ?? "");
+  // M17a: default customer notes to "Thanks for your business." per the
+  // Invoices Refinement Patch. Edit pages preserve whatever the user saved.
+  const [customerNotes, setCustomerNotes] = React.useState(
+    initial?.customerNotes ?? (initial ? "" : "Thanks for your business.")
+  );
   const [terms, setTerms] = React.useState(initial?.termsAndConditions ?? "");
   const [pdfTemplateId, setPdfTemplateId] = React.useState<string | null>(
     initial?.pdfTemplateId ?? null
@@ -211,7 +215,7 @@ export function InvoiceForm({
           <Input value={initial ? "(unchanged)" : nextNumber} disabled className="font-mono" />
         )}
 
-        <Label className="pt-2">Reference #</Label>
+        <Label className="pt-2">Order Number</Label>
         <Input
           value={referenceNumber ?? ""}
           onChange={(e) => setReferenceNumber(e.target.value)}
@@ -272,6 +276,9 @@ export function InvoiceForm({
             onChange={(e) => setCustomerNotes(e.target.value)}
             rows={3}
           />
+          <p className="text-xs text-muted-foreground">
+            Will be displayed on the invoice
+          </p>
           <Label htmlFor="terms">Terms &amp; Conditions</Label>
           <Textarea id="terms" value={terms ?? ""} onChange={(e) => setTerms(e.target.value)} rows={3} />
         </div>

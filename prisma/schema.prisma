@@ -322,6 +322,7 @@ model Contact {
   paymentsReceived     PaymentReceived[]
   paymentsMade         PaymentMade[]
   creditNotes          CreditNote[]
+  debitNotes           DebitNote[]
   vendorCredits        VendorCredit[]
   purchaseOrders       PurchaseOrder[]
   deliveryChallans     DeliveryChallan[]
@@ -579,6 +580,7 @@ model InvoiceLineItem {
   id          String  @id @default(cuid())
   invoiceId   String
   itemId      String?
+  accountId   String? // M17a — per-line override of item's default income account
   description String
   quantity    Decimal @db.Decimal(18, 4)
   rate        Decimal @db.Decimal(18, 4)
@@ -644,6 +646,7 @@ model QuoteLineItem {
   id           String  @id @default(cuid())
   quoteId      String
   itemId       String?
+  accountId    String? // M17a — per-line account override
   position     Int     @default(0)
   name         String
   description  String?
@@ -733,6 +736,7 @@ model SalesOrderLineItem {
   id           String     @id @default(cuid())
   salesOrderId String
   itemId       String?
+  accountId    String? // M17a — per-line account override
   position     Int        @default(0)
   name         String
   description  String?
@@ -791,6 +795,7 @@ model DeliveryChallanLineItem {
   id           String          @id @default(cuid())
   challanId    String
   itemId       String?
+  accountId    String? // M17a — per-line account override
   position     Int             @default(0)
   name         String
   description  String?
@@ -913,6 +918,7 @@ model CreditNoteLineItem {
   id           String     @id @default(cuid())
   creditNoteId String
   itemId       String?
+  accountId    String? // M17a — per-line account override
   position     Int        @default(0)
   name         String
   description  String?
@@ -1608,4 +1614,163 @@ model ApiUsageLog {
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId, createdAt])
+}
+
+// ─── M17a: Invoices Refinement Patch — additive only ─────────────────────
+
+// Razorpay configuration per organization. Secrets are AES-256-GCM
+// encrypted at rest via lib/crypto.ts (RAZORPAY_KEK env var).
+model PaymentGatewayConfig {
+  id                             String    @id @default(cuid())
+  organizationId                 String    @unique
+  razorpayEnabled                Boolean   @default(false)
+  razorpayKeyId                  String?
+  razorpayKeySecretEncrypted     String?
+  razorpayWebhookSecretEncrypted String?
+  razorpayMode                   String    @default("test") // test | live
+  razorpayActivatedAt            DateTime?
+  cardVerificationEnabled        Boolean   @default(false)
+  createdAt                      DateTime  @default(now())
+  updatedAt                      DateTime  @default(now()) @updatedAt
+}
+
+// Lifecycle log for Razorpay orders/payments. Idempotent on
+// razorpayPaymentId — duplicate webhook events are safe to receive.
+model RazorpayPaymentAttempt {
+  id                String   @id @default(cuid())
+  organizationId    String
+  invoiceId         String
+  razorpayOrderId   String   @unique
+  razorpayPaymentId String?  @unique
+  amount            Decimal  @db.Decimal(18, 4)
+  currency          String
+  status            String   @default("CREATED") // CREATED | ATTEMPTED | CAPTURED | FAILED
+  failureReason     String?
+  webhookPayload    Json?
+  signatureVerified Boolean  @default(false)
+  paymentReceivedId String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @default(now()) @updatedAt
+
+  @@index([organizationId, invoiceId])
+}
+
+// Saved views per (org × module). System views (isSystem=true) are
+// read-only; user views set userId. orgRecord.userId=null means a
+// shared view (Phase S8+).
+model SavedView {
+  id             String   @id @default(cuid())
+  organizationId String
+  userId         String?
+  module         String // invoices | quotes | sales_orders | customers | …
+  name           String
+  filterJson     Json
+  isSystem       Boolean  @default(false)
+  isDefault      Boolean  @default(false)
+  position       Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @default(now()) @updatedAt
+
+  @@index([organizationId, module, userId])
+}
+
+// Custom field definitions per (org × entityType). Generalized — same
+// pattern reused later for Quote/SalesOrder/Customer custom fields.
+model CustomFieldDefinition {
+  id             String             @id @default(cuid())
+  organizationId String
+  entityType     String // INVOICE | QUOTE | SALES_ORDER | …
+  fieldKey       String
+  label          String
+  dataType       String // text | number | date | dropdown | checkbox | email | url
+  options        Json? // dropdown { label, value }[]
+  isRequired     Boolean            @default(false)
+  showOnPdf      Boolean            @default(false)
+  showOnPortal   Boolean            @default(false)
+  position       Int                @default(0)
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @default(now()) @updatedAt
+  deletedAt      DateTime?
+  values         CustomFieldValue[]
+
+  @@unique([organizationId, entityType, fieldKey])
+}
+
+// Field values keyed by (entityType, entityId, fieldDefinitionId).
+// value is Json so any data type fits one column.
+model CustomFieldValue {
+  id                String                @id @default(cuid())
+  organizationId    String
+  entityType        String
+  entityId          String
+  fieldDefinitionId String
+  value             Json
+  fieldDefinition   CustomFieldDefinition @relation(fields: [fieldDefinitionId], references: [id], onDelete: Cascade)
+
+  @@unique([entityType, entityId, fieldDefinitionId])
+  @@index([organizationId, entityType, entityId])
+}
+
+// Per-user-per-org preferences. Reused by the dismissible "Want to get
+// paid faster?" banner and other in-product flags.
+model UserPreference {
+  id             String  @id @default(cuid())
+  userId         String
+  organizationId String?
+  key            String
+  value          String
+
+  @@unique([userId, organizationId, key])
+}
+
+// Customer-facing Debit Note (seller-issued). Increases the customer's
+// receivable — Indian accounting convention. Distinct from CreditNote.
+// Schema scaffolded; full UI is a follow-up.
+model DebitNote {
+  id                 String              @id @default(cuid())
+  organizationId     String
+  contactId          String
+  debitNoteNumber    String // app-side: same shape as CreditNote.number
+  referenceNumber    String?
+  debitNoteDate      DateTime
+  reason             String?
+  status             String              @default("OPEN") // OPEN | CLOSED | VOID
+  currency           String              @default("INR")
+  subTotal           Decimal             @default(0) @db.Decimal(18, 4)
+  taxAmount          Decimal             @default(0) @db.Decimal(18, 4)
+  total              Decimal             @default(0) @db.Decimal(18, 4)
+  amountApplied      Decimal             @default(0) @db.Decimal(18, 4)
+  customerNotes      String?
+  termsAndConditions String?
+  pdfTemplateId      String?
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @default(now()) @updatedAt
+  deletedAt          DateTime?
+  contact            Contact             @relation(fields: [contactId], references: [id])
+  lineItems          DebitNoteLineItem[]
+
+  @@unique([organizationId, debitNoteNumber])
+  @@index([organizationId, status, deletedAt])
+}
+
+model DebitNoteLineItem {
+  id           String    @id @default(cuid())
+  debitNoteId  String
+  itemId       String?
+  accountId    String?
+  position     Int       @default(0)
+  name         String
+  description  String?
+  hsnSacCode   String?
+  quantity     Decimal   @db.Decimal(18, 4)
+  unit         String?
+  rate         Decimal   @db.Decimal(18, 4)
+  discount     Decimal   @default(0) @db.Decimal(18, 4)
+  discountType String    @default("percentage")
+  taxId        String?
+  taxAmount    Decimal   @default(0) @db.Decimal(18, 4)
+  amount       Decimal   @db.Decimal(18, 4)
+  debitNote    DebitNote @relation(fields: [debitNoteId], references: [id], onDelete: Cascade)
+
+  @@index([debitNoteId])
 }

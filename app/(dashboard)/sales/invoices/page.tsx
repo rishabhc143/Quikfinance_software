@@ -38,7 +38,8 @@ export default async function InvoicesListPage({
   const pageSize = Number(searchParams.pageSize ?? 25);
   const sort = searchParams.sort ?? "issueDate";
   const dir: "asc" | "desc" = searchParams.dir === "asc" ? "asc" : "desc";
-  const view = searchParams.view ?? "all";
+  // M17a: Invoices Refinement Patch — default landing view is Unpaid, not All.
+  const view = searchParams.view ?? "unpaid";
 
   type InvStatus =
     | "DRAFT"
@@ -154,14 +155,23 @@ export default async function InvoicesListPage({
   return (
     <div className="p-6">
       <TransactionListPage
-        title="Invoices"
-        view="All invoices"
+        title={
+          view === "unpaid"
+            ? "Unpaid Invoices"
+            : view === "all"
+            ? "All Invoices"
+            : "Invoices"
+        }
+        view={
+          view === "unpaid" ? undefined : view === "all" ? undefined : undefined
+        }
         views={[
+          // M17a: Unpaid first per Invoices Refinement Patch spec.
           { value: "all", label: "All" },
+          { value: "unpaid", label: "Unpaid" },
           { value: "draft", label: "Draft" },
           { value: "sent", label: "Sent" },
           { value: "overdue", label: "Overdue" },
-          { value: "unpaid", label: "Unpaid" },
           { value: "paid", label: "Paid" },
           { value: "void", label: "Void" },
           { value: "partially_paid", label: "Partially Paid" },
@@ -173,16 +183,21 @@ export default async function InvoicesListPage({
         exportHref="/api/sales/invoices/export"
         preferencesHref="/settings/preferences/invoices"
         sortOptions={[
+          // M17a: 9 sort fields per spec — Order Number, Customer Name, Balance Due added.
+          { label: "Created Time", value: "createdAt" },
+          { label: "Last Modified Time", value: "updatedAt" },
           { label: "Date", value: "issueDate" },
-          { label: "Due date", value: "dueDate" },
-          { label: "Invoice number", value: "number" },
+          { label: "Invoice #", value: "number" },
+          { label: "Order Number", value: "referenceNumber" },
+          { label: "Customer Name", value: "customerName" },
+          { label: "Due Date", value: "dueDate" },
           { label: "Amount", value: "total" },
-          { label: "Created time", value: "createdAt" },
+          { label: "Balance Due", value: "balanceDue" },
         ]}
         columns={[
           { key: "date", header: "Date", sortable: true },
           { key: "number", header: "Invoice #", sortable: true },
-          { key: "ref", header: "Reference #" },
+          { key: "ref", header: "Order Number" },
           { key: "cust", header: "Customer name" },
           { key: "status", header: "Status" },
           { key: "due", header: "Due date", sortable: true },
@@ -202,7 +217,7 @@ export default async function InvoicesListPage({
             columns={[
               { key: "date", header: "Date", sortable: true },
               { key: "number", header: "Invoice #", sortable: true },
-              { key: "ref", header: "Reference #" },
+              { key: "ref", header: "Order Number" },
               { key: "cust", header: "Customer name" },
               { key: "status", header: "Status" },
               { key: "due", header: "Due date", sortable: true },
