@@ -105,3 +105,48 @@ export async function createCustomerInlineAction(
   revalidatePath("/sales/customers");
   return { id: created.id, displayName: created.displayName };
 }
+
+/**
+ * M17e: Look up an Item by its SKU within the current org. Used by the
+ * Scan Item modal to resolve a barcode → Item row. Returns null when
+ * not found so the caller can show a friendly toast.
+ */
+export async function findItemBySkuAction(input: {
+  sku: string;
+}): Promise<{
+  id: string;
+  name: string;
+  sku: string | null;
+  rate: string;
+  description: string | null;
+  unit: string | null;
+} | null> {
+  const { organization } = await requireOrganization();
+  const sku = input.sku.trim();
+  if (!sku) return null;
+  const item = await db.item.findFirst({
+    where: {
+      organizationId: organization.id,
+      deletedAt: null,
+      isActive: true,
+      sku: { equals: sku, mode: "insensitive" },
+    },
+    select: {
+      id: true,
+      name: true,
+      sku: true,
+      sellingPrice: true,
+      salesDescription: true,
+      unit: true,
+    },
+  });
+  if (!item) return null;
+  return {
+    id: item.id,
+    name: item.name,
+    sku: item.sku,
+    rate: item.sellingPrice ? String(item.sellingPrice) : "0",
+    description: item.salesDescription,
+    unit: item.unit,
+  };
+}

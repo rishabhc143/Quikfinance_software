@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/dialog";
 import { Combobox, type ComboboxOption } from "@/components/ui/combobox";
 import { MoneyInput } from "@/components/shared/money-input";
+import { ScanItemDialog } from "@/components/shared/scan-item-dialog";
 import { computeDocument, type DocumentComputed } from "@/lib/sales/totals";
 import { cn } from "@/lib/utils";
 
@@ -69,6 +70,20 @@ export type TransactionLineItemsTableProps = {
   documentTax?: { rate: string; type?: "TDS" | "TCS" };
   adjustment?: string;
   className?: string;
+  /**
+   * M17e: when supplied, renders a "Scan Item" button next to "Add new
+   * row" / "Add Items in Bulk". The action takes a SKU and returns the
+   * resolved Item (or null). The table appends the resolved row to the
+   * current lines (mirroring Bulk Add's append-or-replace-blank rule).
+   */
+  scanItemAction?: (input: { sku: string }) => Promise<{
+    id: string;
+    name: string;
+    sku: string | null;
+    rate: string;
+    description: string | null;
+    unit: string | null;
+  } | null>;
 };
 
 let UID = 0;
@@ -315,6 +330,27 @@ export function TransactionLineItemsTable(props: TransactionLineItemsTableProps)
             });
           }}
         />
+        {props.scanItemAction ? (
+          <ScanItemDialog
+            onResolve={props.scanItemAction}
+            onAdd={(item) => {
+              const row: LineItem = {
+                id: `scan-${++UID}-${Date.now()}`,
+                itemId: item.id,
+                name: item.name,
+                description: item.description ?? "",
+                hsnSacCode: "",
+                quantity: "1.00",
+                unit: item.unit ?? "",
+                rate: item.rate,
+              };
+              setLines((curr) => {
+                const filtered = curr.filter((c) => c.name.trim().length > 0);
+                return [...filtered, row];
+              });
+            }}
+          />
+        ) : null}
       </div>
 
       <aside className="ml-auto max-w-sm rounded-md border bg-card p-4 text-sm">
