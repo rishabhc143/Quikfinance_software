@@ -10,9 +10,18 @@ export const creditNoteSchema = z.object({
   customerNotes: z.string().max(2000).nullable().optional(),
   termsAndConditions: z.string().max(4000).nullable().optional(),
   pdfTemplateId: z.string().nullable().optional(),
-  // Note: Credit Note attachments are spec'd but the schema lacks a
-  // CreditNoteAttachment table (pre-existing gap from S1). Add the
-  // table in a follow-up migration before wiring attachments here.
+  attachments: z
+    .array(
+      z.object({
+        fileName: z.string().min(1).max(200),
+        fileUrl: z.string().min(1),
+        fileSize: z.coerce.number().int().nonnegative(),
+        mimeType: z.string().min(1).max(120),
+      })
+    )
+    .max(10)
+    .optional()
+    .default([]),
   lines: z.array(lineItemSchema).min(1),
 });
 export type CreditNoteInput = z.input<typeof creditNoteSchema>;

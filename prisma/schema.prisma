@@ -890,9 +890,23 @@ model CreditNote {
   lineItems          CreditNoteLineItem[]
   applications       CreditNoteApplication[]
   refunds            CreditNoteRefund[]
+  attachments        CreditNoteAttachment[]
 
   @@unique([organizationId, number])
   @@index([organizationId, status, deletedAt])
+}
+
+model CreditNoteAttachment {
+  id           String     @id @default(cuid())
+  creditNoteId String
+  fileName     String
+  fileUrl      String
+  fileSize     Int
+  mimeType     String
+  createdAt    DateTime   @default(now())
+  creditNote   CreditNote @relation(fields: [creditNoteId], references: [id], onDelete: Cascade)
+
+  @@index([creditNoteId])
 }
 
 model CreditNoteLineItem {
