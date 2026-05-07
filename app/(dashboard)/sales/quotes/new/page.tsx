@@ -12,7 +12,7 @@ export const metadata = { title: "New Quote" };
 
 export default async function NewQuotePage() {
   const { organization } = await requireOrganization();
-  const [contacts, items, taxes, salespeople, nextNumber] = await Promise.all([
+  const [contacts, items, taxes, salespeople, pdfTemplates, nextNumber] = await Promise.all([
     db.contact.findMany({
       where: {
         organizationId: organization.id,
@@ -33,6 +33,10 @@ export default async function NewQuotePage() {
     }),
     db.salesperson.findMany({
       where: { organizationId: organization.id, isInactive: false },
+      orderBy: { name: "asc" },
+    }),
+    db.pdfTemplate.findMany({
+      where: { organizationId: organization.id, documentType: "QUOTE" },
       orderBy: { name: "asc" },
     }),
     peekNextDocumentNumber(organization.id, "QUOTE"),
@@ -81,6 +85,7 @@ export default async function NewQuotePage() {
           rate: Number(t.rate),
         }))}
         salespersonOptions={salespeople.map((s) => ({ value: s.id, label: s.name }))}
+        pdfTemplateOptions={pdfTemplates.map((t) => ({ value: t.id, label: t.name }))}
         onSubmitAction={submit}
         submitLabel="Save as Draft"
       />

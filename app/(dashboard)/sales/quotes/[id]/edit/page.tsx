@@ -21,7 +21,7 @@ export default async function EditQuotePage({ params }: { params: { id: string }
     notFound();
   }
 
-  const [contacts, items, taxes, salespeople] = await Promise.all([
+  const [contacts, items, taxes, salespeople, pdfTemplates] = await Promise.all([
     db.contact.findMany({
       where: {
         organizationId: organization.id,
@@ -42,6 +42,10 @@ export default async function EditQuotePage({ params }: { params: { id: string }
     }),
     db.salesperson.findMany({
       where: { organizationId: organization.id, isInactive: false },
+      orderBy: { name: "asc" },
+    }),
+    db.pdfTemplate.findMany({
+      where: { organizationId: organization.id, documentType: "QUOTE" },
       orderBy: { name: "asc" },
     }),
   ]);
@@ -117,6 +121,7 @@ export default async function EditQuotePage({ params }: { params: { id: string }
           rate: Number(t.rate),
         }))}
         salespersonOptions={salespeople.map((s) => ({ value: s.id, label: s.name }))}
+        pdfTemplateOptions={pdfTemplates.map((t) => ({ value: t.id, label: t.name }))}
         onSubmitAction={submit}
         submitLabel="Update quote"
         cancelHref={`/sales/quotes/${q.id}`}
