@@ -9,6 +9,11 @@ import { TransactionListPage } from "@/components/shared/transaction-list-page";
 import { BulkAwareDataTable } from "@/components/shared/bulk-aware-data-table";
 import { formatMoney } from "@/lib/money";
 import {
+  getSavedViews,
+  resolveActiveView,
+  whereForFilter,
+} from "@/lib/sales/saved-views";
+import {
   bulkDeleteSalesOrdersAction,
   bulkEmailSalesOrdersAction,
   bulkMarkSalesOrdersOpenAction,
@@ -34,19 +39,15 @@ export default async function SalesOrdersListPage({
   const pageSize = Number(searchParams.pageSize ?? 25);
   const sort = searchParams.sort ?? "orderDate";
   const dir: "asc" | "desc" = searchParams.dir === "asc" ? "asc" : "desc";
-  const view = searchParams.view ?? "all";
-
-  const SO_VIEWS: Record<string, "DRAFT" | "CONFIRMED" | "CLOSED" | "VOID"> = {
-    draft: "DRAFT",
-    confirmed: "CONFIRMED",
-    closed: "CLOSED",
-    void: "VOID",
-  };
+  // M17d: Saved Views chevron-dropdown is DB-backed.
+  const savedViews = await getSavedViews(organization.id, "sales_orders");
+  const activeView = resolveActiveView(savedViews, searchParams.view);
+  const view = activeView?.slug ?? "all";
 
   const where = {
     organizationId: organization.id,
     deletedAt: null,
-    ...(SO_VIEWS[view] ? { status: SO_VIEWS[view] } : {}),
+    ...(activeView ? whereForFilter(activeView.filter) : {}),
     ...(q
       ? {
           OR: [
@@ -159,13 +160,7 @@ export default async function SalesOrdersListPage({
       <TransactionListPage
         title="Sales Orders"
         view="All sales orders"
-        views={[
-          { value: "all", label: "All" },
-          { value: "draft", label: "Draft" },
-          { value: "confirmed", label: "Confirmed" },
-          { value: "closed", label: "Closed" },
-          { value: "void", label: "Void" },
-        ]}
+        views={savedViews.map((v) => ({ value: v.slug, label: v.label }))}
         activeView={view}
         newHref="/sales/orders/new"
         newLabel="New"

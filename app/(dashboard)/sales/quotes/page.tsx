@@ -9,6 +9,11 @@ import { TransactionListPage } from "@/components/shared/transaction-list-page";
 import { BulkAwareDataTable } from "@/components/shared/bulk-aware-data-table";
 import { formatMoney } from "@/lib/money";
 import {
+  getSavedViews,
+  resolveActiveView,
+  whereForFilter,
+} from "@/lib/sales/saved-views";
+import {
   bulkDeleteQuotesAction,
   bulkEmailQuotesAction,
   bulkMarkQuotesAcceptedAction,
@@ -37,23 +42,15 @@ export default async function QuotesListPage({
   const pageSize = Number(searchParams.pageSize ?? 25);
   const sort = searchParams.sort ?? "issueDate";
   const dir: "asc" | "desc" = searchParams.dir === "asc" ? "asc" : "desc";
-  const view = searchParams.view ?? "all";
-
-  const STATUS_VIEWS: Record<string, string> = {
-    draft: "DRAFT",
-    sent: "SENT",
-    accepted: "ACCEPTED",
-    declined: "DECLINED",
-    expired: "EXPIRED",
-    invoiced: "INVOICED",
-  };
+  // M17d: Saved Views chevron-dropdown is DB-backed.
+  const savedViews = await getSavedViews(organization.id, "quotes");
+  const activeView = resolveActiveView(savedViews, searchParams.view);
+  const view = activeView?.slug ?? "all";
 
   const where = {
     organizationId: organization.id,
     deletedAt: null,
-    ...(STATUS_VIEWS[view]
-      ? { status: STATUS_VIEWS[view] as "DRAFT" | "SENT" | "ACCEPTED" | "DECLINED" | "EXPIRED" | "INVOICED" }
-      : {}),
+    ...(activeView ? whereForFilter(activeView.filter) : {}),
     ...(q
       ? {
           OR: [
@@ -199,15 +196,7 @@ export default async function QuotesListPage({
       <TransactionListPage
         title="Quotes"
         view="All quotes"
-        views={[
-          { value: "all", label: "All" },
-          { value: "draft", label: "Draft" },
-          { value: "sent", label: "Sent" },
-          { value: "accepted", label: "Accepted" },
-          { value: "declined", label: "Declined" },
-          { value: "expired", label: "Expired" },
-          { value: "invoiced", label: "Invoiced" },
-        ]}
+        views={savedViews.map((v) => ({ value: v.slug, label: v.label }))}
         activeView={view}
         newHref="/sales/quotes/new"
         newLabel="New"

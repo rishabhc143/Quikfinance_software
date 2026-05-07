@@ -9,6 +9,11 @@ import { TransactionListPage } from "@/components/shared/transaction-list-page";
 import { BulkAwareDataTable } from "@/components/shared/bulk-aware-data-table";
 import { formatMoney } from "@/lib/money";
 import {
+  getSavedViews,
+  resolveActiveView,
+  whereForFilter,
+} from "@/lib/sales/saved-views";
+import {
   bulkDeleteInvoicesAction,
   bulkEmailInvoicesAction,
   bulkMarkInvoicesSentAction,
@@ -38,34 +43,13 @@ export default async function InvoicesListPage({
   const pageSize = Number(searchParams.pageSize ?? 25);
   const sort = searchParams.sort ?? "issueDate";
   const dir: "asc" | "desc" = searchParams.dir === "asc" ? "asc" : "desc";
-  // M17a: Invoices Refinement Patch — default landing view is Unpaid, not All.
-  const view = searchParams.view ?? "unpaid";
-
-  type InvStatus =
-    | "DRAFT"
-    | "SENT"
-    | "PARTIALLY_PAID"
-    | "PAID"
-    | "OVERDUE"
-    | "VOID"
-    | "WRITTEN_OFF";
-
-  const INV_VIEWS: Record<string, InvStatus | InvStatus[]> = {
-    draft: "DRAFT",
-    sent: "SENT",
-    overdue: "OVERDUE",
-    paid: "PAID",
-    void: "VOID",
-    partially_paid: "PARTIALLY_PAID",
-    unpaid: ["SENT", "PARTIALLY_PAID", "OVERDUE"],
-  };
-
-  const viewFilter = INV_VIEWS[view];
-  const statusFilter = Array.isArray(viewFilter)
-    ? { status: { in: viewFilter } }
-    : viewFilter
-    ? { status: viewFilter }
-    : {};
+  // M17d: Saved Views chevron-dropdown is DB-backed (lazy-seeded
+  // system views per Invoices Refinement Patch). M17a's "default =
+  // Unpaid" is encoded as `isDefault: true` on the unpaid system row.
+  const savedViews = await getSavedViews(organization.id, "invoices");
+  const activeView = resolveActiveView(savedViews, searchParams.view);
+  const view = activeView?.slug ?? "all";
+  const statusFilter = activeView ? whereForFilter(activeView.filter) : {};
 
   const where = {
     organizationId: organization.id,
@@ -165,17 +149,7 @@ export default async function InvoicesListPage({
         view={
           view === "unpaid" ? undefined : view === "all" ? undefined : undefined
         }
-        views={[
-          // M17a: Unpaid first per Invoices Refinement Patch spec.
-          { value: "all", label: "All" },
-          { value: "unpaid", label: "Unpaid" },
-          { value: "draft", label: "Draft" },
-          { value: "sent", label: "Sent" },
-          { value: "overdue", label: "Overdue" },
-          { value: "paid", label: "Paid" },
-          { value: "void", label: "Void" },
-          { value: "partially_paid", label: "Partially Paid" },
-        ]}
+        views={savedViews.map((v) => ({ value: v.slug, label: v.label }))}
         activeView={view}
         newHref="/sales/invoices/new"
         newLabel="New"
