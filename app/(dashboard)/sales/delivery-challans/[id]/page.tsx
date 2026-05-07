@@ -56,21 +56,21 @@ export default async function ChallanDetailPage({
               {c.status !== "DELIVERED" ? (
                 <DropdownMenuItem asChild>
                   <form action={markChallanDeliveredAction.bind(null, c.id)}>
-                    <button className="w-full text-left">Mark as Delivered</button>
+                    <button type="submit" className="w-full text-left">Mark as Delivered</button>
                   </form>
                 </DropdownMenuItem>
               ) : null}
               {c.status !== "RETURNED" ? (
                 <DropdownMenuItem asChild>
                   <form action={markChallanReturnedAction.bind(null, c.id)}>
-                    <button className="w-full text-left">Mark as Returned</button>
+                    <button type="submit" className="w-full text-left">Mark as Returned</button>
                   </form>
                 </DropdownMenuItem>
               ) : null}
               {c.status !== "INVOICED" && c.contactId ? (
                 <DropdownMenuItem asChild>
                   <form action={convertChallanToInvoiceAction.bind(null, c.id)}>
-                    <button className="w-full text-left">Convert to Invoice</button>
+                    <button type="submit" className="w-full text-left">Convert to Invoice</button>
                   </form>
                 </DropdownMenuItem>
               ) : null}

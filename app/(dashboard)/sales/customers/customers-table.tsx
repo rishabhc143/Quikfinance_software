@@ -139,7 +139,7 @@ export function CustomersTable({
         <table className="w-full text-sm">
           <thead className="bg-muted/50 text-xs uppercase tracking-wider text-muted-foreground">
             <tr>
-              <th className="p-3 w-8">
+              <th scope="col" className="p-3 w-8">
                 <input
                   type="checkbox"
                   aria-label="Select all"
@@ -157,6 +157,7 @@ export function CustomersTable({
               {columns.map((c) => (
                 <th
                   key={c.key}
+                  scope="col"
                   className={`p-3 ${
                     c.align === "right"
                       ? "text-right"
@@ -170,6 +171,7 @@ export function CustomersTable({
                       type="button"
                       onClick={() => setSort(c.key)}
                       className="inline-flex items-center gap-1 hover:text-foreground"
+                      aria-label={`Sort by ${c.header}`}
                     >
                       {c.header}
                       {sort !== c.key ? (

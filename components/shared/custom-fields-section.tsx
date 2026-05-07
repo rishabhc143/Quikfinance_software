@@ -58,32 +58,35 @@ export function CustomFieldsSection({
 
   return (
     <section className="rounded-md border bg-background">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center justify-between px-4 py-3 text-left text-sm font-medium hover:bg-muted/30"
-        aria-expanded={open}
-      >
-        <span className="flex items-center gap-2">
+      {/* M18 a11y: button + link can't nest. Side-by-side via a flex
+          container — the toggle button gets the full clickable area
+          minus the Manage link. */}
+      <div className="flex items-center justify-between px-4 py-3">
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          className="flex flex-1 items-center gap-2 text-left text-sm font-medium hover:text-foreground"
+          aria-expanded={open}
+          aria-controls="custom-fields-body"
+        >
           {open ? (
             <ChevronDown className="h-4 w-4" />
           ) : (
             <ChevronRight className="h-4 w-4" />
           )}
           Custom Fields ({definitions.length})
-        </span>
+        </button>
         <Link
           href={`/settings/preferences/${urlSlug}/custom-fields`}
           target="_blank"
           rel="noreferrer"
           className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
-          onClick={(e) => e.stopPropagation()}
         >
           Manage <ExternalLink className="h-3 w-3" />
         </Link>
-      </button>
+      </div>
       {open ? (
-        <div className="border-t p-4 space-y-3">
+        <div id="custom-fields-body" className="border-t p-4 space-y-3">
           {definitions.map((d) => (
             <FieldRow
               key={d.id}

@@ -116,14 +116,14 @@ export default async function CreditNoteDetailPage({
               {cn.status !== "VOID" ? (
                 <DropdownMenuItem asChild>
                   <form action={voidCreditNoteAction.bind(null, cn.id)}>
-                    <button className="w-full text-left">Mark as Void</button>
+                    <button type="submit" className="w-full text-left">Mark as Void</button>
                   </form>
                 </DropdownMenuItem>
               ) : null}
               {cn.status === "CLOSED" && balance > 0.0001 ? (
                 <DropdownMenuItem asChild>
                   <form action={reopenCreditNoteAction.bind(null, cn.id)}>
-                    <button className="w-full text-left">Reopen</button>
+                    <button type="submit" className="w-full text-left">Reopen</button>
                   </form>
                 </DropdownMenuItem>
               ) : null}

@@ -143,7 +143,7 @@ export default async function QuoteDetailPage({ params }: { params: { id: string
               {!q.convertedSalesOrderId ? (
                 <DropdownMenuItem asChild>
                   <form action={convertQuoteToSalesOrderAction.bind(null, q.id)}>
-                    <button className="w-full text-left">
+                    <button type="submit" className="w-full text-left">
                       Convert to Sales Order
                     </button>
                   </form>
