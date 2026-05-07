@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { writeAuditLog } from "@/lib/audit";
+import { PayNowButton } from "./pay-now-button";
 
 export const metadata = { title: "Invoice" };
 
@@ -27,6 +28,14 @@ export default async function InvoicePortalPage({
     include: { contact: true, lineItems: true, organization: true },
   });
   if (!inv || inv.deletedAt) notFound();
+
+  // M17b: gate the Razorpay "Pay Now" button on per-org gateway config.
+  const gatewayCfg = await db.paymentGatewayConfig.findUnique({
+    where: { organizationId: inv.organizationId },
+    select: { razorpayEnabled: true, razorpayKeyId: true },
+  });
+  const razorpayReady =
+    !!gatewayCfg?.razorpayEnabled && !!gatewayCfg.razorpayKeyId;
 
   // Track first-view
   if (!inv.sentAt && inv.status === "DRAFT") {
@@ -137,17 +146,28 @@ export default async function InvoicePortalPage({
           </CardContent>
         </Card>
 
-        {balance > 0.0001 ? (
+        {balance > 0.0001 &&
+        ["SENT", "PARTIALLY_PAID", "OVERDUE"].includes(inv.status) ? (
           <div className="text-center">
-            <button
-              type="button"
-              className="inline-flex h-11 items-center rounded-md bg-primary px-6 text-sm font-medium text-primary-foreground shadow hover:bg-primary/90"
-              disabled
-              aria-disabled
-              title="Online payment integration arrives in Phase S8"
-            >
-              Pay Now (coming soon)
-            </button>
+            {razorpayReady ? (
+              <PayNowButton
+                portalToken={params.token}
+                customerName={inv.contact.displayName}
+                customerEmail={inv.contact.email}
+                invoiceNumber={inv.number}
+                organizationName={inv.organization.name}
+              />
+            ) : (
+              <button
+                type="button"
+                disabled
+                aria-disabled
+                title="Online payment is not yet enabled on this account"
+                className="inline-flex h-11 items-center rounded-md bg-primary px-6 text-sm font-medium text-primary-foreground shadow disabled:opacity-60"
+              >
+                Pay Now (not configured)
+              </button>
+            )}
           </div>
         ) : null}
 

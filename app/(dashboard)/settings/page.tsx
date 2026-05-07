@@ -85,7 +85,7 @@ const GROUPS: Group[] = [
   {
     title: "Module Settings — Online Payments", icon: CreditCard,
     items: [
-      { label: "Customer Payments", href: "/settings/modules/customer-payments" },
+      { label: "Customer Payments", href: "/settings/online-payments/customer-payments" },
       { label: "Vendor Payments", href: "/settings/modules/vendor-payments" },
     ],
   },

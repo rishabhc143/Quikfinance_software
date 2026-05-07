@@ -270,5 +270,25 @@ Every interpretive call I made while implementing the master prompt, with the re
 **Choice:** `/portal/invoices/[token]` reads the invoice by `portalAccessToken`, never exposes the token in any other response, and writes an `AuditLog` row tagged `InvoicePortalView` per request. "Pay Now" is a stub button until the payments integration lands.
 **Why:** customers shouldn't have to log in to pay; the token is a 25-char cuid making enumeration impractical; audit captures first-view for the merchant's reminder cadence.
 
+### D54. Razorpay setup encrypts secrets per-org with AES-256-GCM (M17b).
+**Choice:** `lib/crypto.ts` exposes `encryptSecret/decryptSecret/maskSecret` driven by a single `RAZORPAY_KEK` env var (32-byte hex). The key secret + webhook secret are encrypted on save and never decrypted to display in the UI — Manage shows `••••` and requires re-entry. Format: `<iv-hex>.<authTag-hex>.<ciphertext-hex>`.
+**Why:** Razorpay's secrets are a transfer-of-funds primitive; Vercel env doesn't give per-tenant scoping for free; encrypting with one app-level KEK is the smallest deviation from "store credentials at rest" that keeps each org's secrets useless without server-side decryption. KEK rotation: re-encrypt rows by reading with old KEK, writing with new, then flipping the env var.
+
+### D55. Razorpay wordmark is hand-rolled, not a logo copy (M17b).
+**Choice:** `app/(dashboard)/settings/online-payments/customer-payments/razorpay-mark.tsx` renders a simple SVG: a navy circle with a brand-blue text "Razorpay" wordmark. Not a copy of Razorpay's actual logo or brand assets.
+**Why:** the master patch flagged the screenshot's logo as belonging to Razorpay and explicitly forbade copying it. The hand-rolled mark conveys the brand association without implying an official Razorpay-issued asset.
+
+### D56. Razorpay webhook resolves the org by signature trial, not by URL secret (M17b).
+**Choice:** `/api/webhooks/razorpay` reads the raw body, then iterates `PaymentGatewayConfig` rows with `razorpayEnabled=true`, decrypts each org's webhook secret, computes HMAC-SHA256, and compares with `crypto.timingSafeEqual`. The first match identifies the org. Falls back to `notes.organizationId` if no match (edge case for replayed events).
+**Why:** Razorpay sends one signature per request and orgs share the public webhook URL. Mounting per-org webhook URLs would explode the surface area; the trial loop is O(orgs) but only runs on the small set with Razorpay enabled, and the inner hash + constant-time compare is fast.
+
+### D57. Razorpay payments deposit into a `BankAccount` row, not a `ChartOfAccount` row (M17b).
+**Choice:** `setupRazorpayAction` creates a `BankAccount` named "Razorpay Clearing Account" with `accountType="BANK"` if not exists. The webhook handler uses that as `PaymentReceived.depositToAccountId`.
+**Why:** the master patch said "Chart of Accounts row of type BANK" but our existing `recordPaymentAction.depositToAccountId` already points at `BankAccount`, not `ChartOfAccount`. Following the existing wiring keeps every other payment flow working. The `BankAccount` row IS effectively a ledger account in our schema — the patch's intent is preserved.
+
+### D58. Razorpay client callback is not trusted; only the signed webhook is (M17b).
+**Choice:** the Pay Now button's `handler` callback only triggers a router refresh and a "Payment received" toast. Invoice status is flipped exclusively by the webhook handler after HMAC verification. Idempotency is enforced via the unique `razorpayPaymentId` column on `RazorpayPaymentAttempt`.
+**Why:** anyone can fire the client callback against the portal page; only the webhook carries Razorpay's HMAC signature. Trusting the client would create a free-money exploit.
+
 
 
