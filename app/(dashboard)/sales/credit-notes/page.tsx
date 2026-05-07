@@ -89,6 +89,7 @@ export default async function CreditNotesListPage({
         view="All credit notes"
         newHref="/sales/credit-notes/new"
         newLabel="New"
+        exportHref="/api/sales/credit-notes/export"
         columns={[
           { key: "date", header: "Date", sortable: true },
           { key: "number", header: "Credit note #" },

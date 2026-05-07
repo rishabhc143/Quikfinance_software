@@ -93,6 +93,7 @@ export default async function RecurringInvoicesListPage({
         view="All profiles"
         newHref="/sales/recurring-invoices/new"
         newLabel="New profile"
+        exportHref="/api/sales/recurring-invoices/export"
         preferencesHref="/settings/preferences/invoices"
         columns={[
           { key: "profile", header: "Profile name", sortable: true },

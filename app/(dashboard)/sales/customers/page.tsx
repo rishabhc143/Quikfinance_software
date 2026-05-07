@@ -155,6 +155,7 @@ export default async function CustomersListPage({
         newHref="/sales/customers/new"
         newLabel="New"
         importHref="/sales/customers/import"
+        exportHref="/api/sales/customers/export"
         preferencesHref="/settings/preferences/customers-and-vendors"
         sortOptions={[
           { label: "Name (A→Z)", value: "displayName" },
