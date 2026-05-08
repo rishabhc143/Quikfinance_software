@@ -104,17 +104,23 @@ export async function POST(req: Request) {
     const start = Date.now();
 
     try {
-      // Postgres handles multi-statement SQL via $executeRawUnsafe.
-      // If a migration uses DO $$...$$ blocks, this still works
-      // because the whole string is sent as one query.
-      await db.$executeRawUnsafe(sql);
+      // Prisma's $executeRawUnsafe sends queries via the prepared-
+      // statement protocol, which Postgres rejects when the string
+      // contains multiple statements ("cannot insert multiple
+      // commands into a prepared statement"). Split the migration
+      // into individual statements and execute one at a time.
+      const statements = splitSqlStatements(sql);
+      for (const stmt of statements) {
+        await db.$executeRawUnsafe(stmt);
+      }
       await db.$executeRawUnsafe(
         `INSERT INTO "_prisma_migrations"
            (id, checksum, finished_at, migration_name, applied_steps_count)
-         VALUES ($1, $2, now(), $3, 1)`,
+         VALUES ($1, $2, now(), $3, $4)`,
         id,
         checksum,
-        name
+        name,
+        statements.length
       );
       results.push({
         name,
@@ -142,4 +148,109 @@ export async function GET() {
   return new NextResponse("Method Not Allowed. Use POST with x-migration-key header.", {
     status: 405,
   });
+}
+
+/**
+ * Split a Postgres migration SQL string into individual statements,
+ * stripping `--` line comments. Handles single-quoted string literals
+ * (escaped quotes), `/* … *\/` block comments, and `$tag$ … $tag$`
+ * dollar-quoted strings (used by PL/pgSQL function bodies).
+ *
+ * Not a full SQL parser, but covers everything Prisma migrations
+ * generate: CREATE TABLE/INDEX, ALTER TABLE, INSERT, and occasional
+ * DO blocks.
+ */
+function splitSqlStatements(sql: string): string[] {
+  const out: string[] = [];
+  let buf = "";
+  let i = 0;
+  const n = sql.length;
+  let state: "normal" | "lineComment" | "blockComment" | "string" | "dollar" =
+    "normal";
+  let dollarTag = "";
+
+  while (i < n) {
+    const ch = sql[i];
+    const next = sql[i + 1];
+    if (state === "normal") {
+      if (ch === "-" && next === "-") {
+        state = "lineComment";
+        i += 2;
+        continue;
+      }
+      if (ch === "/" && next === "*") {
+        state = "blockComment";
+        buf += "/*";
+        i += 2;
+        continue;
+      }
+      if (ch === "'") {
+        state = "string";
+        buf += ch;
+        i += 1;
+        continue;
+      }
+      if (ch === "$") {
+        // Match $tag$ — tag is alphanumeric/underscore (or empty)
+        const m = sql.slice(i).match(/^\$([A-Za-z_][A-Za-z0-9_]*)?\$/);
+        if (m) {
+          dollarTag = m[0];
+          buf += dollarTag;
+          state = "dollar";
+          i += dollarTag.length;
+          continue;
+        }
+      }
+      if (ch === ";") {
+        const trimmed = buf.trim();
+        if (trimmed.length > 0) out.push(trimmed);
+        buf = "";
+        i += 1;
+        continue;
+      }
+      buf += ch;
+      i += 1;
+    } else if (state === "lineComment") {
+      if (ch === "\n") {
+        state = "normal";
+        buf += "\n"; // keep newlines for readability of multi-line statements
+      }
+      i += 1;
+    } else if (state === "blockComment") {
+      if (ch === "*" && next === "/") {
+        buf += "*/";
+        state = "normal";
+        i += 2;
+        continue;
+      }
+      buf += ch;
+      i += 1;
+    } else if (state === "string") {
+      buf += ch;
+      if (ch === "'") {
+        // Check for escaped '' (double quote)
+        if (next === "'") {
+          buf += "'";
+          i += 2;
+          continue;
+        }
+        state = "normal";
+      }
+      i += 1;
+    } else if (state === "dollar") {
+      // Look for closing dollar tag
+      if (sql.slice(i).startsWith(dollarTag)) {
+        buf += dollarTag;
+        state = "normal";
+        i += dollarTag.length;
+        dollarTag = "";
+        continue;
+      }
+      buf += ch;
+      i += 1;
+    }
+  }
+  const last = buf.trim();
+  if (last.length > 0) out.push(last);
+  return out;
 }
