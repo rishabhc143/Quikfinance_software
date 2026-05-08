@@ -8,6 +8,10 @@ import { recordPaymentAction } from "../invoices/actions";
 import { enqueueEmail } from "@/lib/sales/email-sender";
 import { decryptSecret } from "@/lib/crypto";
 import { createRazorpayRefund } from "@/lib/sales/razorpay";
+import {
+  computeRefundRatio,
+  computeProportionalAllocationReversal,
+} from "@/lib/sales/refund-math";
 import type { RecordPaymentInput } from "@/lib/validations/invoice";
 import { format } from "date-fns";
 
@@ -165,11 +169,24 @@ export async function refundPaymentAction(
     }
   }
 
+  // Pure-math step: ratio + per-allocation rollback are computed
+  // upfront so they can be unit-tested in isolation.
+  const ratio = computeRefundRatio({ requestedAmount, originalAmount });
+  const reversals = computeProportionalAllocationReversal(
+    original.allocations.map((a) => ({
+      invoiceId: a.invoice.id,
+      amount: Number(a.amount),
+      invoiceAmountPaid: Number(a.invoice.amountPaid),
+      invoiceTotal: Number(a.invoice.total),
+      invoiceDueDate: a.invoice.dueDate,
+    })),
+    ratio
+  );
+
   await db.$transaction(async (tx) => {
     // Reversal row — negative amount = the refund portion. For a
     // partial, amountUsedForInvoices/amountInExcess are scaled down
     // proportionally to the same ratio.
-    const ratio = requestedAmount / originalAmount;
     await tx.paymentReceived.create({
       data: {
         organizationId: organization.id,
@@ -192,22 +209,11 @@ export async function refundPaymentAction(
       },
     });
 
-    // Unwind each allocation proportionally to the refund ratio.
-    for (const a of original.allocations) {
-      const reverseAmount = Number(a.amount) * ratio;
-      const inv = a.invoice;
-      const newPaid = Math.max(0, Number(inv.amountPaid) - reverseAmount);
-      const newStatus =
-        newPaid <= 0.0001
-          ? inv.dueDate < new Date()
-            ? "OVERDUE"
-            : "SENT"
-          : newPaid >= Number(inv.total) - 0.0001
-          ? "PAID"
-          : "PARTIALLY_PAID";
+    // Apply each allocation reversal.
+    for (const r of reversals) {
       await tx.invoice.update({
-        where: { id: inv.id },
-        data: { amountPaid: newPaid, status: newStatus },
+        where: { id: r.invoiceId },
+        data: { amountPaid: r.newAmountPaid, status: r.newStatus },
       });
     }
 

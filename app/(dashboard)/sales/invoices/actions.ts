@@ -12,6 +12,10 @@ import { renderSalesDocumentHtml } from "@/lib/sales/pdf-renderer";
 import { loadVisibleCustomFields } from "@/lib/sales/custom-fields-loader";
 import { applyMergeTags } from "@/lib/sales/merge-tags";
 import {
+  applyInvoiceStockDecrement,
+  reverseInvoiceStockDecrement,
+} from "@/lib/inventory/stock-mutations";
+import {
   invoiceSchema,
   recordPaymentSchema,
   type InvoiceInput,
@@ -109,6 +113,21 @@ export async function createInvoiceAction(
       },
     },
   });
+
+  // Stock decrement for tracked items. Outside the create call but
+  // safe — both run server-side; on rare failure here the invoice
+  // would still exist without stock movement, which is preferable to
+  // double-decrementing on retry.
+  await applyInvoiceStockDecrement(
+    db,
+    organization.id,
+    { number: created.number, date: created.issueDate },
+    data.lines.map((l) => ({
+      itemId: l.itemId,
+      quantity: l.quantity,
+      description: l.description ?? l.name,
+    }))
+  );
 
   // M17c: persist custom field values, if any
   if (data.customFieldValues && data.customFieldValues.length > 0) {
@@ -208,6 +227,24 @@ export async function updateInvoiceAction(id: string, input: InvoiceInput) {
         skipDuplicates: true,
       });
     }
+    // Stock: reverse the original decrement, then re-apply with the
+    // edited line set. Editing is only allowed on DRAFT invoices, so
+    // it's safe to fully re-do — there's no partial fulfillment to
+    // worry about yet.
+    await reverseInvoiceStockDecrement(tx, organization.id, {
+      number: before.number,
+      date: before.issueDate,
+    });
+    await applyInvoiceStockDecrement(
+      tx,
+      organization.id,
+      { number: before.number, date: data.invoiceDate },
+      data.lines.map((l) => ({
+        itemId: l.itemId,
+        quantity: l.quantity,
+        description: l.description ?? l.name,
+      }))
+    );
   });
 
   await writeAuditLog({
@@ -244,9 +281,21 @@ export async function markInvoiceSentAction(id: string): Promise<void> {
 
 export async function voidInvoiceAction(id: string): Promise<void> {
   const { user, organization } = await requireOrganization();
-  await db.invoice.update({
-    where: { id },
-    data: { status: "VOID", voidedAt: new Date() },
+  const before = await db.invoice.findFirst({
+    where: { id, organizationId: organization.id },
+    select: { number: true, issueDate: true },
+  });
+  if (!before) throw new Error("Invoice not found");
+  await db.$transaction(async (tx) => {
+    await tx.invoice.update({
+      where: { id },
+      data: { status: "VOID", voidedAt: new Date() },
+    });
+    // Voided = goods returned. Restore stock.
+    await reverseInvoiceStockDecrement(tx, organization.id, {
+      number: before.number,
+      date: before.issueDate,
+    });
   });
   await writeAuditLog({
     organizationId: organization.id,
@@ -564,7 +613,14 @@ export async function deleteInvoiceAction(id: string) {
   if (inv.status === "PAID" || inv.status === "PARTIALLY_PAID") {
     return { ok: false, error: "Cannot delete invoices with payments" };
   }
-  await db.invoice.update({ where: { id }, data: { deletedAt: new Date() } });
+  await db.$transaction(async (tx) => {
+    await tx.invoice.update({ where: { id }, data: { deletedAt: new Date() } });
+    // Soft-delete = pretend it never happened. Restore stock.
+    await reverseInvoiceStockDecrement(tx, organization.id, {
+      number: inv.number,
+      date: inv.issueDate,
+    });
+  });
   await writeAuditLog({
     organizationId: organization.id,
     userId: user.id,

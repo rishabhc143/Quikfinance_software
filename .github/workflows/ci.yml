@@ -56,5 +56,8 @@ jobs:
       - name: Lint
         run: pnpm lint
 
+      - name: Unit tests (Vitest)
+        run: pnpm test --run
+
       - name: Build
         run: pnpm next build
