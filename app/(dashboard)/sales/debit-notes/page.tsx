@@ -81,11 +81,16 @@ export default async function DebitNotesListPage({
         Import existing debit notes from a CSV, or add them via the
         Invoice Refinement workflow.
       </p>
-      <Button asChild>
-        <Link href="/sales/debit-notes/import" className="gap-1">
-          <Plus className="h-4 w-4" /> Import Debit Notes
-        </Link>
-      </Button>
+      <div className="flex items-center justify-center gap-2">
+        <Button asChild>
+          <Link href="/sales/debit-notes/new" className="gap-1">
+            <Plus className="h-4 w-4" /> Create Debit Note
+          </Link>
+        </Button>
+        <Button asChild variant="outline">
+          <Link href="/sales/debit-notes/import">Import Debit Notes</Link>
+        </Button>
+      </div>
     </div>
   );
 
@@ -94,6 +99,8 @@ export default async function DebitNotesListPage({
       <TransactionListPage
         title="Debit Notes"
         view="All debit notes"
+        newHref="/sales/debit-notes/new"
+        newLabel="New"
         importHref="/sales/debit-notes/import"
         columns={[
           { key: "date", header: "Date", sortable: true },
