@@ -6,6 +6,8 @@ import { requireOrganization } from "@/lib/auth-helpers";
 import { writeAuditLog } from "@/lib/audit";
 import { recordPaymentAction } from "../invoices/actions";
 import { enqueueEmail } from "@/lib/sales/email-sender";
+import { decryptSecret } from "@/lib/crypto";
+import { createRazorpayRefund } from "@/lib/sales/razorpay";
 import type { RecordPaymentInput } from "@/lib/validations/invoice";
 import { format } from "date-fns";
 
@@ -43,6 +45,66 @@ export async function refundPaymentAction(
     // Reuse same series; suffix the original number with "-R"
     return `${original.number}-R`;
   })();
+
+  // M30: Razorpay-sourced payments — call Razorpay's /refund API first
+  // so the merchant's Razorpay account actually moves the money. The
+  // M22 webhook (refund.processed) will fire shortly after; its
+  // idempotency check on attempt.status="REFUNDED" makes it a no-op
+  // since we set that here.
+  let razorpayRefundId: string | null = null;
+  if (original.paymentMode === "razorpay") {
+    const attempt = await db.razorpayPaymentAttempt.findFirst({
+      where: {
+        organizationId: organization.id,
+        paymentReceivedId: original.id,
+        razorpayPaymentId: { not: null },
+      },
+    });
+    if (!attempt?.razorpayPaymentId) {
+      throw new Error(
+        "Razorpay payment id not found on this payment — cannot refund"
+      );
+    }
+    if (attempt.status === "REFUNDED") {
+      throw new Error("This Razorpay payment has already been refunded");
+    }
+    const cfg = await db.paymentGatewayConfig.findUnique({
+      where: { organizationId: organization.id },
+    });
+    if (
+      !cfg ||
+      !cfg.razorpayKeyId ||
+      !cfg.razorpayKeySecretEncrypted
+    ) {
+      throw new Error("Razorpay is not configured for this organization");
+    }
+    let keySecret: string;
+    try {
+      keySecret = decryptSecret(cfg.razorpayKeySecretEncrypted);
+    } catch {
+      throw new Error("Failed to decrypt Razorpay credentials");
+    }
+    const r = await createRazorpayRefund({
+      keyId: cfg.razorpayKeyId,
+      keySecret,
+      paymentId: attempt.razorpayPaymentId,
+      amountPaise: Math.round(Number(original.amount) * 100),
+      notes: {
+        reason: input.reference ?? input.notes ?? "Merchant-initiated refund",
+        paymentReceivedId: original.id,
+      },
+    });
+    if (!r.ok) {
+      throw new Error(r.error ?? "Razorpay refund failed");
+    }
+    razorpayRefundId = r.refundId ?? null;
+    // Mark the attempt REFUNDED right away. The M22 webhook is
+    // idempotent — when refund.processed arrives later, it'll skip.
+    await db.razorpayPaymentAttempt.update({
+      where: { id: attempt.id },
+      data: { status: "REFUNDED" },
+    });
+  }
 
   await db.$transaction(async (tx) => {
     // Create reversal row (negative amount, no new allocations)
@@ -96,7 +158,13 @@ export async function refundPaymentAction(
     action: "DELETE",
     entityType: "PaymentReceived",
     entityId: id,
-    after: { refunded: true, reversalNumber: refundNumber },
+    after: {
+      refunded: true,
+      reversalNumber: refundNumber,
+      ...(razorpayRefundId
+        ? { source: "razorpay-merchant-initiated", razorpayRefundId }
+        : {}),
+    },
   });
 
   revalidatePath("/sales/payments-received");

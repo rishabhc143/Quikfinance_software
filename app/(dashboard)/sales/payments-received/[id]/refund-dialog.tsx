@@ -24,6 +24,7 @@ export function RefundPaymentDialog({
   number,
   amount,
   currency,
+  paymentMode,
   action,
   trigger,
 }: {
@@ -31,6 +32,9 @@ export function RefundPaymentDialog({
   number: string;
   amount: number;
   currency: string;
+  /** M30: when "razorpay", the dialog warns that the refund hits
+   *  Razorpay's API and is irreversible. */
+  paymentMode?: string | null;
   action: (
     id: string,
     input: { refundDate: Date | string; reference?: string | null; notes?: string | null }
@@ -67,14 +71,28 @@ export function RefundPaymentDialog({
       <DialogTrigger asChild>{trigger}</DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Refund payment {number}</DialogTitle>
+          <DialogTitle>
+            {paymentMode === "razorpay"
+              ? `Refund Razorpay payment ${number}`
+              : `Refund payment ${number}`}
+          </DialogTitle>
         </DialogHeader>
         <div className="space-y-3">
-          <div className="text-sm text-muted-foreground">
-            This will reverse the full payment of {amount.toFixed(2)} {currency}{" "}
-            and roll back any invoice allocations. A reversal entry is created
-            so the audit trail is intact.
-          </div>
+          {paymentMode === "razorpay" ? (
+            <div className="rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm">
+              <strong>This refund hits Razorpay&apos;s API.</strong> The full
+              payment of {amount.toFixed(2)} {currency} will be returned to the
+              customer&apos;s card / UPI account, and the local invoice
+              balance will be rolled back. The Razorpay refund usually
+              settles in 5–7 business days. This action is irreversible.
+            </div>
+          ) : (
+            <div className="text-sm text-muted-foreground">
+              This will reverse the full payment of {amount.toFixed(2)}{" "}
+              {currency} and roll back any invoice allocations. A reversal
+              entry is created so the audit trail is intact.
+            </div>
+          )}
           <Label>Refund date</Label>
           <DatePicker value={refundDate} onChange={(d) => d && setRefundDate(d)} />
           <Label>Reference</Label>

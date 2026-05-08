@@ -64,10 +64,11 @@ export default async function PaymentDetailPage({
             number={p.number}
             amount={Number(p.amount)}
             currency={ccy}
+            paymentMode={p.paymentMode}
             action={refundPaymentAction}
             trigger={
               <Button variant="outline" size="sm">
-                Refund
+                {p.paymentMode === "razorpay" ? "Refund via Razorpay" : "Refund"}
               </Button>
             }
           />
