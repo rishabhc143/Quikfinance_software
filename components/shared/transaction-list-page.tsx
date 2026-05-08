@@ -1,3 +1,14 @@
+"use client";
+
+/**
+ * Hotfix: this component renders Radix `<DropdownMenuItem>` with inline
+ * `onSelect={(e) => e.preventDefault()}` handlers. Inline functions
+ * cannot cross the server→client component boundary in Next.js 14 RSC,
+ * so this needs to be a client component. The component has no async
+ * work, Prisma queries, or server-only imports — making it client-only
+ * is safe. Crashed all 8 Sales sub-pages from M29 → M34.
+ */
+
 import * as React from "react";
 import Link from "next/link";
 import { Plus, MoreHorizontal, ChevronDown } from "lucide-react";
