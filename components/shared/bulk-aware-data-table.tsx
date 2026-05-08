@@ -34,17 +34,27 @@ export type BulkAction = {
   confirm?: string;
   /**
    * Server action that performs the bulk operation. Mutually exclusive
-   * with `href`.
+   * with `href`. Signature mirrors the actions in each module's
+   * `actions.ts` so callers can pass the action reference directly
+   * (rather than wrapping in an inline arrow that violates the
+   * server→client component boundary).
    */
-  action?: (
-    ids: string[]
-  ) => Promise<{ ok: boolean; updated?: number; error?: string }>;
+  action?: (input: {
+    ids: string[];
+  }) => Promise<{ ok: boolean; updated?: number; error?: string }>;
   /**
-   * Builds a URL to navigate to (typically a route handler that streams a
-   * zip or CSV). When set, the button opens the URL in a new tab — used
-   * for Bulk Print (zip of PDFs) and Bulk Export Selected (CSV).
+   * Base URL for a download/print route handler. When set, the button
+   * opens `${hrefBase}?${hrefQuery}&ids=<comma-joined>` in a new tab —
+   * used for Bulk Print (zip of PDFs) and Bulk Export Selected (CSV).
+   *
+   * NOTE: previously this was `href: (ids) => string`, but server pages
+   * inlining an arrow function violates the RSC server→client boundary.
+   * Passing `hrefBase` + `hrefQuery` (both serializable strings/objects)
+   * avoids the issue and the URL is assembled client-side here.
    */
-  href?: (ids: string[]) => string;
+  hrefBase?: string;
+  /** Extra query params to merge into the URL alongside `ids`. */
+  hrefQuery?: Record<string, string>;
 };
 
 export function BulkAwareDataTable({
@@ -136,9 +146,15 @@ export function BulkAwareDataTable({
     if (action.confirm && !window.confirm(action.confirm)) return;
     const ids = Array.from(selected);
 
-    // href-mode: navigate to a download URL (zip / csv) and clear selection
-    if (action.href) {
-      const url = action.href(ids);
+    // href-mode: navigate to a download URL (zip / csv) and clear selection.
+    // The URL is assembled here instead of by the caller because passing
+    // an inline function across the RSC boundary throws.
+    if (action.hrefBase) {
+      const params = new URLSearchParams({
+        ...(action.hrefQuery ?? {}),
+        ids: ids.join(","),
+      });
+      const url = `${action.hrefBase}?${params.toString()}`;
       window.open(url, "_blank", "noopener");
       setSelected(new Set());
       return;
@@ -147,7 +163,7 @@ export function BulkAwareDataTable({
     if (!action.action) return;
     setBusy(action.label);
     try {
-      const r = await action.action(ids);
+      const r = await action.action({ ids });
       if (!r.ok) {
         toast.error(r.error ?? `${action.label} failed`);
         return;

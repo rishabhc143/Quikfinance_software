@@ -19,34 +19,48 @@ async function signInViaApi(page: import("@playwright/test").Page) {
 }
 
 /**
- * Sales module lifecycle smoke. Asserts that every sub-module's list page
- * renders its h1 page title. Each heading query is constrained to level 1
- * so the empty-state h2 ("No credit notes yet.", "No payments yet.", etc.)
- * doesn't trip strict-mode on partial regex matches.
+ * Sales module lifecycle smoke. For every sub-module's list page:
+ *   1. Asserts the page does NOT show the Next.js "Something went wrong"
+ *      error overlay (catches RSC boundary violations like the bulk-action
+ *      wrapper bug — see hotfix `bulk-actions-server-boundary`).
+ *   2. Asserts the page title text appears somewhere on the page. We use
+ *      `getByText` rather than `getByRole("heading")` because pages with
+ *      saved-views render the title inside a `<button>` (chevron dropdown
+ *      trigger), not an `<h1>`.
  *
  * The deeper "create customer → quote → convert → record payment" lifecycle
  * test is a follow-up that needs isolated test-data seeding so it doesn't
  * race the seed admin's data.
  */
 test.describe("Sales module lifecycle smoke", () => {
-  test("each Sales sub-module list page renders", async ({ page }) => {
+  test("each Sales sub-module list page renders without error", async ({ page }) => {
     await signInViaApi(page);
 
-    const checks: { url: string; heading: RegExp }[] = [
-      { url: "/sales/customers", heading: /^all customers$/i },
-      { url: "/sales/quotes", heading: /^all quotes$/i },
-      { url: "/sales/orders", heading: /^all sales orders$/i },
-      { url: "/sales/invoices", heading: /^all invoices$/i },
-      { url: "/sales/recurring-invoices", heading: /^recurring invoices$/i },
-      { url: "/sales/credit-notes", heading: /^credit notes$/i },
-      { url: "/sales/delivery-challans", heading: /^delivery challans$/i },
-      { url: "/sales/payments-received", heading: /^payments received$/i },
+    const checks: { url: string; title: RegExp }[] = [
+      { url: "/sales/customers", title: /^customers$/i },
+      { url: "/sales/quotes", title: /^quotes$/i },
+      { url: "/sales/orders", title: /^sales orders$/i },
+      { url: "/sales/invoices", title: /^invoices$/i },
+      { url: "/sales/recurring-invoices", title: /^recurring invoices$/i },
+      { url: "/sales/credit-notes", title: /^credit notes$/i },
+      { url: "/sales/delivery-challans", title: /^delivery challans$/i },
+      { url: "/sales/payments-received", title: /^payments received$/i },
     ];
 
-    for (const { url, heading } of checks) {
+    for (const { url, title } of checks) {
       await page.goto(url);
+      // Wait for SSR to settle.
+      await page.waitForLoadState("networkidle");
+      // Defensive: the Next.js error boundary in production renders this
+      // text. If our fix regresses, we want the test to fail loudly here
+      // rather than time-out on a missing heading 15 seconds later.
       await expect(
-        page.getByRole("heading", { level: 1, name: heading })
+        page.getByText(/something went wrong/i),
+        `Error overlay shown on ${url}`
+      ).not.toBeVisible();
+      await expect(
+        page.getByText(title).first(),
+        `Title "${title}" missing on ${url}`
       ).toBeVisible({ timeout: 15_000 });
     }
   });

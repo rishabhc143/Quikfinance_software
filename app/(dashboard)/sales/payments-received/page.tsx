@@ -149,8 +149,7 @@ export default async function PaymentsReceivedListPage({
             bulkActions={[
               {
                 label: "Export Selected",
-                href: (ids) =>
-                  `/api/sales/payments-received/export?mode=selected&ids=${ids.join(",")}`,
+                hrefBase: "/api/sales/payments-received/export", hrefQuery: { mode: "selected" },
               },
               {
                 label: "Delete",
@@ -158,7 +157,7 @@ export default async function PaymentsReceivedListPage({
                 doneVerb: "Deleted",
                 noun: "payment",
                 confirm: "Delete the selected payments? Payments with allocations cannot be deleted.",
-                action: async (ids) => bulkDeletePaymentsAction({ ids }),
+                action: bulkDeletePaymentsAction,
               },
             ]}
           />
