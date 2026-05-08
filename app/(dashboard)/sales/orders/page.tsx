@@ -262,23 +262,21 @@ export default async function SalesOrdersListPage({
                 label: "Mark as Open",
                 doneVerb: "Marked",
                 noun: "order as open",
-                action: async (ids) => bulkMarkSalesOrdersOpenAction({ ids }),
+                action: bulkMarkSalesOrdersOpenAction,
               },
               {
                 label: "Print",
-                href: (ids) =>
-                  `/sales/orders/bulk-pdf?ids=${ids.join(",")}`,
+                hrefBase: "/sales/orders/bulk-pdf",
               },
               {
                 label: "Email",
                 doneVerb: "Queued emails for",
                 noun: "sales order",
-                action: async (ids) => bulkEmailSalesOrdersAction({ ids }),
+                action: bulkEmailSalesOrdersAction,
               },
               {
                 label: "Export Selected",
-                href: (ids) =>
-                  `/api/sales/orders/export?mode=selected&ids=${ids.join(",")}`,
+                hrefBase: "/api/sales/orders/export", hrefQuery: { mode: "selected" },
               },
               {
                 label: "Delete",
@@ -286,7 +284,7 @@ export default async function SalesOrdersListPage({
                 doneVerb: "Deleted",
                 noun: "sales order",
                 confirm: "Delete the selected sales orders? This is reversible (soft delete).",
-                action: async (ids) => bulkDeleteSalesOrdersAction({ ids }),
+                action: bulkDeleteSalesOrdersAction,
               },
             ]}
           />

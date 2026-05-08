@@ -302,29 +302,27 @@ export default async function QuotesListPage({
                 label: "Mark as Sent",
                 doneVerb: "Marked",
                 noun: "quote as sent",
-                action: async (ids) => bulkMarkQuotesSentAction({ ids }),
+                action: bulkMarkQuotesSentAction,
               },
               {
                 label: "Mark as Accepted",
                 doneVerb: "Marked",
                 noun: "quote as accepted",
-                action: async (ids) => bulkMarkQuotesAcceptedAction({ ids }),
+                action: bulkMarkQuotesAcceptedAction,
               },
               {
                 label: "Print",
-                href: (ids) =>
-                  `/sales/quotes/bulk-pdf?ids=${ids.join(",")}`,
+                hrefBase: "/sales/quotes/bulk-pdf",
               },
               {
                 label: "Email",
                 doneVerb: "Queued emails for",
                 noun: "quote",
-                action: async (ids) => bulkEmailQuotesAction({ ids }),
+                action: bulkEmailQuotesAction,
               },
               {
                 label: "Export Selected",
-                href: (ids) =>
-                  `/api/sales/quotes/export?mode=selected&ids=${ids.join(",")}`,
+                hrefBase: "/api/sales/quotes/export", hrefQuery: { mode: "selected" },
               },
               {
                 label: "Delete",
@@ -332,7 +330,7 @@ export default async function QuotesListPage({
                 doneVerb: "Deleted",
                 noun: "quote",
                 confirm: "Delete the selected quotes? This is reversible (soft delete).",
-                action: async (ids) => bulkDeleteQuotesAction({ ids }),
+                action: bulkDeleteQuotesAction,
               },
             ]}
           />

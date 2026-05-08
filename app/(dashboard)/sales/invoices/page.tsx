@@ -270,29 +270,27 @@ export default async function InvoicesListPage({
                 label: "Mark as Sent",
                 doneVerb: "Marked",
                 noun: "invoice as sent",
-                action: async (ids) => bulkMarkInvoicesSentAction({ ids }),
+                action: bulkMarkInvoicesSentAction,
               },
               {
                 label: "Send Reminder",
                 doneVerb: "Queued reminders for",
                 noun: "invoice",
-                action: async (ids) => bulkSendRemindersAction({ ids }),
+                action: bulkSendRemindersAction,
               },
               {
                 label: "Print",
-                href: (ids) =>
-                  `/sales/invoices/bulk-pdf?ids=${ids.join(",")}`,
+                hrefBase: "/sales/invoices/bulk-pdf",
               },
               {
                 label: "Email",
                 doneVerb: "Queued emails for",
                 noun: "invoice",
-                action: async (ids) => bulkEmailInvoicesAction({ ids }),
+                action: bulkEmailInvoicesAction,
               },
               {
                 label: "Export Selected",
-                href: (ids) =>
-                  `/api/sales/invoices/export?mode=selected&ids=${ids.join(",")}`,
+                hrefBase: "/api/sales/invoices/export", hrefQuery: { mode: "selected" },
               },
               {
                 label: "Delete",
@@ -300,7 +298,7 @@ export default async function InvoicesListPage({
                 doneVerb: "Deleted",
                 noun: "invoice",
                 confirm: "Delete the selected invoices? Invoices with payments cannot be deleted.",
-                action: async (ids) => bulkDeleteInvoicesAction({ ids }),
+                action: bulkDeleteInvoicesAction,
               },
             ]}
           />

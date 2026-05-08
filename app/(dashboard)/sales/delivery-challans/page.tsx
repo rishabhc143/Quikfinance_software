@@ -165,17 +165,15 @@ export default async function DeliveryChallansListPage({
                 label: "Mark as Open",
                 doneVerb: "Marked",
                 noun: "challan as open",
-                action: async (ids) => bulkMarkChallansOpenAction({ ids }),
+                action: bulkMarkChallansOpenAction,
               },
               {
                 label: "Print",
-                href: (ids) =>
-                  `/sales/delivery-challans/bulk-pdf?ids=${ids.join(",")}`,
+                hrefBase: "/sales/delivery-challans/bulk-pdf",
               },
               {
                 label: "Export Selected",
-                href: (ids) =>
-                  `/api/sales/delivery-challans/export?mode=selected&ids=${ids.join(",")}`,
+                hrefBase: "/api/sales/delivery-challans/export", hrefQuery: { mode: "selected" },
               },
               {
                 label: "Delete",
@@ -183,7 +181,7 @@ export default async function DeliveryChallansListPage({
                 doneVerb: "Deleted",
                 noun: "challan",
                 confirm: "Delete the selected challans? Invoiced challans cannot be deleted.",
-                action: async (ids) => bulkDeleteDeliveryChallansAction({ ids }),
+                action: bulkDeleteDeliveryChallansAction,
               },
             ]}
           />

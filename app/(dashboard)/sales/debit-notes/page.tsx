@@ -143,12 +143,11 @@ export default async function DebitNotesListPage({
                 label: "Mark as Void",
                 doneVerb: "Voided",
                 noun: "debit note",
-                action: async (ids) => bulkVoidDebitNotesAction({ ids }),
+                action: bulkVoidDebitNotesAction,
               },
               {
                 label: "Print",
-                href: (ids) =>
-                  `/sales/debit-notes/bulk-pdf?ids=${ids.join(",")}`,
+                hrefBase: "/sales/debit-notes/bulk-pdf",
               },
               {
                 label: "Delete",
@@ -157,7 +156,7 @@ export default async function DebitNotesListPage({
                 noun: "debit note",
                 confirm:
                   "Delete the selected debit notes? Notes with applications cannot be deleted.",
-                action: async (ids) => bulkDeleteDebitNotesAction({ ids }),
+                action: bulkDeleteDebitNotesAction,
               },
             ]}
           />

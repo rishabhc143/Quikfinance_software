@@ -180,18 +180,17 @@ export default async function RecurringInvoicesListPage({
                 label: "Stop",
                 doneVerb: "Stopped",
                 noun: "profile",
-                action: async (ids) => bulkStopRecurringAction({ ids }),
+                action: bulkStopRecurringAction,
               },
               {
                 label: "Resume",
                 doneVerb: "Resumed",
                 noun: "profile",
-                action: async (ids) => bulkResumeRecurringAction({ ids }),
+                action: bulkResumeRecurringAction,
               },
               {
                 label: "Export Selected",
-                href: (ids) =>
-                  `/api/sales/recurring-invoices/export?mode=selected&ids=${ids.join(",")}`,
+                hrefBase: "/api/sales/recurring-invoices/export", hrefQuery: { mode: "selected" },
               },
               {
                 label: "Delete",
@@ -199,7 +198,7 @@ export default async function RecurringInvoicesListPage({
                 doneVerb: "Deleted",
                 noun: "profile",
                 confirm: "Delete the selected recurring profiles? This is reversible (soft delete).",
-                action: async (ids) => bulkDeleteRecurringAction({ ids }),
+                action: bulkDeleteRecurringAction,
               },
             ]}
           />

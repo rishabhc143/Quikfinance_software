@@ -173,17 +173,15 @@ export default async function CreditNotesListPage({
                 label: "Mark as Open",
                 doneVerb: "Marked",
                 noun: "credit note as open",
-                action: async (ids) => bulkMarkCreditNotesOpenAction({ ids }),
+                action: bulkMarkCreditNotesOpenAction,
               },
               {
                 label: "Print",
-                href: (ids) =>
-                  `/sales/credit-notes/bulk-pdf?ids=${ids.join(",")}`,
+                hrefBase: "/sales/credit-notes/bulk-pdf",
               },
               {
                 label: "Export Selected",
-                href: (ids) =>
-                  `/api/sales/credit-notes/export?mode=selected&ids=${ids.join(",")}`,
+                hrefBase: "/api/sales/credit-notes/export", hrefQuery: { mode: "selected" },
               },
               {
                 label: "Delete",
@@ -191,7 +189,7 @@ export default async function CreditNotesListPage({
                 doneVerb: "Deleted",
                 noun: "credit note",
                 confirm: "Delete the selected credit notes? Notes with applications/refunds cannot be deleted.",
-                action: async (ids) => bulkDeleteCreditNotesAction({ ids }),
+                action: bulkDeleteCreditNotesAction,
               },
             ]}
           />
