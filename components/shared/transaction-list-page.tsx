@@ -11,6 +11,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { SavedViewListItem } from "@/components/shared/saved-view-list-item";
 
 /**
  * Shared list-page primitive for every Sales sub-module.
@@ -21,7 +22,18 @@ import {
  * three-dots menu, saved views, and empty state.
  */
 
-export type SavedView = { value: string; label: string };
+/**
+ * M34: `id` + `isSystem` are optional so existing call-sites that
+ * only pass `value`+`label` still compile. When `id` is present and
+ * `isSystem === false`, the chevron-dropdown row gets a trailing X
+ * delete button.
+ */
+export type SavedView = {
+  value: string;
+  label: string;
+  id?: string;
+  isSystem?: boolean;
+};
 
 export type TransactionListPageProps = {
   title: string;
@@ -102,16 +114,14 @@ export function TransactionListPage(props: TransactionListPageProps) {
               <DropdownMenuContent align="start" className="w-56">
                 <DropdownMenuLabel>Saved views</DropdownMenuLabel>
                 {props.views!.map((v) => (
-                  <DropdownMenuItem key={v.value} asChild>
-                    <Link
-                      href={`?view=${encodeURIComponent(v.value)}`}
-                      className={
-                        v.value === props.activeView ? "font-semibold" : ""
-                      }
-                    >
-                      {v.label}
-                    </Link>
-                  </DropdownMenuItem>
+                  <SavedViewListItem
+                    key={v.value}
+                    id={v.id}
+                    value={v.value}
+                    label={v.label}
+                    isActive={v.value === props.activeView}
+                    isSystem={v.isSystem ?? true}
+                  />
                 ))}
                 {props.savedViewBuilder ? (
                   <DropdownMenuItem
