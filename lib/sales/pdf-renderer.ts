@@ -14,7 +14,13 @@
 import type { DocumentComputed } from "./totals";
 
 export type RenderableSalesDocument = {
-  type: "QUOTE" | "SALES_ORDER" | "INVOICE" | "CREDIT_NOTE" | "DELIVERY_CHALLAN";
+  type:
+    | "QUOTE"
+    | "SALES_ORDER"
+    | "INVOICE"
+    | "CREDIT_NOTE"
+    | "DELIVERY_CHALLAN"
+    | "DEBIT_NOTE";
   organization: { name: string; logoUrl?: string | null; address?: string | null };
   document: {
     number: string;
@@ -54,6 +60,7 @@ const TYPE_LABEL: Record<RenderableSalesDocument["type"], string> = {
   INVOICE: "Invoice",
   CREDIT_NOTE: "Credit Note",
   DELIVERY_CHALLAN: "Delivery Challan",
+  DEBIT_NOTE: "Debit Note",
 };
 
 function escape(s: string | null | undefined): string {

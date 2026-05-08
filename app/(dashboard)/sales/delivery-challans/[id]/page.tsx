@@ -53,6 +53,11 @@ export default async function ChallanDetailPage({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
+              <DropdownMenuItem asChild>
+                <Link href={`/sales/delivery-challans/${c.id}/pdf`} target="_blank">
+                  Download PDF
+                </Link>
+              </DropdownMenuItem>
               {c.status !== "DELIVERED" ? (
                 <DropdownMenuItem asChild>
                   <form action={markChallanDeliveredAction.bind(null, c.id)}>
