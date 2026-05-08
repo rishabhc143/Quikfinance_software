@@ -19,7 +19,6 @@ import {
   bulkEmailSalesOrdersAction,
   bulkMarkSalesOrdersOpenAction,
 } from "./actions";
-import { withDiagnostic } from "@/app/(dashboard)/sales/_diagnostic";
 
 export const metadata = { title: "Sales Orders" };
 
@@ -30,7 +29,7 @@ const STATUS_VARIANT: Record<string, "secondary" | "outline" | "destructive"> = 
   VOID: "destructive",
 };
 
-async function SalesOrdersListPage({
+export default async function SalesOrdersListPage({
   searchParams,
 }: {
   searchParams: { q?: string; page?: string; pageSize?: string; sort?: string; dir?: string; view?: string };
@@ -250,6 +249,3 @@ async function SalesOrdersListPage({
     </div>
   );
 }
-
-
-export default withDiagnostic("/sales/orders", SalesOrdersListPage);
