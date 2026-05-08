@@ -89,3 +89,36 @@ export async function pingRazorpay(input: {
   });
   return { ok: r.ok, error: r.error };
 }
+
+/**
+ * M30: initiate a refund for a captured Razorpay payment. Razorpay
+ * accepts an optional `amount` for partial refunds (in paise). Omitting
+ * it refunds the full payment.
+ *
+ * Returns the refund id on success. The merchant's webhook
+ * (refund.processed) will fire shortly after — local app state is
+ * reconciled there. The caller should also do the local reversal
+ * synchronously so the user sees immediate feedback (the M22 webhook
+ * handler is idempotent on attempt.status="REFUNDED" so the duplicate
+ * delivery is a no-op).
+ */
+export async function createRazorpayRefund(input: {
+  keyId: string;
+  keySecret: string;
+  paymentId: string;
+  amountPaise?: number;
+  notes?: Record<string, string>;
+}): Promise<{ ok: boolean; refundId?: string; error?: string }> {
+  const body: Record<string, unknown> = {};
+  if (input.amountPaise !== undefined) body.amount = input.amountPaise;
+  if (input.notes) body.notes = input.notes;
+  const r = await razorpayFetch<{ id: string }>({
+    path: `/payments/${encodeURIComponent(input.paymentId)}/refund`,
+    method: "POST",
+    body,
+    keyId: input.keyId,
+    keySecret: input.keySecret,
+  });
+  if (!r.ok) return { ok: false, error: r.error };
+  return { ok: true, refundId: r.data?.id };
+}
