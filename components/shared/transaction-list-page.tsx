@@ -42,6 +42,11 @@ export type TransactionListPageProps = {
   /** Base URL for the export route handler. Two menu entries are added:
    *  Export All (mode=all) and Export Current View (mode=current_view). */
   exportHref?: string;
+  /** M27: optional rich Export dialog — when supplied, replaces the simple
+   *  Export All / Export Current View links with a single Export… item that
+   *  opens the dialog (with Status + Date Range + format + decimal +
+   *  PII + password options). */
+  exportDialog?: React.ReactNode;
   preferencesHref?: string;
   /** M17c — link to the Manage Custom Fields editor for this entity. */
   customFieldsHref?: string;
@@ -151,7 +156,17 @@ export function TransactionListPage(props: TransactionListPageProps) {
                   <Link href={props.importHref}>Import</Link>
                 </DropdownMenuItem>
               ) : null}
-              {props.exportHref ? (
+              {props.exportDialog ? (
+                <DropdownMenuItem
+                  onSelect={(e) => e.preventDefault()}
+                  className="p-0"
+                  asChild
+                >
+                  {/* The dialog's <DialogTrigger asChild> handles the
+                       click; we just provide the menu row. */}
+                  <div>{props.exportDialog}</div>
+                </DropdownMenuItem>
+              ) : props.exportHref ? (
                 <>
                   <DropdownMenuItem asChild>
                     <a href={`${props.exportHref}?mode=all`}>Export all</a>

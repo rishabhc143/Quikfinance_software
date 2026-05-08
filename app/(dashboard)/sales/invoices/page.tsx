@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { TransactionListPage } from "@/components/shared/transaction-list-page";
 import { BulkAwareDataTable } from "@/components/shared/bulk-aware-data-table";
+import { SalesExportDialog } from "@/components/shared/sales-export-dialog";
 import { formatMoney } from "@/lib/money";
 import {
   getSavedViews,
@@ -158,6 +159,31 @@ export default async function InvoicesListPage({
           { label: "Import Debit Notes", href: "/sales/debit-notes/import" },
         ]}
         exportHref="/api/sales/invoices/export"
+        exportDialog={
+          <SalesExportDialog
+            entityLabel="Invoices"
+            exportHref="/api/sales/invoices/export"
+            statusOptions={[
+              { value: "all", label: "All" },
+              { value: "DRAFT", label: "Draft" },
+              { value: "SENT", label: "Sent" },
+              { value: "OVERDUE", label: "Overdue" },
+              { value: "unpaid", label: "Unpaid" },
+              { value: "PAID", label: "Paid" },
+              { value: "VOID", label: "Void" },
+              { value: "PARTIALLY_PAID", label: "Partially Paid" },
+              { value: "WRITTEN_OFF", label: "Written Off" },
+            ]}
+            trigger={
+              <button
+                type="button"
+                className="block w-full px-2 py-1.5 text-left text-sm hover:bg-accent rounded-sm"
+              >
+                Export…
+              </button>
+            }
+          />
+        }
         preferencesHref="/settings/preferences/invoices"
         customFieldsHref="/settings/preferences/invoices/custom-fields"
         onlinePaymentsHref="/settings/online-payments/customer-payments"
