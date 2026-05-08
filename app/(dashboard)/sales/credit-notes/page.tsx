@@ -1,9 +1,8 @@
-import Link from "next/link";
 import { format } from "date-fns";
-import { ReceiptText, Plus } from "lucide-react";
+import { ReceiptText } from "lucide-react";
+import { SalesEmptyState } from "@/components/shared/sales-empty-state";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { TransactionListPage } from "@/components/shared/transaction-list-page";
 import { BulkAwareDataTable } from "@/components/shared/bulk-aware-data-table";
@@ -74,19 +73,18 @@ export default async function CreditNotesListPage({
   });
 
   const empty = (
-    <div className="space-y-4">
-      <ReceiptText className="h-12 w-12 mx-auto text-primary" aria-hidden />
-      <h2 className="text-xl font-semibold">No credit notes yet.</h2>
-      <p className="text-sm text-muted-foreground max-w-md mx-auto">
-        Issue a credit note when a customer is owed a refund or a price
-        adjustment after the original invoice.
-      </p>
-      <Button asChild>
-        <Link href="/sales/credit-notes/new" className="gap-1">
-          <Plus className="h-4 w-4" /> Create Credit Note
-        </Link>
-      </Button>
-    </div>
+    <SalesEmptyState
+      icon={ReceiptText}
+      title="Issue credits with confidence"
+      description="Apply credit notes to invoices or refund customers when there's a price adjustment."
+      primaryAction={{ label: "Create Credit Note", href: "/sales/credit-notes/new" }}
+      benefits={[
+        "Apply credit to one or many open invoices",
+        "Refund the unallocated balance",
+        "Email credit-note PDFs",
+        "Track running customer credit balance",
+      ]}
+    />
   );
 
   return (

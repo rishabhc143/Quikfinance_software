@@ -1,9 +1,8 @@
-import Link from "next/link";
 import { format } from "date-fns";
-import { Truck, Plus } from "lucide-react";
+import { ShoppingBag } from "lucide-react";
+import { SalesEmptyState } from "@/components/shared/sales-empty-state";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { TransactionListPage } from "@/components/shared/transaction-list-page";
 import { BulkAwareDataTable } from "@/components/shared/bulk-aware-data-table";
@@ -98,63 +97,20 @@ export default async function SalesOrdersListPage({
   }));
 
   const empty = (
-    <div className="space-y-6">
-      <div className="rounded-lg border bg-background p-8 max-w-lg mx-auto space-y-4">
-        <div className="mx-auto h-24 w-24 rounded-full bg-primary/10 flex items-center justify-center">
-          <Truck className="h-10 w-10 text-primary" aria-hidden />
-        </div>
-        <div>
-          <h2 className="text-xl font-semibold">Start managing your sales activities!</h2>
-          <p className="text-sm text-muted-foreground mt-1">
-            Create, customize and send professional sales orders.
-          </p>
-        </div>
-        <div className="flex flex-col items-center gap-2">
-          <Button asChild>
-            <Link href="/sales/orders/new" className="gap-1">
-              <Plus className="h-4 w-4" /> Create Sales Order
-            </Link>
-          </Button>
-          <Link href="/settings/integrations/bharat-connect" className="text-xs text-muted-foreground hover:text-foreground">
-            Convert vendor purchase orders into sales orders via Bharat Connect — set up
-          </Link>
-        </div>
-      </div>
-
-      <div>
-        <div className="text-xs uppercase tracking-wider text-muted-foreground mb-3 text-center">
-          Life cycle of a Sales Order
-        </div>
-        <svg
-          viewBox="0 0 800 100"
-          className="mx-auto w-full max-w-3xl"
-          role="img"
-          aria-label="Sales Order lifecycle"
-        >
-          {[
-            { x: 20, label: "Draft" },
-            { x: 180, label: "Confirmed" },
-            { x: 360, label: "Invoiced" },
-            { x: 540, label: "Closed" },
-          ].map((b, i, all) => (
-            <g key={b.label}>
-              <rect x={b.x} y={30} width={120} height={40} rx={6} fill="hsl(var(--muted))" stroke="hsl(var(--border))" />
-              <text x={b.x + 60} y={55} textAnchor="middle" className="fill-foreground" fontSize={14}>{b.label}</text>
-              {i < all.length - 1 ? <line x1={b.x + 120} y1={50} x2={all[i + 1].x} y2={50} stroke="hsl(var(--border))" /> : null}
-            </g>
-          ))}
-        </svg>
-      </div>
-
-      <div className="border-t pt-4 max-w-lg mx-auto text-left">
-        <div className="text-xs uppercase tracking-wider text-muted-foreground mb-2">In the Sales Orders module, you can:</div>
-        <ul className="space-y-1 text-sm">
-          <li>• Confirm order details before creating an invoice</li>
-          <li>• Convert sales orders to invoices or purchase orders</li>
-          <li>• Track expected shipment dates</li>
-        </ul>
-      </div>
-    </div>
+    <SalesEmptyState
+      icon={ShoppingBag}
+      title="Start managing your sales activities"
+      description="Create, customize and send professional sales orders."
+      primaryAction={{ label: "Create Sales Order", href: "/sales/orders/new" }}
+      secondaryAction={{ label: "Import File", href: "/sales/orders/import" }}
+      importUsingHref="/sales/orders/import"
+      benefits={[
+        "Confirm order details before invoicing",
+        "Convert sales orders into invoices or purchase orders",
+        "Track expected shipment dates",
+        "Bulk export to CSV or print as a zip",
+      ]}
+    />
   );
 
   return (
