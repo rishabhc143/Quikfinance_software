@@ -10,6 +10,12 @@ const config = {
       { protocol: "https", hostname: "avatars.githubusercontent.com" },
     ],
   },
+  // Include migration SQL files in the /api/admin/migrate serverless
+  // function bundle so it can read them at runtime. Without this hint,
+  // Next.js tree-shakes them out (they're not imported as JS modules).
+  outputFileTracingIncludes: {
+    "/api/admin/migrate": ["./prisma/migrations/**/*"],
+  },
 };
 
 export default config;

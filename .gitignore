@@ -60,3 +60,4 @@ test-results/
 playwright/.cache/
 
 .vercel
+.migration-key.local
