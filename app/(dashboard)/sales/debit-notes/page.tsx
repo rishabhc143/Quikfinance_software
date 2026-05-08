@@ -6,6 +6,11 @@ import { requireOrganization } from "@/lib/auth-helpers";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { TransactionListPage } from "@/components/shared/transaction-list-page";
+import { BulkAwareDataTable } from "@/components/shared/bulk-aware-data-table";
+import {
+  bulkDeleteDebitNotesAction,
+  bulkVoidDebitNotesAction,
+} from "./actions";
 import { formatMoney } from "@/lib/money";
 
 export const metadata = { title: "Debit Notes" };
@@ -117,6 +122,46 @@ export default async function DebitNotesListPage({
         pageSize={pageSize}
         search={q}
         empty={empty}
+        customTable={
+          <BulkAwareDataTable
+            columns={[
+              { key: "date", header: "Date", sortable: true },
+              { key: "number", header: "Debit note #" },
+              { key: "ref", header: "Reference #" },
+              { key: "cust", header: "Customer name" },
+              { key: "status", header: "Status" },
+              { key: "total", header: "Amount", align: "right" },
+            ]}
+            rows={rows}
+            total={total}
+            page={page}
+            pageSize={pageSize}
+            search={q}
+            rowNoun="debit note"
+            bulkActions={[
+              {
+                label: "Mark as Void",
+                doneVerb: "Voided",
+                noun: "debit note",
+                action: async (ids) => bulkVoidDebitNotesAction({ ids }),
+              },
+              {
+                label: "Print",
+                href: (ids) =>
+                  `/sales/debit-notes/bulk-pdf?ids=${ids.join(",")}`,
+              },
+              {
+                label: "Delete",
+                variant: "destructive",
+                doneVerb: "Deleted",
+                noun: "debit note",
+                confirm:
+                  "Delete the selected debit notes? Notes with applications cannot be deleted.",
+                action: async (ids) => bulkDeleteDebitNotesAction({ ids }),
+              },
+            ]}
+          />
+        }
       />
     </div>
   );
