@@ -4,15 +4,17 @@ import { SalesDebugError } from "@/components/shared/sales-debug-error";
 /**
  * Diagnostic wrapper for Sales list page server components.
  *
+ * v2: ALWAYS renders the debug card on caught errors. The previous
+ * `?debug=1` gate was too strict — the sidebar Link strips query
+ * params on navigation, so the user could never reach the gate by
+ * clicking. We're in a temporary diagnostic mode anyway, so always
+ * surfacing the real error is the right call.
+ *
  * Wrap a page's default export with this. On error:
  *   - Logs the full message + stack to console.error so Vercel runtime
- *     logs capture it (server-side log, distinct from the client-side
- *     console.error in app/(dashboard)/error.tsx).
- *   - If `searchParams.debug === "1"`, returns an inline debug
- *     component rendering the actual error so we can read it without
- *     log access.
- *   - Otherwise re-throws so the existing error boundary triggers
- *     normally.
+ *     logs also capture it (belt-and-suspenders).
+ *   - Returns an inline `<SalesDebugError>` rendering the actual
+ *     error name, message, stack, and Prisma `code`/`meta` if present.
  *
  * Ship this in a temporary diagnostic PR. Once we identify the root
  * cause, the wrapper is removed and pages return to bare implementations.
@@ -43,18 +45,14 @@ export function withDiagnostic<P extends PageProps>(
         "\nstack:",
         stack
       );
-      const debugFlag = props.searchParams?.debug;
-      const debugOn = debugFlag === "1" || debugFlag === "true";
-      if (debugOn) {
-        return (
-          <SalesDebugError
-            route={route}
-            searchParams={props.searchParams ?? {}}
-            error={err}
-          />
-        );
-      }
-      throw err;
+      // Always render the debug card; this is a temporary build.
+      return (
+        <SalesDebugError
+          route={route}
+          searchParams={props.searchParams ?? {}}
+          error={err}
+        />
+      );
     }
   };
 }
