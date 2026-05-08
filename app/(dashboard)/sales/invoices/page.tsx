@@ -1,9 +1,8 @@
-import Link from "next/link";
 import { format } from "date-fns";
-import { Receipt, Plus } from "lucide-react";
+import { Receipt } from "lucide-react";
+import { SalesEmptyState } from "@/components/shared/sales-empty-state";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { TransactionListPage } from "@/components/shared/transaction-list-page";
 import { BulkAwareDataTable } from "@/components/shared/bulk-aware-data-table";
@@ -113,29 +112,20 @@ export default async function InvoicesListPage({
   });
 
   const empty = (
-    <div className="space-y-6">
-      <div className="rounded-lg border bg-background p-8 max-w-lg mx-auto space-y-4">
-        <div className="mx-auto h-24 w-24 rounded-full bg-primary/10 flex items-center justify-center">
-          <Receipt className="h-10 w-10 text-primary" aria-hidden />
-        </div>
-        <div>
-          <h2 className="text-xl font-semibold">Bring your business to life with invoices.</h2>
-          <p className="text-sm text-muted-foreground mt-1">
-            Send professional invoices, get paid faster, track every rupee.
-          </p>
-        </div>
-        <div className="flex flex-col items-center gap-2">
-          <Button asChild>
-            <Link href="/sales/invoices/new" className="gap-1">
-              <Plus className="h-4 w-4" /> Create New Invoice
-            </Link>
-          </Button>
-          <Link href="/sales/invoices/import" className="text-sm text-primary hover:underline">
-            Import Invoices
-          </Link>
-        </div>
-      </div>
-    </div>
+    <SalesEmptyState
+      icon={Receipt}
+      title="Bring your business to life with invoices"
+      description="Send professional invoices, get paid faster, track every rupee."
+      primaryAction={{ label: "Create New Invoice", href: "/sales/invoices/new" }}
+      secondaryAction={{ label: "Import File", href: "/sales/invoices/import" }}
+      importUsingHref="/sales/invoices/import"
+      benefits={[
+        "Email invoices with PDF attachments",
+        "Accept payment via Razorpay portal link",
+        "Set due-date reminders that auto-send",
+        "Convert quotes into invoices in one click",
+      ]}
+    />
   );
 
   return (

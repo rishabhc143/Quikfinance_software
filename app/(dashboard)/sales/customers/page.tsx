@@ -1,8 +1,7 @@
-import Link from "next/link";
-import { Plus, Download, Check, UserCircle2 } from "lucide-react";
+import { UserCircle2 } from "lucide-react";
+import { SalesEmptyState } from "@/components/shared/sales-empty-state";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { TransactionListPage } from "@/components/shared/transaction-list-page";
 import { SalesExportDialog } from "@/components/shared/sales-export-dialog";
@@ -121,131 +120,20 @@ export default async function CustomersListPage({
   });
 
   const empty = (
-    <div className="flex flex-col items-center max-w-2xl mx-auto py-8">
-      {/* Avatar with + badge */}
-      <div className="relative mb-6">
-        <UserCircle2
-          className="h-24 w-24 text-muted-foreground/60"
-          strokeWidth={1.5}
-          aria-hidden
-        />
-        <div className="absolute -bottom-1 right-0 h-7 w-7 rounded-full bg-primary text-primary-foreground flex items-center justify-center ring-2 ring-background">
-          <Plus className="h-4 w-4" strokeWidth={2.5} />
-        </div>
-      </div>
-
-      {/* Heading + subheading */}
-      <h2 className="text-xl font-semibold mb-2 text-center">
-        Every sale starts with a customer
-      </h2>
-      <p className="text-sm text-muted-foreground text-center max-w-md mb-6">
-        Create and manage your customers and their contact persons, all in
-        one place.
-      </p>
-
-      {/* Primary CTAs */}
-      <div className="flex items-center gap-3 mb-6">
-        <Button asChild className="gap-1">
-          <Link href="/sales/customers/new">
-            <Plus className="h-4 w-4" /> Create New Customer
-          </Link>
-        </Button>
-        <Button asChild variant="outline" className="gap-1">
-          <Link href="/sales/customers/import">
-            <Download className="h-4 w-4" /> Import File
-          </Link>
-        </Button>
-      </div>
-
-      {/* "- or -" separator + social import icons */}
-      <div className="text-xs text-muted-foreground mb-3">- or -</div>
-      <div className="flex items-center gap-3 mb-10">
-        <span className="text-xs text-muted-foreground">Import using</span>
-        <Link
-          href="/sales/customers/import"
-          aria-label="Import via cloud storage"
-          className="rounded-full p-1 hover:bg-accent transition-colors"
-        >
-          {/* Cloud / link icon (decorative tint) */}
-          <svg
-            viewBox="0 0 24 24"
-            className="h-5 w-5"
-            fill="none"
-            stroke="#3b82f6"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden
-          >
-            <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
-            <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
-          </svg>
-        </Link>
-        <Link
-          href="/sales/customers/import"
-          aria-label="Import from Google Contacts"
-          className="rounded-full p-1 hover:bg-accent transition-colors"
-        >
-          {/* Google G mark */}
-          <svg viewBox="0 0 48 48" className="h-5 w-5" aria-hidden>
-            <path
-              fill="#FFC107"
-              d="M43.611 20.083H42V20H24v8h11.303c-1.649 4.657-6.08 8-11.303 8-6.627 0-12-5.373-12-12s5.373-12 12-12c3.059 0 5.842 1.154 7.961 3.039l5.657-5.657C34.046 6.053 29.268 4 24 4 12.955 4 4 12.955 4 24s8.955 20 20 20 20-8.955 20-20c0-1.341-.138-2.65-.389-3.917z"
-            />
-            <path
-              fill="#FF3D00"
-              d="M6.306 14.691l6.571 4.819C14.655 15.108 18.961 12 24 12c3.059 0 5.842 1.154 7.961 3.039l5.657-5.657C34.046 6.053 29.268 4 24 4 16.318 4 9.656 8.337 6.306 14.691z"
-            />
-            <path
-              fill="#4CAF50"
-              d="M24 44c5.166 0 9.86-1.977 13.409-5.192l-6.19-5.238A11.91 11.91 0 0 1 24 36c-5.202 0-9.619-3.317-11.283-7.946l-6.522 5.025C9.505 39.556 16.227 44 24 44z"
-            />
-            <path
-              fill="#1976D2"
-              d="M43.611 20.083H42V20H24v8h11.303a12.04 12.04 0 0 1-4.087 5.571l.003-.002 6.19 5.238C36.971 39.205 44 34 44 24c0-1.341-.138-2.65-.389-3.917z"
-            />
-          </svg>
-        </Link>
-        <Link
-          href="/sales/customers/import"
-          aria-label="Import from Microsoft Contacts"
-          className="rounded-full p-1 hover:bg-accent transition-colors"
-        >
-          {/* Microsoft 4-square mark */}
-          <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden>
-            <rect x="1" y="1" width="10" height="10" fill="#F25022" />
-            <rect x="13" y="1" width="10" height="10" fill="#7FBA00" />
-            <rect x="1" y="13" width="10" height="10" fill="#00A4EF" />
-            <rect x="13" y="13" width="10" height="10" fill="#FFB900" />
-          </svg>
-        </Link>
-      </div>
-
-      {/* Key Benefits card */}
-      <div className="w-full rounded-lg border bg-card px-6 py-5">
-        <div className="flex items-center gap-2 mb-4">
-          <span className="inline-block h-4 w-4 rounded-sm bg-amber-100 dark:bg-amber-950" aria-hidden />
-          <span className="text-sm font-semibold">Key Benefits</span>
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-3 gap-x-8">
-          {[
-            "Stay connected with multiple contact persons",
-            "Provide portal access to customers",
-            "Handle multiple addresses effortlessly",
-            "Create multi-currency transactions for contacts",
-          ].map((benefit) => (
-            <div key={benefit} className="flex items-start gap-2 text-sm">
-              <Check
-                className="h-4 w-4 text-emerald-600 mt-0.5 shrink-0"
-                strokeWidth={3}
-                aria-hidden
-              />
-              <span>{benefit}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
+    <SalesEmptyState
+      icon={UserCircle2}
+      title="Every sale starts with a customer"
+      description="Create and manage your customers and their contact persons, all in one place."
+      primaryAction={{ label: "Create New Customer", href: "/sales/customers/new" }}
+      secondaryAction={{ label: "Import File", href: "/sales/customers/import" }}
+      importUsingHref="/sales/customers/import"
+      benefits={[
+        "Stay connected with multiple contact persons",
+        "Provide portal access to customers",
+        "Handle multiple addresses effortlessly",
+        "Create multi-currency transactions for contacts",
+      ]}
+    />
   );
 
   return (

@@ -1,9 +1,8 @@
-import Link from "next/link";
 import { format } from "date-fns";
-import { Truck, Plus } from "lucide-react";
+import { PackageCheck } from "lucide-react";
+import { SalesEmptyState } from "@/components/shared/sales-empty-state";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { TransactionListPage } from "@/components/shared/transaction-list-page";
 import { BulkAwareDataTable } from "@/components/shared/bulk-aware-data-table";
@@ -64,19 +63,18 @@ export default async function DeliveryChallansListPage({
   }));
 
   const empty = (
-    <div className="space-y-4">
-      <Truck className="h-12 w-12 mx-auto text-primary" aria-hidden />
-      <h2 className="text-xl font-semibold">Track every shipment.</h2>
-      <p className="text-sm text-muted-foreground max-w-md mx-auto">
-        Use delivery challans to track goods shipped to customers before the
-        invoice settles.
-      </p>
-      <Button asChild>
-        <Link href="/sales/delivery-challans/new" className="gap-1">
-          <Plus className="h-4 w-4" /> Create Delivery Challan
-        </Link>
-      </Button>
-    </div>
+    <SalesEmptyState
+      icon={PackageCheck}
+      title="Track every shipment"
+      description="Issue delivery challans for goods sent to customers before the invoice settles."
+      primaryAction={{ label: "Create Delivery Challan", href: "/sales/delivery-challans/new" }}
+      benefits={[
+        "Convert into an invoice when the goods are billable",
+        "Track delivery dates and customer signatures",
+        "Print or email PDF challans",
+        "Bulk download as a zip",
+      ]}
+    />
   );
 
   return (

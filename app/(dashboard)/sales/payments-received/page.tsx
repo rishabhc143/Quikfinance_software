@@ -1,9 +1,8 @@
-import Link from "next/link";
 import { format } from "date-fns";
-import { Wallet, Plus } from "lucide-react";
+import { Wallet } from "lucide-react";
+import { SalesEmptyState } from "@/components/shared/sales-empty-state";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
-import { Button } from "@/components/ui/button";
 import { TransactionListPage } from "@/components/shared/transaction-list-page";
 import { BulkAwareDataTable } from "@/components/shared/bulk-aware-data-table";
 import { SalesExportDialog } from "@/components/shared/sales-export-dialog";
@@ -75,18 +74,18 @@ export default async function PaymentsReceivedListPage({
   });
 
   const empty = (
-    <div className="space-y-4">
-      <Wallet className="h-12 w-12 mx-auto text-primary" aria-hidden />
-      <h2 className="text-xl font-semibold">No payments yet.</h2>
-      <p className="text-sm text-muted-foreground max-w-md mx-auto">
-        Record customer payments here to keep your receivables accurate.
-      </p>
-      <Button asChild>
-        <Link href="/sales/payments-received/new" className="gap-1">
-          <Plus className="h-4 w-4" /> Record Payment
-        </Link>
-      </Button>
-    </div>
+    <SalesEmptyState
+      icon={Wallet}
+      title="Track every rupee that comes in"
+      description="Record customer payments and reconcile your receivables."
+      primaryAction={{ label: "Record Payment", href: "/sales/payments-received/new" }}
+      benefits={[
+        "Allocate one payment across multiple invoices",
+        "Auto-credit excess to the customer's balance",
+        "Email payment receipts",
+        "Refund Razorpay payments in-app — full or partial",
+      ]}
+    />
   );
 
   return (

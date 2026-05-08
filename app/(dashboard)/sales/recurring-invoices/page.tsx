@@ -1,9 +1,8 @@
-import Link from "next/link";
 import { format } from "date-fns";
-import { Repeat, Plus } from "lucide-react";
+import { Repeat } from "lucide-react";
+import { SalesEmptyState } from "@/components/shared/sales-empty-state";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { TransactionListPage } from "@/components/shared/transaction-list-page";
 import { BulkAwareDataTable } from "@/components/shared/bulk-aware-data-table";
@@ -78,20 +77,18 @@ export default async function RecurringInvoicesListPage({
   }));
 
   const empty = (
-    <div className="space-y-4">
-      <div className="mx-auto h-24 w-24 rounded-full bg-primary/10 flex items-center justify-center">
-        <Repeat className="h-10 w-10 text-primary" aria-hidden />
-      </div>
-      <h2 className="text-xl font-semibold">Set it once, bill on autopilot.</h2>
-      <p className="text-sm text-muted-foreground max-w-md mx-auto">
-        Recurring profiles generate invoices automatically on the schedule you choose.
-      </p>
-      <Button asChild>
-        <Link href="/sales/recurring-invoices/new" className="gap-1">
-          <Plus className="h-4 w-4" /> Create Recurring Profile
-        </Link>
-      </Button>
-    </div>
+    <SalesEmptyState
+      icon={Repeat}
+      title="Set it once, bill on autopilot"
+      description="Recurring profiles generate invoices automatically on the schedule you choose."
+      primaryAction={{ label: "Create Recurring Profile", href: "/sales/recurring-invoices/new" }}
+      benefits={[
+        "Daily, weekly, monthly, or custom frequencies",
+        "Pause or stop a profile at any time",
+        "Auto-deliver via email when generated",
+        "Sync with Razorpay subscription billing",
+      ]}
+    />
   );
 
   return (
