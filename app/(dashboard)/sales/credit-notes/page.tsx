@@ -13,10 +13,11 @@ import {
   bulkDeleteCreditNotesAction,
   bulkMarkCreditNotesOpenAction,
 } from "./actions";
+import { withDiagnostic } from "@/app/(dashboard)/sales/_diagnostic";
 
 export const metadata = { title: "Credit Notes" };
 
-export default async function CreditNotesListPage({
+async function CreditNotesListPage({
   searchParams,
 }: {
   searchParams: { q?: string; page?: string; pageSize?: string };
@@ -196,3 +197,6 @@ export default async function CreditNotesListPage({
     </div>
   );
 }
+
+
+export default withDiagnostic("/sales/credit-notes", CreditNotesListPage);

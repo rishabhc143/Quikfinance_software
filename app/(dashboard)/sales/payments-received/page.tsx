@@ -8,10 +8,11 @@ import { BulkAwareDataTable } from "@/components/shared/bulk-aware-data-table";
 import { SalesExportDialog } from "@/components/shared/sales-export-dialog";
 import { formatMoney } from "@/lib/money";
 import { bulkDeletePaymentsAction } from "./actions";
+import { withDiagnostic } from "@/app/(dashboard)/sales/_diagnostic";
 
 export const metadata = { title: "Payments Received" };
 
-export default async function PaymentsReceivedListPage({
+async function PaymentsReceivedListPage({
   searchParams,
 }: {
   searchParams: { q?: string; page?: string; pageSize?: string };
@@ -165,3 +166,6 @@ export default async function PaymentsReceivedListPage({
     </div>
   );
 }
+
+
+export default withDiagnostic("/sales/payments-received", PaymentsReceivedListPage);

@@ -14,6 +14,7 @@ import {
   bulkResumeRecurringAction,
   bulkStopRecurringAction,
 } from "./actions";
+import { withDiagnostic } from "@/app/(dashboard)/sales/_diagnostic";
 
 export const metadata = { title: "Recurring Invoices" };
 
@@ -24,7 +25,7 @@ const STATUS_VARIANT: Record<string, "secondary" | "outline" | "destructive"> = 
   EXPIRED: "outline",
 };
 
-export default async function RecurringInvoicesListPage({
+async function RecurringInvoicesListPage({
   searchParams,
 }: {
   searchParams: { q?: string; page?: string; pageSize?: string };
@@ -204,3 +205,6 @@ export default async function RecurringInvoicesListPage({
     </div>
   );
 }
+
+
+export default withDiagnostic("/sales/recurring-invoices", RecurringInvoicesListPage);

@@ -13,6 +13,7 @@ import {
   resolveActiveView,
   whereForFilter,
 } from "@/lib/sales/saved-views";
+import { withDiagnostic } from "@/app/(dashboard)/sales/_diagnostic";
 
 export const metadata = { title: "Customers" };
 
@@ -27,7 +28,7 @@ type SearchParams = {
   view?: string;
 };
 
-export default async function CustomersListPage({
+async function CustomersListPage({
   searchParams,
 }: {
   searchParams: SearchParams;
@@ -251,3 +252,6 @@ function viewLabel(view: string) {
       return "All customers";
   }
 }
+
+
+export default withDiagnostic("/sales/customers", CustomersListPage);

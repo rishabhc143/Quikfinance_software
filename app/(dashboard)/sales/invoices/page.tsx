@@ -20,6 +20,7 @@ import {
   bulkMarkInvoicesSentAction,
   bulkSendRemindersAction,
 } from "./actions";
+import { withDiagnostic } from "@/app/(dashboard)/sales/_diagnostic";
 
 export const metadata = { title: "Invoices" };
 
@@ -33,7 +34,7 @@ const STATUS_VARIANT: Record<string, "secondary" | "outline" | "destructive"> = 
   WRITTEN_OFF: "outline",
 };
 
-export default async function InvoicesListPage({
+async function InvoicesListPage({
   searchParams,
 }: {
   searchParams: { q?: string; page?: string; pageSize?: string; sort?: string; dir?: string; view?: string };
@@ -297,3 +298,6 @@ export default async function InvoicesListPage({
     </div>
   );
 }
+
+
+export default withDiagnostic("/sales/invoices", InvoicesListPage);
