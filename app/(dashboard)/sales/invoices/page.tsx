@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { TransactionListPage } from "@/components/shared/transaction-list-page";
 import { BulkAwareDataTable } from "@/components/shared/bulk-aware-data-table";
 import { SalesExportDialog } from "@/components/shared/sales-export-dialog";
+import { SavedViewBuilderDialog } from "@/components/shared/saved-view-builder-dialog";
 import { formatMoney } from "@/lib/money";
 import {
   getSavedViews,
@@ -158,6 +159,28 @@ export default async function InvoicesListPage({
           { label: "Import Invoices", href: "/sales/invoices/import" },
           { label: "Import Debit Notes", href: "/sales/debit-notes/import" },
         ]}
+        savedViewBuilder={
+          <SavedViewBuilderDialog
+            module="invoices"
+            statusOptions={[
+              { value: "DRAFT", label: "Draft" },
+              { value: "SENT", label: "Sent" },
+              { value: "PARTIALLY_PAID", label: "Partially Paid" },
+              { value: "PAID", label: "Paid" },
+              { value: "OVERDUE", label: "Overdue" },
+              { value: "VOID", label: "Void" },
+              { value: "WRITTEN_OFF", label: "Written Off" },
+            ]}
+            trigger={
+              <button
+                type="button"
+                className="flex w-full items-center gap-2 px-2 py-1.5 text-left text-sm text-primary hover:bg-accent rounded-sm"
+              >
+                + New Custom View
+              </button>
+            }
+          />
+        }
         exportHref="/api/sales/invoices/export"
         exportDialog={
           <SalesExportDialog
