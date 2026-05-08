@@ -34,6 +34,39 @@ const HEADER_ALIASES: Record<string, string> = {
   "currency": "currency",
   "status": "status",
   "notes": "customerNotes",
+  // M28: Sales Order linking
+  "sales order number": "salesOrderNumber",
+  "sales order#": "salesOrderNumber",
+  "so#": "salesOrderNumber",
+  "so number": "salesOrderNumber",
+  // M28: address mapping (billing)
+  "billing address line 1": "billingAddressLine1",
+  "billing address line1": "billingAddressLine1",
+  "billing address1": "billingAddressLine1",
+  "billing address line 2": "billingAddressLine2",
+  "billing address line2": "billingAddressLine2",
+  "billing address2": "billingAddressLine2",
+  "billing city": "billingCity",
+  "billing state": "billingState",
+  "billing zip": "billingZipCode",
+  "billing zipcode": "billingZipCode",
+  "billing zip code": "billingZipCode",
+  "billing postcode": "billingZipCode",
+  "billing country": "billingCountry",
+  // M28: address mapping (shipping)
+  "shipping address line 1": "shippingAddressLine1",
+  "shipping address line1": "shippingAddressLine1",
+  "shipping address1": "shippingAddressLine1",
+  "shipping address line 2": "shippingAddressLine2",
+  "shipping address line2": "shippingAddressLine2",
+  "shipping address2": "shippingAddressLine2",
+  "shipping city": "shippingCity",
+  "shipping state": "shippingState",
+  "shipping zip": "shippingZipCode",
+  "shipping zipcode": "shippingZipCode",
+  "shipping zip code": "shippingZipCode",
+  "shipping postcode": "shippingZipCode",
+  "shipping country": "shippingCountry",
 };
 
 function normalizeHeader(h: string): string {
@@ -43,15 +76,19 @@ function normalizeHeader(h: string): string {
 export async function importInvoicesAction(input: {
   csvText: string;
   dupHandling: DupHandling;
-  // M17f: Invoices Refinement Patch import options. Accepted but
-  // intentionally minimal in this batch:
-  // - autoGenerateNumbers: when true, ignore any invoiceNumber column
-  //   and let getNextDocumentNumber pick the next number (already the
-  //   default behavior when invoiceNumber is empty; this flag enforces
-  //   it).
-  // - linkSalesOrders / mapAddresses: stored on the AuditLog only;
-  //   actual mapping plumbing is a follow-up to keep this batch
-  //   single-PR-sized.
+  // M28: Invoices Refinement Patch import options now functional.
+  // - autoGenerateNumbers: when true, force getNextDocumentNumber to
+  //   pick the number even if the CSV row supplies an invoiceNumber.
+  //   Default behavior (flag off) honours the CSV value.
+  // - linkSalesOrders: when true, the row's salesOrderNumber column
+  //   is looked up and the matching SalesOrder.convertedInvoiceId is
+  //   flipped to point at the new Invoice + status set to CLOSED.
+  //   Missing/typo'd SO numbers add a non-fatal error to the result.
+  // - mapAddresses: when true, billing/shipping address columns
+  //   (billingAddressLine1, billingCity, billingState, billingZipCode,
+  //   billingCountry, and shipping equivalents) are upserted onto a
+  //   ContactAddress row for the customer (kind=billing/shipping).
+  //   Existing rows of the same kind are replaced wholesale.
   autoGenerateNumbers?: boolean;
   linkSalesOrders?: boolean;
   mapAddresses?: boolean;
@@ -164,8 +201,12 @@ export async function importInvoicesAction(input: {
           result.updated += 1;
         }
       } else {
-        const number = invoiceNumber ?? (await getNextDocumentNumber(organization.id, "INVOICE"));
-        await db.invoice.create({
+        // M28: autoGenerateNumbers forces a fresh number even if the
+        // CSV column had a value
+        const number = input.autoGenerateNumbers
+          ? await getNextDocumentNumber(organization.id, "INVOICE")
+          : invoiceNumber ?? (await getNextDocumentNumber(organization.id, "INVOICE"));
+        const created = await db.invoice.create({
           data: {
             organizationId: organization.id,
             number,
@@ -193,6 +234,93 @@ export async function importInvoicesAction(input: {
           },
         });
         result.created += 1;
+
+        // M28: Link to Sales Order — when the row carries a
+        // salesOrderNumber and the option is on, find the SO by
+        // (orgId, number) and flip its convertedInvoiceId so the SO
+        // shows as Invoiced.
+        if (input.linkSalesOrders) {
+          const soNumber = r.salesOrderNumber?.trim();
+          if (soNumber) {
+            const so = await db.salesOrder.findFirst({
+              where: {
+                organizationId: organization.id,
+                number: soNumber,
+                deletedAt: null,
+              },
+              select: { id: true, convertedInvoiceId: true },
+            });
+            if (so && !so.convertedInvoiceId) {
+              await db.salesOrder.update({
+                where: { id: so.id },
+                data: {
+                  convertedInvoiceId: created.id,
+                  status: "CLOSED",
+                },
+              });
+            } else if (!so) {
+              result.errors.push({
+                row: i + 2,
+                message: `Sales Order "${soNumber}" not found — invoice imported without SO link`,
+              });
+            }
+          }
+        }
+
+        // M28: Map addresses — when the row carries any billing/
+        // shipping address columns and the option is on, upsert a
+        // ContactAddress row for the customer (kind=billing/shipping).
+        // Existing rows of the same kind are replaced wholesale to
+        // keep the relationship 1:1 per kind.
+        if (input.mapAddresses) {
+          const billingFields = {
+            addressLine1: r.billingAddressLine1?.trim() || null,
+            addressLine2: r.billingAddressLine2?.trim() || null,
+            city: r.billingCity?.trim() || null,
+            state: r.billingState?.trim() || null,
+            zipCode: r.billingZipCode?.trim() || null,
+            country: r.billingCountry?.trim() || "India",
+          };
+          const hasBilling = Object.entries(billingFields).some(
+            ([k, v]) => k !== "country" && v
+          );
+          if (hasBilling) {
+            await db.contactAddress.deleteMany({
+              where: { contactId: contact.id, kind: "billing" },
+            });
+            await db.contactAddress.create({
+              data: {
+                contactId: contact.id,
+                kind: "billing",
+                isDefault: true,
+                ...billingFields,
+              },
+            });
+          }
+          const shippingFields = {
+            addressLine1: r.shippingAddressLine1?.trim() || null,
+            addressLine2: r.shippingAddressLine2?.trim() || null,
+            city: r.shippingCity?.trim() || null,
+            state: r.shippingState?.trim() || null,
+            zipCode: r.shippingZipCode?.trim() || null,
+            country: r.shippingCountry?.trim() || "India",
+          };
+          const hasShipping = Object.entries(shippingFields).some(
+            ([k, v]) => k !== "country" && v
+          );
+          if (hasShipping) {
+            await db.contactAddress.deleteMany({
+              where: { contactId: contact.id, kind: "shipping" },
+            });
+            await db.contactAddress.create({
+              data: {
+                contactId: contact.id,
+                kind: "shipping",
+                ...shippingFields,
+              },
+            });
+          }
+        }
       }
     } catch (err) {
       result.errors.push({
