@@ -113,6 +113,11 @@ export default async function CreditNoteDetailPage({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
+              <DropdownMenuItem asChild>
+                <Link href={`/sales/credit-notes/${cn.id}/pdf`} target="_blank">
+                  Download PDF
+                </Link>
+              </DropdownMenuItem>
               {cn.status !== "VOID" ? (
                 <DropdownMenuItem asChild>
                   <form action={voidCreditNoteAction.bind(null, cn.id)}>

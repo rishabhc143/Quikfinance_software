@@ -135,6 +135,11 @@ export default async function CreditNotesListPage({
                 action: async (ids) => bulkMarkCreditNotesOpenAction({ ids }),
               },
               {
+                label: "Print",
+                href: (ids) =>
+                  `/sales/credit-notes/bulk-pdf?ids=${ids.join(",")}`,
+              },
+              {
                 label: "Export Selected",
                 href: (ids) =>
                   `/api/sales/credit-notes/export?mode=selected&ids=${ids.join(",")}`,

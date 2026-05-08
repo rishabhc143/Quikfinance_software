@@ -130,6 +130,7 @@ const TYPE_LABEL: Record<RenderableSalesDocument["type"], string> = {
   INVOICE: "Invoice",
   CREDIT_NOTE: "Credit Note",
   DELIVERY_CHALLAN: "Delivery Challan",
+  DEBIT_NOTE: "Debit Note",
 };
 
 function SalesDocumentPdf({ doc }: { doc: RenderableSalesDocument }): React.ReactElement<unknown> {

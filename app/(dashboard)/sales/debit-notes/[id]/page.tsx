@@ -90,6 +90,11 @@ export default async function DebitNoteDetailPage({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
+              <DropdownMenuItem asChild>
+                <Link href={`/sales/debit-notes/${dn.id}/pdf`} target="_blank">
+                  Download PDF
+                </Link>
+              </DropdownMenuItem>
               {!isVoid ? (
                 <DropdownMenuItem asChild>
                   <form action={voidDebitNoteAction.bind(null, dn.id)}>
