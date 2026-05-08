@@ -12,10 +12,11 @@ import {
   bulkDeleteDeliveryChallansAction,
   bulkMarkChallansOpenAction,
 } from "./actions";
+import { withDiagnostic } from "@/app/(dashboard)/sales/_diagnostic";
 
 export const metadata = { title: "Delivery Challans" };
 
-export default async function DeliveryChallansListPage({
+async function DeliveryChallansListPage({
   searchParams,
 }: {
   searchParams: { q?: string; page?: string; pageSize?: string };
@@ -188,3 +189,6 @@ export default async function DeliveryChallansListPage({
     </div>
   );
 }
+
+
+export default withDiagnostic("/sales/delivery-challans", DeliveryChallansListPage);
