@@ -17,6 +17,7 @@ import {
 } from "@/components/shared/transaction-line-items-table";
 import { AttachFilesField, type AttachedFile } from "@/components/shared/attach-files-field";
 import { PdfTemplatePicker } from "@/components/shared/pdf-template-picker";
+import { CustomFieldsSection } from "@/components/shared/custom-fields-section";
 import { createCustomerInlineAction } from "@/app/(dashboard)/sales/_inline-create/actions";
 import type { DeliveryChallanInput } from "@/lib/validations/delivery-challan";
 import { format } from "date-fns";
@@ -34,6 +35,8 @@ export function ChallanForm({
   itemOptions,
   taxOptions,
   pdfTemplateOptions = [],
+  customFieldDefinitions = [],
+  customFieldInitialValues = {},
   onSubmitAction,
   cancelHref = "/sales/delivery-challans",
 }: {
@@ -41,6 +44,23 @@ export function ChallanForm({
   itemOptions: ItemOption[];
   taxOptions: TaxOption[];
   pdfTemplateOptions?: ComboboxOption[];
+  // M25: optional Custom Fields wiring (entityType=DELIVERY_CHALLAN)
+  customFieldDefinitions?: {
+    id: string;
+    fieldKey: string;
+    label: string;
+    dataType:
+      | "text"
+      | "number"
+      | "date"
+      | "dropdown"
+      | "checkbox"
+      | "email"
+      | "url";
+    options: { label: string; value: string }[] | null;
+    isRequired: boolean;
+  }[];
+  customFieldInitialValues?: Record<string, unknown>;
   onSubmitAction: (values: DeliveryChallanInput) => Promise<unknown>;
   cancelHref?: string;
 }) {
@@ -56,6 +76,10 @@ export function ChallanForm({
   const [attachments, setAttachments] = React.useState<AttachedFile[]>([]);
   const [contactsState, setContactsState] = React.useState(contactOptions);
   const [lines, setLines] = React.useState<LineItem[]>([]);
+  // M25: Custom Fields state — keyed by fieldDefinitionId
+  const [customFieldValues, setCustomFieldValues] = React.useState<
+    Record<string, unknown>
+  >(customFieldInitialValues);
 
   async function submit() {
     if (!contactId) {
@@ -91,6 +115,13 @@ export function ChallanForm({
             discount: Number(l.discount || 0),
             discountType: l.discountType ?? "percentage",
             taxId: l.taxId ?? null,
+          })),
+        // M25: include any populated custom-field values
+        customFieldValues: Object.entries(customFieldValues)
+          .filter(([, v]) => v !== undefined && v !== null && v !== "")
+          .map(([fieldDefinitionId, value]) => ({
+            fieldDefinitionId,
+            value,
           })),
       });
     } catch (err) {
@@ -145,6 +176,16 @@ export function ChallanForm({
         taxOptions={taxOptions}
         onChange={setLines}
       />
+
+      {customFieldDefinitions.length > 0 ? (
+        <CustomFieldsSection
+          entityType="DELIVERY_CHALLAN"
+          definitions={customFieldDefinitions}
+          values={customFieldValues}
+          onChange={setCustomFieldValues}
+          defaultOpen
+        />
+      ) : null}
 
       <section className="grid gap-4 md:grid-cols-2">
         <div className="space-y-3">

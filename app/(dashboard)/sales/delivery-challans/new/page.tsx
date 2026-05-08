@@ -11,7 +11,7 @@ export const metadata = { title: "New Delivery Challan" };
 
 export default async function NewChallanPage() {
   const { organization } = await requireOrganization();
-  const [contacts, items, taxes, pdfTemplates] = await Promise.all([
+  const [contacts, items, taxes, pdfTemplates, customFieldDefs] = await Promise.all([
     db.contact.findMany({
       where: {
         organizationId: organization.id,
@@ -33,6 +33,14 @@ export default async function NewChallanPage() {
     db.pdfTemplate.findMany({
       where: { organizationId: organization.id, documentType: "DELIVERY_CHALLAN" },
       orderBy: { name: "asc" },
+    }),
+    db.customFieldDefinition.findMany({
+      where: {
+        organizationId: organization.id,
+        entityType: "DELIVERY_CHALLAN",
+        deletedAt: null,
+      },
+      orderBy: [{ position: "asc" }, { createdAt: "asc" }],
     }),
   ]);
 
@@ -70,6 +78,22 @@ export default async function NewChallanPage() {
           rate: Number(t.rate),
         }))}
         pdfTemplateOptions={pdfTemplates.map((t) => ({ value: t.id, label: t.name }))}
+        customFieldDefinitions={customFieldDefs.map((d) => ({
+          id: d.id,
+          fieldKey: d.fieldKey,
+          label: d.label,
+          dataType: d.dataType as
+            | "text"
+            | "number"
+            | "date"
+            | "dropdown"
+            | "checkbox"
+            | "email"
+            | "url",
+          options:
+            (d.options as { label: string; value: string }[] | null) ?? null,
+          isRequired: d.isRequired,
+        }))}
         onSubmitAction={submit}
       />
     </div>

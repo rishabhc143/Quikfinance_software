@@ -23,6 +23,16 @@ export const deliveryChallanSchema = z.object({
     .max(10)
     .optional()
     .default([]),
+  // M25: optional custom field values keyed by CustomFieldDefinition.id
+  customFieldValues: z
+    .array(
+      z.object({
+        fieldDefinitionId: z.string().min(1),
+        value: z.unknown(),
+      })
+    )
+    .optional()
+    .default([]),
   lines: z.array(lineItemSchema).min(1, "At least one line item required"),
 });
 export type DeliveryChallanInput = z.input<typeof deliveryChallanSchema>;

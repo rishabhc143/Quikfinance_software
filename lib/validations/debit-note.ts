@@ -18,6 +18,16 @@ export const debitNoteSchema = z.object({
   customerNotes: z.string().max(2000).nullable().optional(),
   termsAndConditions: z.string().max(4000).nullable().optional(),
   pdfTemplateId: z.string().nullable().optional(),
+  // M25: optional custom field values keyed by CustomFieldDefinition.id
+  customFieldValues: z
+    .array(
+      z.object({
+        fieldDefinitionId: z.string().min(1),
+        value: z.unknown(),
+      })
+    )
+    .optional()
+    .default([]),
   lines: z.array(lineItemSchema).min(1),
 });
 export type DebitNoteInput = z.input<typeof debitNoteSchema>;

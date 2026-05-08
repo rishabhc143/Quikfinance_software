@@ -85,6 +85,7 @@ export default async function DeliveryChallansListPage({
         newHref="/sales/delivery-challans/new"
         newLabel="New"
         exportHref="/api/sales/delivery-challans/export"
+        customFieldsHref="/settings/preferences/delivery-challans/custom-fields"
         columns={[
           { key: "date", header: "Date", sortable: true },
           { key: "number", header: "Challan #", sortable: true },

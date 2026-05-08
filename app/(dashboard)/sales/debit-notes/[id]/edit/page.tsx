@@ -24,7 +24,7 @@ export default async function EditDebitNotePage({
   if (dn.status === "VOID") notFound();
   if (Number(dn.amountApplied) > 0) notFound();
 
-  const [contacts, items, taxes] = await Promise.all([
+  const [contacts, items, taxes, customFieldDefs, customFieldValues] = await Promise.all([
     db.contact.findMany({
       where: {
         organizationId: organization.id,
@@ -43,7 +43,26 @@ export default async function EditDebitNotePage({
       where: { organizationId: organization.id, isActive: true },
       orderBy: { rate: "asc" },
     }),
+    db.customFieldDefinition.findMany({
+      where: {
+        organizationId: organization.id,
+        entityType: "DEBIT_NOTE",
+        deletedAt: null,
+      },
+      orderBy: [{ position: "asc" }, { createdAt: "asc" }],
+    }),
+    db.customFieldValue.findMany({
+      where: {
+        organizationId: organization.id,
+        entityType: "DEBIT_NOTE",
+        entityId: dn.id,
+      },
+    }),
   ]);
+
+  const initialCustomFieldValues: Record<string, unknown> = Object.fromEntries(
+    customFieldValues.map((v) => [v.fieldDefinitionId, v.value])
+  );
 
   const initial: Partial<DebitNoteInput> = {
     contactId: dn.contactId,
@@ -107,6 +126,23 @@ export default async function EditDebitNotePage({
           label: `${t.name} (${Number(t.rate)}%)`,
           rate: Number(t.rate),
         }))}
+        customFieldDefinitions={customFieldDefs.map((d) => ({
+          id: d.id,
+          fieldKey: d.fieldKey,
+          label: d.label,
+          dataType: d.dataType as
+            | "text"
+            | "number"
+            | "date"
+            | "dropdown"
+            | "checkbox"
+            | "email"
+            | "url",
+          options:
+            (d.options as { label: string; value: string }[] | null) ?? null,
+          isRequired: d.isRequired,
+        }))}
+        customFieldInitialValues={initialCustomFieldValues}
         onSubmitAction={submit}
         submitLabel="Update debit note"
         cancelHref={`/sales/debit-notes/${dn.id}`}

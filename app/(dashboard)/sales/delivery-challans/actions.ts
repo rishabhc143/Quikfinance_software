@@ -79,6 +79,20 @@ export async function createDeliveryChallanAction(input: DeliveryChallanInput) {
     },
   });
 
+  // M25: persist custom field values
+  if (data.customFieldValues && data.customFieldValues.length > 0) {
+    await db.customFieldValue.createMany({
+      data: data.customFieldValues.map((v) => ({
+        organizationId: organization.id,
+        entityType: "DELIVERY_CHALLAN",
+        entityId: created.id,
+        fieldDefinitionId: v.fieldDefinitionId,
+        value: v.value as object,
+      })),
+      skipDuplicates: true,
+    });
+  }
+
   await writeAuditLog({
     organizationId: organization.id,
     userId: user.id,
