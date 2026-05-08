@@ -47,6 +47,11 @@ export type TransactionListPageProps = {
    *  opens the dialog (with Status + Date Range + format + decimal +
    *  PII + password options). */
   exportDialog?: React.ReactNode;
+  /** M31: optional "+ New Custom View" trigger appended to the chevron-
+   *  dropdown after the system + user saved views. Caller passes a fully-
+   *  configured <SavedViewBuilderDialog> (the dialog provides its own
+   *  trigger). */
+  savedViewBuilder?: React.ReactNode;
   preferencesHref?: string;
   /** M17c — link to the Manage Custom Fields editor for this entity. */
   customFieldsHref?: string;
@@ -108,6 +113,15 @@ export function TransactionListPage(props: TransactionListPageProps) {
                     </Link>
                   </DropdownMenuItem>
                 ))}
+                {props.savedViewBuilder ? (
+                  <DropdownMenuItem
+                    onSelect={(e) => e.preventDefault()}
+                    className="p-0"
+                    asChild
+                  >
+                    <div>{props.savedViewBuilder}</div>
+                  </DropdownMenuItem>
+                ) : null}
               </DropdownMenuContent>
             </DropdownMenu>
           ) : (
