@@ -151,7 +151,12 @@ export default async function InvoicesListPage({
         view={
           view === "unpaid" ? undefined : view === "all" ? undefined : undefined
         }
-        views={savedViews.map((v) => ({ value: v.slug, label: v.label }))}
+        views={savedViews.map((v) => ({
+          value: v.slug,
+          label: v.label,
+          id: v.id,
+          isSystem: v.isSystem,
+        }))}
         activeView={view}
         newHref="/sales/invoices/new"
         newLabel="New"

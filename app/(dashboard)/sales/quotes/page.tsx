@@ -198,7 +198,12 @@ export default async function QuotesListPage({
       <TransactionListPage
         title="Quotes"
         view="All quotes"
-        views={savedViews.map((v) => ({ value: v.slug, label: v.label }))}
+        views={savedViews.map((v) => ({
+          value: v.slug,
+          label: v.label,
+          id: v.id,
+          isSystem: v.isSystem,
+        }))}
         activeView={view}
         newHref="/sales/quotes/new"
         newLabel="New"

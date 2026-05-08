@@ -162,7 +162,12 @@ export default async function SalesOrdersListPage({
       <TransactionListPage
         title="Sales Orders"
         view="All sales orders"
-        views={savedViews.map((v) => ({ value: v.slug, label: v.label }))}
+        views={savedViews.map((v) => ({
+          value: v.slug,
+          label: v.label,
+          id: v.id,
+          isSystem: v.isSystem,
+        }))}
         activeView={view}
         newHref="/sales/orders/new"
         newLabel="New"
