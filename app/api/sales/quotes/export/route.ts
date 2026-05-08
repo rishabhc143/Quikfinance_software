@@ -1,17 +1,16 @@
-import { NextRequest, NextResponse } from "next/server";
-import { stringify } from "csv-stringify/sync";
+import { NextRequest } from "next/server";
 import { format } from "date-fns";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
+import {
+  formatDecimal,
+  parseExportOptions,
+  writeExportResponse,
+} from "@/lib/sales/export";
 
+export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/**
- * Quotes export. Three modes per spec:
- *   ?mode=all                → every non-deleted quote (cap 25,000)
- *   ?mode=current_view       → respects q/sort/dir filter (cap 10,000)
- *   ?mode=selected&ids=a,b,c → only the listed ids (cap 1,000)
- */
 export async function GET(req: NextRequest) {
   const { organization } = await requireOrganization();
   const sp = req.nextUrl.searchParams;
@@ -26,17 +25,36 @@ export async function GET(req: NextRequest) {
   const idsParam = sp.get("ids") ?? "";
   const ids =
     mode === "selected"
-      ? idsParam
-          .split(",")
-          .map((s) => s.trim())
-          .filter(Boolean)
-          .slice(0, 1000)
+      ? idsParam.split(",").map((s) => s.trim()).filter(Boolean).slice(0, 1000)
       : [];
   const cap = mode === "all" ? 25_000 : mode === "current_view" ? 10_000 : 1_000;
+
+  const opts = parseExportOptions(sp);
+
+  type QStatus =
+    | "DRAFT"
+    | "SENT"
+    | "ACCEPTED"
+    | "DECLINED"
+    | "EXPIRED"
+    | "INVOICED";
+  const statusFilter =
+    opts.status && opts.status !== "all"
+      ? { status: opts.status as QStatus }
+      : {};
+  const dateFilter: { issueDate?: { gte?: Date; lte?: Date } } = {};
+  if (opts.fromDate) dateFilter.issueDate = { gte: new Date(opts.fromDate) };
+  if (opts.toDate)
+    dateFilter.issueDate = {
+      ...(dateFilter.issueDate ?? {}),
+      lte: new Date(opts.toDate),
+    };
 
   const where = {
     organizationId: organization.id,
     deletedAt: null,
+    ...statusFilter,
+    ...dateFilter,
     ...(mode === "selected" ? { id: { in: ids } } : {}),
     ...(mode === "current_view" && q
       ? {
@@ -66,23 +84,20 @@ export async function GET(req: NextRequest) {
     issueDate: format(r.issueDate, "yyyy-MM-dd"),
     expiryDate: r.expiryDate ? format(r.expiryDate, "yyyy-MM-dd") : "",
     customerName: r.contact.displayName,
-    customerEmail: r.contact.email ?? "",
+    customerEmail: opts.includePii ? r.contact.email ?? "" : "",
     status: r.status,
     currency: r.currency,
-    subTotal: r.subTotal.toString(),
-    discountValue: r.discountValue.toString(),
-    taxAmount: r.taxAmount.toString(),
-    adjustmentValue: r.adjustmentValue.toString(),
-    total: r.total.toString(),
+    subTotal: formatDecimal(r.subTotal.toString(), opts.decimalStyle),
+    discountValue: formatDecimal(r.discountValue.toString(), opts.decimalStyle),
+    taxAmount: formatDecimal(r.taxAmount.toString(), opts.decimalStyle),
+    adjustmentValue: formatDecimal(
+      r.adjustmentValue.toString(),
+      opts.decimalStyle
+    ),
+    total: formatDecimal(r.total.toString(), opts.decimalStyle),
     subject: r.subject ?? "",
     customerNotes: r.customerNotes ?? "",
   }));
 
-  const csv = stringify(records, { header: true });
-  return new NextResponse(csv, {
-    headers: {
-      "Content-Type": "text/csv; charset=utf-8",
-      "Content-Disposition": `attachment; filename="quikfinance-quotes-${mode}-${Date.now()}.csv"`,
-    },
-  });
+  return writeExportResponse(opts, records, "quotes", mode);
 }

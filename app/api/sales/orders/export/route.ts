@@ -1,9 +1,14 @@
-import { NextRequest, NextResponse } from "next/server";
-import { stringify } from "csv-stringify/sync";
+import { NextRequest } from "next/server";
 import { format } from "date-fns";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
+import {
+  formatDecimal,
+  parseExportOptions,
+  writeExportResponse,
+} from "@/lib/sales/export";
 
+export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
@@ -24,9 +29,26 @@ export async function GET(req: NextRequest) {
       : [];
   const cap = mode === "all" ? 25_000 : mode === "current_view" ? 10_000 : 1_000;
 
+  const opts = parseExportOptions(sp);
+
+  type SOStatus = "DRAFT" | "CONFIRMED" | "CLOSED" | "VOID";
+  const statusFilter =
+    opts.status && opts.status !== "all"
+      ? { status: opts.status as SOStatus }
+      : {};
+  const dateFilter: { orderDate?: { gte?: Date; lte?: Date } } = {};
+  if (opts.fromDate) dateFilter.orderDate = { gte: new Date(opts.fromDate) };
+  if (opts.toDate)
+    dateFilter.orderDate = {
+      ...(dateFilter.orderDate ?? {}),
+      lte: new Date(opts.toDate),
+    };
+
   const where = {
     organizationId: organization.id,
     deletedAt: null,
+    ...statusFilter,
+    ...dateFilter,
     ...(mode === "selected" ? { id: { in: ids } } : {}),
     ...(mode === "current_view" && q
       ? {
@@ -58,18 +80,12 @@ export async function GET(req: NextRequest) {
       ? format(r.expectedShipmentDate, "yyyy-MM-dd")
       : "",
     customerName: r.contact.displayName,
-    customerEmail: r.contact.email ?? "",
+    customerEmail: opts.includePii ? r.contact.email ?? "" : "",
     status: r.status,
     currency: r.currency,
-    subTotal: r.subTotal.toString(),
-    total: r.total.toString(),
+    subTotal: formatDecimal(r.subTotal.toString(), opts.decimalStyle),
+    total: formatDecimal(r.total.toString(), opts.decimalStyle),
   }));
 
-  const csv = stringify(records, { header: true });
-  return new NextResponse(csv, {
-    headers: {
-      "Content-Type": "text/csv; charset=utf-8",
-      "Content-Disposition": `attachment; filename="quikfinance-sales-orders-${mode}-${Date.now()}.csv"`,
-    },
-  });
+  return writeExportResponse(opts, records, "sales-orders", mode);
 }

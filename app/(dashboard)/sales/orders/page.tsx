@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { TransactionListPage } from "@/components/shared/transaction-list-page";
 import { BulkAwareDataTable } from "@/components/shared/bulk-aware-data-table";
+import { SalesExportDialog } from "@/components/shared/sales-export-dialog";
 import { formatMoney } from "@/lib/money";
 import {
   getSavedViews,
@@ -166,6 +167,27 @@ export default async function SalesOrdersListPage({
         newLabel="New"
         importHref="/sales/orders/import"
         exportHref="/api/sales/orders/export"
+        exportDialog={
+          <SalesExportDialog
+            entityLabel="Sales Orders"
+            exportHref="/api/sales/orders/export"
+            statusOptions={[
+              { value: "all", label: "All" },
+              { value: "DRAFT", label: "Draft" },
+              { value: "CONFIRMED", label: "Confirmed" },
+              { value: "CLOSED", label: "Closed" },
+              { value: "VOID", label: "Void" },
+            ]}
+            trigger={
+              <button
+                type="button"
+                className="block w-full px-2 py-1.5 text-left text-sm hover:bg-accent rounded-sm"
+              >
+                Export…
+              </button>
+            }
+          />
+        }
         preferencesHref="/settings/preferences/sales-orders"
         customFieldsHref="/settings/preferences/sales-orders/custom-fields"
         sortOptions={[

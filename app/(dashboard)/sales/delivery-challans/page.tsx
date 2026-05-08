@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { TransactionListPage } from "@/components/shared/transaction-list-page";
 import { BulkAwareDataTable } from "@/components/shared/bulk-aware-data-table";
+import { SalesExportDialog } from "@/components/shared/sales-export-dialog";
 import {
   bulkDeleteDeliveryChallansAction,
   bulkMarkChallansOpenAction,
@@ -85,6 +86,28 @@ export default async function DeliveryChallansListPage({
         newHref="/sales/delivery-challans/new"
         newLabel="New"
         exportHref="/api/sales/delivery-challans/export"
+        exportDialog={
+          <SalesExportDialog
+            entityLabel="Delivery Challans"
+            exportHref="/api/sales/delivery-challans/export"
+            statusOptions={[
+              { value: "all", label: "All" },
+              { value: "DRAFT", label: "Draft" },
+              { value: "OPEN", label: "Open" },
+              { value: "DELIVERED", label: "Delivered" },
+              { value: "INVOICED", label: "Invoiced" },
+              { value: "RETURNED", label: "Returned" },
+            ]}
+            trigger={
+              <button
+                type="button"
+                className="block w-full px-2 py-1.5 text-left text-sm hover:bg-accent rounded-sm"
+              >
+                Export…
+              </button>
+            }
+          />
+        }
         customFieldsHref="/settings/preferences/delivery-challans/custom-fields"
         columns={[
           { key: "date", header: "Date", sortable: true },

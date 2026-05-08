@@ -6,6 +6,7 @@ import { requireOrganization } from "@/lib/auth-helpers";
 import { Button } from "@/components/ui/button";
 import { TransactionListPage } from "@/components/shared/transaction-list-page";
 import { BulkAwareDataTable } from "@/components/shared/bulk-aware-data-table";
+import { SalesExportDialog } from "@/components/shared/sales-export-dialog";
 import { formatMoney } from "@/lib/money";
 import { bulkDeletePaymentsAction } from "./actions";
 
@@ -96,6 +97,21 @@ export default async function PaymentsReceivedListPage({
         newHref="/sales/payments-received/new"
         newLabel="New payment"
         exportHref="/api/sales/payments-received/export"
+        exportDialog={
+          <SalesExportDialog
+            entityLabel="Payments Received"
+            exportHref="/api/sales/payments-received/export"
+            statusOptions={[{ value: "all", label: "All" }]}
+            trigger={
+              <button
+                type="button"
+                className="block w-full px-2 py-1.5 text-left text-sm hover:bg-accent rounded-sm"
+              >
+                Export…
+              </button>
+            }
+          />
+        }
         columns={[
           { key: "date", header: "Date", sortable: true },
           { key: "number", header: "Payment #" },

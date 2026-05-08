@@ -1,9 +1,14 @@
-import { NextRequest, NextResponse } from "next/server";
-import { stringify } from "csv-stringify/sync";
+import { NextRequest } from "next/server";
 import { format } from "date-fns";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
+import {
+  formatDecimal,
+  parseExportOptions,
+  writeExportResponse,
+} from "@/lib/sales/export";
 
+export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
@@ -24,9 +29,20 @@ export async function GET(req: NextRequest) {
       : [];
   const cap = mode === "all" ? 25_000 : mode === "current_view" ? 10_000 : 1_000;
 
+  const opts = parseExportOptions(sp);
+
+  const dateFilter: { paymentDate?: { gte?: Date; lte?: Date } } = {};
+  if (opts.fromDate) dateFilter.paymentDate = { gte: new Date(opts.fromDate) };
+  if (opts.toDate)
+    dateFilter.paymentDate = {
+      ...(dateFilter.paymentDate ?? {}),
+      lte: new Date(opts.toDate),
+    };
+
   const where = {
     organizationId: organization.id,
     deletedAt: null,
+    ...dateFilter,
     ...(mode === "selected" ? { id: { in: ids } } : {}),
     ...(mode === "current_view" && q
       ? {
@@ -59,19 +75,19 @@ export async function GET(req: NextRequest) {
     customerName: r.contact.displayName,
     paymentMode: r.paymentMode ?? "",
     reference: r.reference ?? "",
-    amount: r.amount.toString(),
-    amountUsedForInvoices: r.amountUsedForInvoices.toString(),
-    amountInExcess: r.amountInExcess.toString(),
-    bankCharges: r.bankCharges.toString(),
+    amount: formatDecimal(r.amount.toString(), opts.decimalStyle),
+    amountUsedForInvoices: formatDecimal(
+      r.amountUsedForInvoices.toString(),
+      opts.decimalStyle
+    ),
+    amountInExcess: formatDecimal(
+      r.amountInExcess.toString(),
+      opts.decimalStyle
+    ),
+    bankCharges: formatDecimal(r.bankCharges.toString(), opts.decimalStyle),
     appliedInvoices: r.allocations.map((a) => a.invoice.number).join("; "),
     notes: r.notes ?? "",
   }));
 
-  const csv = stringify(records, { header: true });
-  return new NextResponse(csv, {
-    headers: {
-      "Content-Type": "text/csv; charset=utf-8",
-      "Content-Disposition": `attachment; filename="quikfinance-payments-received-${mode}-${Date.now()}.csv"`,
-    },
-  });
+  return writeExportResponse(opts, records, "payments-received", mode);
 }

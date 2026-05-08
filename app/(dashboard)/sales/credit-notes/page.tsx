@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { TransactionListPage } from "@/components/shared/transaction-list-page";
 import { BulkAwareDataTable } from "@/components/shared/bulk-aware-data-table";
+import { SalesExportDialog } from "@/components/shared/sales-export-dialog";
 import { formatMoney } from "@/lib/money";
 import {
   bulkDeleteCreditNotesAction,
@@ -95,6 +96,26 @@ export default async function CreditNotesListPage({
         newHref="/sales/credit-notes/new"
         newLabel="New"
         exportHref="/api/sales/credit-notes/export"
+        exportDialog={
+          <SalesExportDialog
+            entityLabel="Credit Notes"
+            exportHref="/api/sales/credit-notes/export"
+            statusOptions={[
+              { value: "all", label: "All" },
+              { value: "OPEN", label: "Open" },
+              { value: "CLOSED", label: "Closed" },
+              { value: "VOID", label: "Void" },
+            ]}
+            trigger={
+              <button
+                type="button"
+                className="block w-full px-2 py-1.5 text-left text-sm hover:bg-accent rounded-sm"
+              >
+                Export…
+              </button>
+            }
+          />
+        }
         customFieldsHref="/settings/preferences/credit-notes/custom-fields"
         columns={[
           { key: "date", header: "Date", sortable: true },

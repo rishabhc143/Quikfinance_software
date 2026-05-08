@@ -1,16 +1,19 @@
-import { NextRequest, NextResponse } from "next/server";
-import { stringify } from "csv-stringify/sync";
+import { NextRequest } from "next/server";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
+import {
+  parseExportOptions,
+  writeExportResponse,
+} from "@/lib/sales/export";
 
+export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /**
- * Customer export. Two modes:
- *  - mode=all          → every non-deleted customer (cap 25,000)
- *  - mode=current_view → respects q/sort/dir/view (cap 10,000)
- *
- * Format: csv (default) | xlsx (Phase S8 — falls back to csv for now)
+ * Customer export. M29: now honours format=xlsx + decimalFormat +
+ * includePii + password. PII gating drops email / phone / mobile
+ * columns when unchecked. Status filter maps to isInactive boolean
+ * + portal-enabled view.
  */
 export async function GET(req: NextRequest) {
   const { organization } = await requireOrganization();
@@ -22,7 +25,6 @@ export async function GET(req: NextRequest) {
       : rawMode === "current_view"
       ? "current_view"
       : "all";
-  const format = sp.get("format") === "xlsx" ? "xlsx" : "csv";
   const q = sp.get("q")?.trim() ?? "";
   const view = sp.get("view") ?? "all";
   const idsParam = sp.get("ids") ?? "";
@@ -32,13 +34,22 @@ export async function GET(req: NextRequest) {
       : [];
   const cap = mode === "all" ? 25_000 : mode === "current_view" ? 10_000 : 1_000;
 
+  const opts = parseExportOptions(sp);
+
+  // M29: status here maps to a few different filters per the
+  // SavedView shape — "active" / "inactive" / "portal_enabled".
+  let statusFilter: Record<string, unknown> = {};
+  const status = opts.status || view;
+  if (status === "active") statusFilter = { isInactive: false };
+  else if (status === "inactive") statusFilter = { isInactive: true };
+  else if (status === "portal_enabled") statusFilter = { enablePortal: true };
+
   const where = {
     organizationId: organization.id,
     type: { in: ["CUSTOMER", "BOTH"] as ("CUSTOMER" | "BOTH")[] },
     deletedAt: null,
     ...(mode === "selected" ? { id: { in: ids } } : {}),
-    ...(view === "active" ? { isInactive: false } : {}),
-    ...(view === "inactive" ? { isInactive: true } : {}),
+    ...statusFilter,
     ...(mode === "current_view" && q
       ? {
           OR: [
@@ -78,9 +89,9 @@ export async function GET(req: NextRequest) {
   const records = customers.map((c) => ({
     displayName: c.displayName,
     companyName: c.companyName ?? "",
-    email: c.email ?? "",
-    workPhone: c.workPhone ?? "",
-    mobile: c.mobile ?? "",
+    email: opts.includePii ? c.email ?? "" : "",
+    workPhone: opts.includePii ? c.workPhone ?? "" : "",
+    mobile: opts.includePii ? c.mobile ?? "" : "",
     gstin: c.gstin ?? "",
     pan: c.pan ?? "",
     currency: c.currency ?? organization.currency,
@@ -93,14 +104,5 @@ export async function GET(req: NextRequest) {
     notes: c.notes ?? "",
   }));
 
-  // XLSX export pending — Phase S8 swaps in exceljs. CSV is the v1 path.
-  void format;
-
-  const csv = stringify(records, { header: true });
-  return new NextResponse(csv, {
-    headers: {
-      "Content-Type": "text/csv; charset=utf-8",
-      "Content-Disposition": `attachment; filename="quikfinance-customers-${mode}-${Date.now()}.csv"`,
-    },
-  });
+  return writeExportResponse(opts, records, "customers", mode);
 }
