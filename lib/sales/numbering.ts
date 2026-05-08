@@ -11,6 +11,7 @@ export type SalesDocumentType =
   | "INVOICE"
   | "DELIVERY_CHALLAN"
   | "CREDIT_NOTE"
+  | "DEBIT_NOTE"
   | "PAYMENT_RECEIVED"
   | "RECURRING_INVOICE";
 
@@ -20,6 +21,7 @@ const SLUG: Record<SalesDocumentType, string> = {
   INVOICE: "invoice",
   DELIVERY_CHALLAN: "deliveryChallan",
   CREDIT_NOTE: "creditNote",
+  DEBIT_NOTE: "debitNote",
   PAYMENT_RECEIVED: "paymentReceived",
   RECURRING_INVOICE: "recurringInvoice",
 };
@@ -30,6 +32,7 @@ const DEFAULT_PREFIX: Record<SalesDocumentType, string> = {
   INVOICE: "INV-",
   DELIVERY_CHALLAN: "DC-",
   CREDIT_NOTE: "CN-",
+  DEBIT_NOTE: "DN-",
   PAYMENT_RECEIVED: "RCV-",
   RECURRING_INVOICE: "RECINV-",
 };
