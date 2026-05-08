@@ -20,7 +20,6 @@ import {
   bulkMarkQuotesAcceptedAction,
   bulkMarkQuotesSentAction,
 } from "./actions";
-import { withDiagnostic } from "@/app/(dashboard)/sales/_diagnostic";
 
 export const metadata = { title: "Quotes" };
 
@@ -33,7 +32,7 @@ const STATUS_VARIANT: Record<string, "secondary" | "outline" | "destructive"> = 
   INVOICED: "secondary",
 };
 
-async function QuotesListPage({
+export default async function QuotesListPage({
   searchParams,
 }: {
   searchParams: { q?: string; page?: string; pageSize?: string; sort?: string; dir?: string; view?: string };
@@ -267,6 +266,3 @@ async function QuotesListPage({
     </div>
   );
 }
-
-
-export default withDiagnostic("/sales/quotes", QuotesListPage);
