@@ -240,3 +240,72 @@ export async function voidDebitNoteAction(id: string) {
   revalidatePath("/sales/debit-notes");
   revalidatePath(`/sales/debit-notes/${id}`);
 }
+
+/**
+ * M26: bulk actions on the Debit Notes list page.
+ * Mirrors the M15-shipped pattern for other modules.
+ */
+export async function bulkVoidDebitNotesAction(input: {
+  ids: string[];
+}): Promise<{ ok: boolean; updated?: number; error?: string }> {
+  const { user, organization } = await requireOrganization();
+  if (!input.ids?.length) return { ok: true, updated: 0 };
+  const result = await db.debitNote.updateMany({
+    where: {
+      id: { in: input.ids },
+      organizationId: organization.id,
+      deletedAt: null,
+      status: { not: "VOID" },
+    },
+    data: { status: "VOID" },
+  });
+  await writeAuditLog({
+    organizationId: organization.id,
+    userId: user.id,
+    action: "UPDATE",
+    entityType: "DebitNote",
+    entityId: `bulk-${Date.now()}`,
+    after: { status: "VOID", count: result.count, ids: input.ids },
+  });
+  revalidatePath("/sales/debit-notes");
+  return { ok: true, updated: result.count };
+}
+
+export async function bulkDeleteDebitNotesAction(input: {
+  ids: string[];
+}): Promise<{ ok: boolean; updated?: number; error?: string }> {
+  const { user, organization } = await requireOrganization();
+  if (!input.ids?.length) return { ok: true, updated: 0 };
+  // Block delete on debit notes that have applications already
+  const blocked = await db.debitNote.count({
+    where: {
+      id: { in: input.ids },
+      organizationId: organization.id,
+      amountApplied: { gt: 0 },
+    },
+  });
+  if (blocked > 0) {
+    return {
+      ok: false,
+      error: `${blocked} debit note${blocked === 1 ? "" : "s"} with applications cannot be deleted`,
+    };
+  }
+  const result = await db.debitNote.updateMany({
+    where: {
+      id: { in: input.ids },
+      organizationId: organization.id,
+      deletedAt: null,
+    },
+    data: { deletedAt: new Date() },
+  });
+  await writeAuditLog({
+    organizationId: organization.id,
+    userId: user.id,
+    action: "DELETE",
+    entityType: "DebitNote",
+    entityId: `bulk-${Date.now()}`,
+    before: { count: result.count, ids: input.ids },
+  });
+  revalidatePath("/sales/debit-notes");
+  return { ok: true, updated: result.count };
+}
