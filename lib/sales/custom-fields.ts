@@ -55,6 +55,9 @@ export const ENTITY_TYPE_URL: Record<string, string> = {
   QUOTE: "quotes",
   SALES_ORDER: "sales-orders",
   CUSTOMER: "customers-and-vendors",
+  DELIVERY_CHALLAN: "delivery-challans",
+  DEBIT_NOTE: "debit-notes",
+  CREDIT_NOTE: "credit-notes",
 };
 
 /** Reverse lookup. */

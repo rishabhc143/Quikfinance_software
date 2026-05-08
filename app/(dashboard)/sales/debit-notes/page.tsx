@@ -102,6 +102,7 @@ export default async function DebitNotesListPage({
         newHref="/sales/debit-notes/new"
         newLabel="New"
         importHref="/sales/debit-notes/import"
+        customFieldsHref="/settings/preferences/debit-notes/custom-fields"
         columns={[
           { key: "date", header: "Date", sortable: true },
           { key: "number", header: "Debit note #" },

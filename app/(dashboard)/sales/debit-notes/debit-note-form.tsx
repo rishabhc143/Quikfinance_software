@@ -15,6 +15,7 @@ import {
   type ItemOption,
   type TaxOption,
 } from "@/components/shared/transaction-line-items-table";
+import { CustomFieldsSection } from "@/components/shared/custom-fields-section";
 import { createCustomerInlineAction } from "@/app/(dashboard)/sales/_inline-create/actions";
 import type { DebitNoteInput } from "@/lib/validations/debit-note";
 import { format } from "date-fns";
@@ -41,6 +42,8 @@ export function DebitNoteForm({
   itemOptions,
   taxOptions,
   defaultCurrency,
+  customFieldDefinitions = [],
+  customFieldInitialValues = {},
   onSubmitAction,
   submitLabel = "Save",
   cancelHref = "/sales/debit-notes",
@@ -51,6 +54,23 @@ export function DebitNoteForm({
   itemOptions: ItemOption[];
   taxOptions: TaxOption[];
   defaultCurrency: string;
+  // M25: optional Custom Fields wiring (entityType=DEBIT_NOTE)
+  customFieldDefinitions?: {
+    id: string;
+    fieldKey: string;
+    label: string;
+    dataType:
+      | "text"
+      | "number"
+      | "date"
+      | "dropdown"
+      | "checkbox"
+      | "email"
+      | "url";
+    options: { label: string; value: string }[] | null;
+    isRequired: boolean;
+  }[];
+  customFieldInitialValues?: Record<string, unknown>;
   onSubmitAction: (values: DebitNoteInput) => Promise<unknown>;
   submitLabel?: string;
   cancelHref?: string;
@@ -75,6 +95,10 @@ export function DebitNoteForm({
   const [terms, setTerms] = React.useState(initial?.termsAndConditions ?? "");
   const [contactsState, setContactsState] = React.useState(contactOptions);
   const [lines, setLines] = React.useState<LineItem[]>(initialLines ?? []);
+  // M25: Custom Fields state — keyed by fieldDefinitionId
+  const [customFieldValues, setCustomFieldValues] = React.useState<
+    Record<string, unknown>
+  >(customFieldInitialValues);
 
   async function submit() {
     if (!contactId) {
@@ -95,6 +119,13 @@ export function DebitNoteForm({
         currency: defaultCurrency,
         customerNotes,
         termsAndConditions: terms || null,
+        // M25: include any populated custom-field values
+        customFieldValues: Object.entries(customFieldValues)
+          .filter(([, v]) => v !== undefined && v !== null && v !== "")
+          .map(([fieldDefinitionId, value]) => ({
+            fieldDefinitionId,
+            value,
+          })),
         lines: lines
           .filter((l) => l.name.trim())
           .map((l, i) => ({
@@ -180,6 +211,16 @@ export function DebitNoteForm({
         onChange={setLines}
         initialLines={initialLines}
       />
+
+      {customFieldDefinitions.length > 0 ? (
+        <CustomFieldsSection
+          entityType="DEBIT_NOTE"
+          definitions={customFieldDefinitions}
+          values={customFieldValues}
+          onChange={setCustomFieldValues}
+          defaultOpen
+        />
+      ) : null}
 
       <section className="grid gap-4 md:grid-cols-2">
         <div className="space-y-3">

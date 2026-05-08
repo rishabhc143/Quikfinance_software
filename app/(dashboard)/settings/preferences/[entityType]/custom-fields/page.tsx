@@ -16,6 +16,9 @@ const ENTITY_LABEL: Record<string, string> = {
   QUOTE: "Quotes",
   SALES_ORDER: "Sales Orders",
   CUSTOMER: "Customers",
+  DELIVERY_CHALLAN: "Delivery Challans",
+  DEBIT_NOTE: "Debit Notes",
+  CREDIT_NOTE: "Credit Notes",
 };
 
 export default async function CustomFieldsPage({
