@@ -5,6 +5,7 @@ import { requireOrganization } from "@/lib/auth-helpers";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { TransactionListPage } from "@/components/shared/transaction-list-page";
+import { SalesExportDialog } from "@/components/shared/sales-export-dialog";
 import { CustomersTable } from "./customers-table";
 import { bulkSetCustomerActiveAction } from "./actions";
 import { formatMoney } from "@/lib/money";
@@ -167,6 +168,27 @@ export default async function CustomersListPage({
         newLabel="New"
         importHref="/sales/customers/import"
         exportHref="/api/sales/customers/export"
+        exportDialog={
+          <SalesExportDialog
+            entityLabel="Customers"
+            exportHref="/api/sales/customers/export"
+            showDateRange={false}
+            statusOptions={[
+              { value: "all", label: "All" },
+              { value: "active", label: "Active" },
+              { value: "inactive", label: "Inactive" },
+              { value: "portal_enabled", label: "Portal-enabled" },
+            ]}
+            trigger={
+              <button
+                type="button"
+                className="block w-full px-2 py-1.5 text-left text-sm hover:bg-accent rounded-sm"
+              >
+                Export…
+              </button>
+            }
+          />
+        }
         preferencesHref="/settings/preferences/customers-and-vendors"
         sortOptions={[
           { label: "Name (A→Z)", value: "displayName" },

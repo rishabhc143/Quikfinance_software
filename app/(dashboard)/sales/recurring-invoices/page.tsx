@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { TransactionListPage } from "@/components/shared/transaction-list-page";
 import { BulkAwareDataTable } from "@/components/shared/bulk-aware-data-table";
+import { SalesExportDialog } from "@/components/shared/sales-export-dialog";
 import { formatMoney } from "@/lib/money";
 import {
   bulkDeleteRecurringAction,
@@ -100,6 +101,27 @@ export default async function RecurringInvoicesListPage({
         newHref="/sales/recurring-invoices/new"
         newLabel="New profile"
         exportHref="/api/sales/recurring-invoices/export"
+        exportDialog={
+          <SalesExportDialog
+            entityLabel="Recurring Invoices"
+            exportHref="/api/sales/recurring-invoices/export"
+            statusOptions={[
+              { value: "all", label: "All" },
+              { value: "ACTIVE", label: "Active" },
+              { value: "PAUSED", label: "Paused" },
+              { value: "STOPPED", label: "Stopped" },
+              { value: "EXPIRED", label: "Expired" },
+            ]}
+            trigger={
+              <button
+                type="button"
+                className="block w-full px-2 py-1.5 text-left text-sm hover:bg-accent rounded-sm"
+              >
+                Export…
+              </button>
+            }
+          />
+        }
         preferencesHref="/settings/preferences/invoices"
         columns={[
           { key: "profile", header: "Profile name", sortable: true },

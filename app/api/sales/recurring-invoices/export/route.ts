@@ -1,9 +1,14 @@
-import { NextRequest, NextResponse } from "next/server";
-import { stringify } from "csv-stringify/sync";
+import { NextRequest } from "next/server";
 import { format } from "date-fns";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
+import {
+  formatDecimal,
+  parseExportOptions,
+  writeExportResponse,
+} from "@/lib/sales/export";
 
+export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
@@ -23,10 +28,24 @@ export async function GET(req: NextRequest) {
       : [];
   const cap = mode === "all" ? 25_000 : mode === "current_view" ? 10_000 : 1_000;
 
+  const opts = parseExportOptions(sp);
+
+  const statusFilter =
+    opts.status && opts.status !== "all" ? { status: opts.status } : {};
+  const dateFilter: { startDate?: { gte?: Date; lte?: Date } } = {};
+  if (opts.fromDate) dateFilter.startDate = { gte: new Date(opts.fromDate) };
+  if (opts.toDate)
+    dateFilter.startDate = {
+      ...(dateFilter.startDate ?? {}),
+      lte: new Date(opts.toDate),
+    };
+
   const rows = await db.recurringInvoice.findMany({
     where: {
       organizationId: organization.id,
       deletedAt: null,
+      ...statusFilter,
+      ...dateFilter,
       ...(mode === "selected" ? { id: { in: ids } } : {}),
     },
     take: cap,
@@ -47,15 +66,9 @@ export async function GET(req: NextRequest) {
     nextOccurrenceDate: format(r.nextOccurrenceDate, "yyyy-MM-dd"),
     occurrencesGenerated: String(r.occurrencesGenerated),
     status: r.status,
-    amount: r.amount.toString(),
+    amount: formatDecimal(r.amount.toString(), opts.decimalStyle),
     emailAutomatically: r.emailAutomatically ? "true" : "false",
   }));
 
-  const csv = stringify(records, { header: true });
-  return new NextResponse(csv, {
-    headers: {
-      "Content-Type": "text/csv; charset=utf-8",
-      "Content-Disposition": `attachment; filename="quikfinance-recurring-invoices-${mode}-${Date.now()}.csv"`,
-    },
-  });
+  return writeExportResponse(opts, records, "recurring-invoices", mode);
 }

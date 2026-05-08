@@ -1,9 +1,13 @@
-import { NextRequest, NextResponse } from "next/server";
-import { stringify } from "csv-stringify/sync";
+import { NextRequest } from "next/server";
 import { format } from "date-fns";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
+import {
+  parseExportOptions,
+  writeExportResponse,
+} from "@/lib/sales/export";
 
+export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
@@ -24,9 +28,23 @@ export async function GET(req: NextRequest) {
       : [];
   const cap = mode === "all" ? 25_000 : mode === "current_view" ? 10_000 : 1_000;
 
+  const opts = parseExportOptions(sp);
+
+  const statusFilter =
+    opts.status && opts.status !== "all" ? { status: opts.status } : {};
+  const dateFilter: { date?: { gte?: Date; lte?: Date } } = {};
+  if (opts.fromDate) dateFilter.date = { gte: new Date(opts.fromDate) };
+  if (opts.toDate)
+    dateFilter.date = {
+      ...(dateFilter.date ?? {}),
+      lte: new Date(opts.toDate),
+    };
+
   const where = {
     organizationId: organization.id,
     deletedAt: null,
+    ...statusFilter,
+    ...dateFilter,
     ...(mode === "selected" ? { id: { in: ids } } : {}),
     ...(mode === "current_view" && q
       ? {
@@ -58,11 +76,5 @@ export async function GET(req: NextRequest) {
     status: r.status,
   }));
 
-  const csv = stringify(records, { header: true });
-  return new NextResponse(csv, {
-    headers: {
-      "Content-Type": "text/csv; charset=utf-8",
-      "Content-Disposition": `attachment; filename="quikfinance-delivery-challans-${mode}-${Date.now()}.csv"`,
-    },
-  });
+  return writeExportResponse(opts, records, "delivery-challans", mode);
 }

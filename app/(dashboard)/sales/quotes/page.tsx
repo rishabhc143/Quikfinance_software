@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { TransactionListPage } from "@/components/shared/transaction-list-page";
 import { BulkAwareDataTable } from "@/components/shared/bulk-aware-data-table";
+import { SalesExportDialog } from "@/components/shared/sales-export-dialog";
 import { formatMoney } from "@/lib/money";
 import {
   getSavedViews,
@@ -202,6 +203,29 @@ export default async function QuotesListPage({
         newLabel="New"
         importHref="/sales/quotes/import"
         exportHref="/api/sales/quotes/export"
+        exportDialog={
+          <SalesExportDialog
+            entityLabel="Quotes"
+            exportHref="/api/sales/quotes/export"
+            statusOptions={[
+              { value: "all", label: "All" },
+              { value: "DRAFT", label: "Draft" },
+              { value: "SENT", label: "Sent" },
+              { value: "ACCEPTED", label: "Accepted" },
+              { value: "DECLINED", label: "Declined" },
+              { value: "EXPIRED", label: "Expired" },
+              { value: "INVOICED", label: "Invoiced" },
+            ]}
+            trigger={
+              <button
+                type="button"
+                className="block w-full px-2 py-1.5 text-left text-sm hover:bg-accent rounded-sm"
+              >
+                Export…
+              </button>
+            }
+          />
+        }
         preferencesHref="/settings/preferences/quotes"
         customFieldsHref="/settings/preferences/quotes/custom-fields"
         sortOptions={[
