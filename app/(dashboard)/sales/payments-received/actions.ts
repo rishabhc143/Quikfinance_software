@@ -27,7 +27,21 @@ export async function recordStandalonePaymentAction(input: RecordPaymentInput) {
  */
 export async function refundPaymentAction(
   id: string,
-  input: { refundDate: Date | string; reference?: string | null; notes?: string | null }
+  input: {
+    refundDate: Date | string;
+    reference?: string | null;
+    notes?: string | null;
+    /**
+     * M33: optional partial-refund amount. When omitted or equal to
+     * the original amount, behaves as a full refund (existing M30
+     * path). When set to a value < original.amount, refunds only that
+     * portion: Razorpay API is called with the partial amount,
+     * invoice allocations are reversed proportionally, and the
+     * original PaymentReceived row is left intact (not soft-deleted)
+     * so further partials can chip away at the remaining balance.
+     */
+    amount?: number | null;
+  }
 ): Promise<void> {
   const { user, organization } = await requireOrganization();
   const original = await db.paymentReceived.findFirst({
@@ -41,16 +55,57 @@ export async function refundPaymentAction(
       ? input.refundDate
       : new Date(input.refundDate);
 
-  const refundNumber = await (async () => {
-    // Reuse same series; suffix the original number with "-R"
-    return `${original.number}-R`;
+  // M33: figure out partial vs full refund.
+  const originalAmount = Number(original.amount);
+  // Sum prior partial refunds (negative-amount sibling rows whose
+  // number matches `<original>-R` or `<original>-R<n>`) so we know
+  // how much is still refundable.
+  const priorRefundRows = await db.paymentReceived.findMany({
+    where: {
+      organizationId: organization.id,
+      contactId: original.contactId,
+      number: { startsWith: `${original.number}-R` },
+    },
+    select: { amount: true },
+  });
+  const alreadyRefunded = priorRefundRows.reduce(
+    (s, r) => s + Math.abs(Number(r.amount)),
+    0
+  );
+  const remaining = originalAmount - alreadyRefunded;
+  if (remaining <= 0.0001) {
+    throw new Error("This payment has already been fully refunded");
+  }
+
+  const requestedAmount =
+    input.amount !== null && input.amount !== undefined
+      ? Number(input.amount)
+      : remaining;
+  if (!Number.isFinite(requestedAmount) || requestedAmount <= 0) {
+    throw new Error("Refund amount must be greater than zero");
+  }
+  if (requestedAmount > remaining + 0.0001) {
+    throw new Error(
+      `Refund amount ${requestedAmount} exceeds the remaining ${remaining}`
+    );
+  }
+  const isPartial = requestedAmount < remaining - 0.0001;
+
+  // Suffix subsequent reversal rows with -R, -R2, -R3 so we never
+  // collide on @@unique([organizationId, number]).
+  const refundNumber = (() => {
+    const seq = priorRefundRows.length;
+    return seq === 0
+      ? `${original.number}-R`
+      : `${original.number}-R${seq + 1}`;
   })();
 
   // M30: Razorpay-sourced payments — call Razorpay's /refund API first
   // so the merchant's Razorpay account actually moves the money. The
   // M22 webhook (refund.processed) will fire shortly after; its
   // idempotency check on attempt.status="REFUNDED" makes it a no-op
-  // since we set that here.
+  // for full refunds. For M33 partial refunds, the attempt status
+  // stays at CAPTURED so subsequent partials can call the API again.
   let razorpayRefundId: string | null = null;
   if (original.paymentMode === "razorpay") {
     const attempt = await db.razorpayPaymentAttempt.findFirst({
@@ -88,48 +143,60 @@ export async function refundPaymentAction(
       keyId: cfg.razorpayKeyId,
       keySecret,
       paymentId: attempt.razorpayPaymentId,
-      amountPaise: Math.round(Number(original.amount) * 100),
+      amountPaise: Math.round(requestedAmount * 100),
       notes: {
         reason: input.reference ?? input.notes ?? "Merchant-initiated refund",
         paymentReceivedId: original.id,
+        partial: isPartial ? "true" : "false",
       },
     });
     if (!r.ok) {
       throw new Error(r.error ?? "Razorpay refund failed");
     }
     razorpayRefundId = r.refundId ?? null;
-    // Mark the attempt REFUNDED right away. The M22 webhook is
-    // idempotent — when refund.processed arrives later, it'll skip.
-    await db.razorpayPaymentAttempt.update({
-      where: { id: attempt.id },
-      data: { status: "REFUNDED" },
-    });
+    // For full refunds, mark attempt REFUNDED so the M22 webhook is
+    // idempotent. For partials, leave status=CAPTURED so further
+    // partials can run.
+    if (!isPartial) {
+      await db.razorpayPaymentAttempt.update({
+        where: { id: attempt.id },
+        data: { status: "REFUNDED" },
+      });
+    }
   }
 
   await db.$transaction(async (tx) => {
-    // Create reversal row (negative amount, no new allocations)
+    // Reversal row — negative amount = the refund portion. For a
+    // partial, amountUsedForInvoices/amountInExcess are scaled down
+    // proportionally to the same ratio.
+    const ratio = requestedAmount / originalAmount;
     await tx.paymentReceived.create({
       data: {
         organizationId: organization.id,
         number: refundNumber,
         contactId: original.contactId,
         paymentDate: refundDate,
-        amount: -Number(original.amount),
-        amountUsedForInvoices: -Number(original.amountUsedForInvoices),
-        amountInExcess: -Number(original.amountInExcess),
+        amount: -requestedAmount,
+        amountUsedForInvoices: -Number(original.amountUsedForInvoices) * ratio,
+        amountInExcess: -Number(original.amountInExcess) * ratio,
         bankCharges: 0,
         paymentMode: original.paymentMode,
         method: original.paymentMode,
         depositToAccountId: original.depositToAccountId,
-        reference: input.reference ?? `Refund of ${original.number}`,
+        reference:
+          input.reference ??
+          (isPartial
+            ? `Partial refund of ${original.number}`
+            : `Refund of ${original.number}`),
         notes: input.notes ?? null,
       },
     });
 
-    // Unwind each allocation: decrement invoice.amountPaid and rollback status
+    // Unwind each allocation proportionally to the refund ratio.
     for (const a of original.allocations) {
+      const reverseAmount = Number(a.amount) * ratio;
       const inv = a.invoice;
-      const newPaid = Math.max(0, Number(inv.amountPaid) - Number(a.amount));
+      const newPaid = Math.max(0, Number(inv.amountPaid) - reverseAmount);
       const newStatus =
         newPaid <= 0.0001
           ? inv.dueDate < new Date()
@@ -144,22 +211,27 @@ export async function refundPaymentAction(
       });
     }
 
-    // Mark the original payment as deleted (soft) so it doesn't get
-    // double-refunded
-    await tx.paymentReceived.update({
-      where: { id: original.id },
-      data: { deletedAt: new Date() },
-    });
+    // Soft-delete the original only on a full refund. For partial
+    // refunds, leave it so further partials can chip at it.
+    if (!isPartial) {
+      await tx.paymentReceived.update({
+        where: { id: original.id },
+        data: { deletedAt: new Date() },
+      });
+    }
   });
 
   await writeAuditLog({
     organizationId: organization.id,
     userId: user.id,
-    action: "DELETE",
+    action: isPartial ? "UPDATE" : "DELETE",
     entityType: "PaymentReceived",
     entityId: id,
     after: {
       refunded: true,
+      partial: isPartial,
+      refundedAmount: requestedAmount,
+      remainingAfter: remaining - requestedAmount,
       reversalNumber: refundNumber,
       ...(razorpayRefundId
         ? { source: "razorpay-merchant-initiated", razorpayRefundId }

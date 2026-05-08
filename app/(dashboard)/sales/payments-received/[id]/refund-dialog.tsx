@@ -37,7 +37,13 @@ export function RefundPaymentDialog({
   paymentMode?: string | null;
   action: (
     id: string,
-    input: { refundDate: Date | string; reference?: string | null; notes?: string | null }
+    input: {
+      refundDate: Date | string;
+      reference?: string | null;
+      notes?: string | null;
+      /** M33: optional partial-refund amount. Omit for full refund. */
+      amount?: number | null;
+    }
   ) => Promise<unknown>;
   trigger: React.ReactNode;
 }) {
@@ -47,16 +53,37 @@ export function RefundPaymentDialog({
   const [refundDate, setRefundDate] = React.useState<Date>(new Date());
   const [reference, setReference] = React.useState("");
   const [notes, setNotes] = React.useState("");
+  // M33: partial-refund amount. Defaults to the full payment amount;
+  // user can edit down for a partial refund.
+  const [refundAmount, setRefundAmount] = React.useState<string>(
+    amount.toFixed(2)
+  );
 
   async function submit() {
+    const parsed = Number(refundAmount);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      toast.error("Refund amount must be greater than zero");
+      return;
+    }
+    if (parsed > amount + 0.0001) {
+      toast.error(`Refund amount can't exceed ${amount.toFixed(2)}`);
+      return;
+    }
     setBusy(true);
     try {
       await action(paymentId, {
         refundDate: format(refundDate, "yyyy-MM-dd"),
         reference: reference || null,
         notes: notes || null,
+        // Only send amount when partial — saves a round-trip on the
+        // server when the full amount is intended.
+        amount: parsed < amount - 0.0001 ? parsed : null,
       });
-      toast.success("Payment refunded");
+      toast.success(
+        parsed < amount - 0.0001
+          ? `Partial refund of ${parsed.toFixed(2)} ${currency} processed`
+          : "Payment refunded"
+      );
       setOpen(false);
       router.push("/sales/payments-received");
     } catch (err) {
@@ -80,19 +107,37 @@ export function RefundPaymentDialog({
         <div className="space-y-3">
           {paymentMode === "razorpay" ? (
             <div className="rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm">
-              <strong>This refund hits Razorpay&apos;s API.</strong> The full
-              payment of {amount.toFixed(2)} {currency} will be returned to the
-              customer&apos;s card / UPI account, and the local invoice
-              balance will be rolled back. The Razorpay refund usually
-              settles in 5–7 business days. This action is irreversible.
+              <strong>This refund hits Razorpay&apos;s API.</strong> The
+              amount entered below will be returned to the customer&apos;s
+              card / UPI account, and the local invoice balance will be
+              rolled back proportionally. Razorpay usually settles refunds
+              in 5–7 business days. This action is irreversible.
             </div>
           ) : (
             <div className="text-sm text-muted-foreground">
-              This will reverse the full payment of {amount.toFixed(2)}{" "}
-              {currency} and roll back any invoice allocations. A reversal
-              entry is created so the audit trail is intact.
+              Reverses the entered amount, rolls back the matching slice
+              of invoice allocations, and creates a reversal entry so the
+              audit trail is intact.
             </div>
           )}
+          <Label>Amount to refund</Label>
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-muted-foreground">{currency}</span>
+            <Input
+              type="number"
+              inputMode="decimal"
+              step="0.01"
+              min="0"
+              max={amount}
+              value={refundAmount}
+              onChange={(e) => setRefundAmount(e.target.value)}
+              className="font-mono"
+            />
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Defaults to the full payment of {amount.toFixed(2)} {currency}.
+            Enter a smaller amount for a partial refund.
+          </p>
           <Label>Refund date</Label>
           <DatePicker value={refundDate} onChange={(d) => d && setRefundDate(d)} />
           <Label>Reference</Label>
