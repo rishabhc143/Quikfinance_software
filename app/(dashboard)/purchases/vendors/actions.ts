@@ -2,10 +2,10 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { z } from "zod";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
 import { writeAuditLog } from "@/lib/audit";
+import { vendorSchema, type VendorInput } from "@/lib/validations/vendor";
 
 /**
  * Vendor server actions.
@@ -16,57 +16,12 @@ import { writeAuditLog } from "@/lib/audit";
  *
  * Vendor-specific extensions (MSME registration, default TDS, bank
  * accounts, vendor-portal token) live on Contact's new columns (PR
- * #81) and the ContactBankAccount table.
+ * #81) and the ContactBankAccount table. The zod schema + types live
+ * in `lib/validations/vendor.ts` so the form, the import wizard, and
+ * the unit tests share one source of truth.
  */
 
-const vendorSchema = z.object({
-  salutation: z.string().nullable().optional(),
-  firstName: z.string().nullable().optional(),
-  lastName: z.string().nullable().optional(),
-  companyName: z.string().nullable().optional(),
-  displayName: z.string().min(1, "Display name is required"),
-  email: z.string().email().nullable().optional().or(z.literal("")),
-  workPhone: z.string().nullable().optional(),
-  workPhoneCountry: z.string().nullable().optional(),
-  mobile: z.string().nullable().optional(),
-  mobileCountry: z.string().nullable().optional(),
-  language: z.string().nullable().optional(),
-  pan: z.string().nullable().optional(),
-  gstin: z.string().nullable().optional(),
-  gstTreatment: z.string().nullable().optional(),
-  placeOfSupply: z.string().nullable().optional(),
-  taxPreference: z.string().nullable().optional(),
-  currency: z.string().nullable().optional(),
-  accountsPayableId: z.string().nullable().optional(),
-  openingBalance: z.coerce.number().optional().nullable(),
-  paymentTermsId: z.string().nullable().optional(),
-  defaultTdsId: z.string().nullable().optional(),
-  enableVendorPortal: z.boolean().optional().default(false),
-  msmeRegistered: z.boolean().nullable().optional(),
-  msmeNumber: z.string().nullable().optional(),
-  msmeCategory: z.string().nullable().optional(),
-  msmeRegisteredDate: z.string().nullable().optional(),
-  notes: z.string().nullable().optional(),
-  bankAccounts: z
-    .array(
-      z.object({
-        accountHolderName: z.string().nullable().optional(),
-        bankName: z.string().nullable().optional(),
-        accountNumber: z.string().min(1),
-        ifscCode: z
-          .string()
-          .regex(
-            /^[A-Z]{4}0[A-Z0-9]{6}$/,
-            "IFSC must be 4 letters + 0 + 6 alphanumeric"
-          ),
-        isDefault: z.boolean().optional().default(false),
-      })
-    )
-    .optional()
-    .default([]),
-});
-
-export type VendorInput = z.input<typeof vendorSchema>;
+export type { VendorInput };
 
 function normalize(raw: VendorInput) {
   const parsed = vendorSchema.parse(raw);
@@ -131,6 +86,9 @@ export async function createVendorAction(input: VendorInput) {
         msmeNumber: data.msmeNumber ?? null,
         msmeCategory: data.msmeCategory ?? null,
         msmeRegisteredDate: data.msmeRegisteredDate,
+        websiteUrl: data.websiteUrl ?? null,
+        facebookUrl: data.facebookUrl ?? null,
+        twitterHandle: data.twitterHandle ?? null,
         notes: data.notes ?? null,
       },
     });
@@ -144,6 +102,40 @@ export async function createVendorAction(input: VendorInput) {
           ifscCode: b.ifscCode.toUpperCase(),
           isDefault: !!b.isDefault || i === 0, // first row is default if none set
           position: i,
+        })),
+      });
+    }
+    if (data.addresses && data.addresses.length > 0) {
+      await tx.contactAddress.createMany({
+        data: data.addresses.map((a) => ({
+          contactId: c.id,
+          kind: a.kind,
+          attention: a.attention ?? null,
+          country: a.country ?? "India",
+          addressLine1: a.addressLine1 ?? null,
+          addressLine2: a.addressLine2 ?? null,
+          city: a.city ?? null,
+          state: a.state ?? null,
+          zipCode: a.zipCode ?? null,
+          phone: a.phone ?? null,
+          fax: a.fax ?? null,
+          isDefault: a.isDefault ?? false,
+        })),
+      });
+    }
+    if (data.contactPersons && data.contactPersons.length > 0) {
+      await tx.contactPerson.createMany({
+        data: data.contactPersons.map((p) => ({
+          contactId: c.id,
+          salutation: p.salutation ?? null,
+          firstName: p.firstName ?? null,
+          lastName: p.lastName ?? null,
+          email: p.email || null,
+          workPhone: p.workPhone ?? null,
+          mobile: p.mobile ?? null,
+          designation: p.designation ?? null,
+          department: p.department ?? null,
+          isPrimary: p.isPrimary ?? false,
         })),
       });
     }
@@ -200,11 +192,15 @@ export async function updateVendorAction(id: string, input: VendorInput) {
         msmeNumber: data.msmeNumber ?? null,
         msmeCategory: data.msmeCategory ?? null,
         msmeRegisteredDate: data.msmeRegisteredDate,
+        websiteUrl: data.websiteUrl ?? null,
+        facebookUrl: data.facebookUrl ?? null,
+        twitterHandle: data.twitterHandle ?? null,
         notes: data.notes ?? null,
       },
     });
-    // Replace bank accounts wholesale (simpler than diffing; users
-    // typically don't change banking info often).
+    // Replace bank accounts / addresses / contact persons wholesale
+    // (simpler than diffing; users typically don't tweak these
+    // collections per-row — the form rebuilds the array).
     await tx.contactBankAccount.deleteMany({ where: { contactId: id } });
     if (data.bankAccounts && data.bankAccounts.length > 0) {
       await tx.contactBankAccount.createMany({
@@ -216,6 +212,42 @@ export async function updateVendorAction(id: string, input: VendorInput) {
           ifscCode: b.ifscCode.toUpperCase(),
           isDefault: !!b.isDefault || i === 0,
           position: i,
+        })),
+      });
+    }
+    await tx.contactAddress.deleteMany({ where: { contactId: id } });
+    if (data.addresses && data.addresses.length > 0) {
+      await tx.contactAddress.createMany({
+        data: data.addresses.map((a) => ({
+          contactId: id,
+          kind: a.kind,
+          attention: a.attention ?? null,
+          country: a.country ?? "India",
+          addressLine1: a.addressLine1 ?? null,
+          addressLine2: a.addressLine2 ?? null,
+          city: a.city ?? null,
+          state: a.state ?? null,
+          zipCode: a.zipCode ?? null,
+          phone: a.phone ?? null,
+          fax: a.fax ?? null,
+          isDefault: a.isDefault ?? false,
+        })),
+      });
+    }
+    await tx.contactPerson.deleteMany({ where: { contactId: id } });
+    if (data.contactPersons && data.contactPersons.length > 0) {
+      await tx.contactPerson.createMany({
+        data: data.contactPersons.map((p) => ({
+          contactId: id,
+          salutation: p.salutation ?? null,
+          firstName: p.firstName ?? null,
+          lastName: p.lastName ?? null,
+          email: p.email || null,
+          workPhone: p.workPhone ?? null,
+          mobile: p.mobile ?? null,
+          designation: p.designation ?? null,
+          department: p.department ?? null,
+          isPrimary: p.isPrimary ?? false,
         })),
       });
     }
