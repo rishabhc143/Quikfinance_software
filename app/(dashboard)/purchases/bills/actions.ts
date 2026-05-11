@@ -2,70 +2,261 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { z } from "zod";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
 import { writeAuditLog } from "@/lib/audit";
-import { nextDocumentNumber } from "@/lib/next-number";
+import { computeDocument } from "@/lib/sales/totals";
+import { billSchema, type BillInput } from "@/lib/validations/bill";
 
-const lineSchema = z.object({
-  itemId: z.string().nullable().optional(),
-  description: z.string().min(1).max(500),
-  quantity: z.coerce.number().nonnegative(),
-  rate: z.coerce.number().nonnegative(),
-});
+export type { BillInput };
 
-const schema = z.object({
-  contactId: z.string().min(1),
-  status: z.enum(["DRAFT", "OPEN", "PARTIALLY_PAID", "PAID", "OVERDUE", "VOID"]).default("DRAFT"),
-  issueDate: z.coerce.date(),
-  dueDate: z.coerce.date(),
-  notes: z.string().max(2000).optional().nullable(),
-  lines: z.array(lineSchema).min(1),
-});
-export type BillInput = z.input<typeof schema>;
+/**
+ * Bill server actions.
+ *
+ * Spec (master prompt + audit):
+ *   - Bill numbers are MANUAL. No NumberSeries lookup. The user
+ *     types the vendor's source-doc number; we enforce uniqueness
+ *     per (orgId, contactId, number) at the unique index — the
+ *     action surfaces a clear error on collision.
+ *   - Totals math is the shared Decimal-safe `computeDocument`.
+ *   - Edit on a non-Draft bill is allowed for header fields, but
+ *     PAID bills block edit (payments would orphan).
+ *   - Each save persists `billableToCustomerId` per line so the
+ *     <BillableExpensesBanner> on the Invoice form can pick them up.
+ */
 
-function totals(lines: { quantity: number; rate: number }[]) {
-  const subtotal = lines.reduce((s, l) => s + l.quantity * l.rate, 0);
-  return { subtotal, taxTotal: 0, total: subtotal };
+async function totalsFor(orgId: string, input: BillInput) {
+  const taxes = await db.tax.findMany({
+    where: { organizationId: orgId, isActive: true },
+    select: { id: true, rate: true },
+  });
+  const taxRate = (id?: string | null) =>
+    (id ? taxes.find((t) => t.id === id)?.rate : null) ?? 0;
+  const docTaxRate = input.documentTax
+    ? Number(taxRate(input.documentTax.taxId))
+    : 0;
+  return computeDocument({
+    lines: input.lines.map((l) => ({
+      quantity: l.quantity ?? 0,
+      rate: l.rate ?? 0,
+      taxRate: Number(taxRate(l.taxId)),
+    })),
+    documentDiscount: input.documentDiscount
+      ? {
+          value: input.documentDiscount.value ?? 0,
+          type: input.documentDiscount.type ?? "percentage",
+        }
+      : undefined,
+    documentTax: input.documentTax
+      ? { rate: docTaxRate, type: input.documentTax.type }
+      : undefined,
+    adjustment: input.adjustmentValue ?? 0,
+  });
 }
 
-export async function createBillAction(input: BillInput) {
+export async function createBillAction(
+  input: BillInput,
+  opts?: { open?: boolean }
+) {
   const { user, organization } = await requireOrganization();
-  const data = schema.parse(input);
-  const number = await nextDocumentNumber(organization.id, "bill");
-  const t = totals(data.lines);
+  const data = billSchema.parse(input);
+
+  // Duplicate-number check per (org × vendor). The unique index in
+  // the DB will catch this too, but we throw with a friendlier
+  // message before the insert fires.
+  const dup = await db.bill.findFirst({
+    where: {
+      organizationId: organization.id,
+      contactId: data.contactId,
+      number: data.number,
+      deletedAt: null,
+    },
+    select: { id: true },
+  });
+  if (dup) {
+    throw new Error(
+      `Vendor already has a bill with number "${data.number}". Use a different number or edit the existing bill.`
+    );
+  }
+
+  const totals = await totalsFor(organization.id, data);
+  // "Save as Open" promotes the saved status from DRAFT → OPEN even
+  // when the form payload says DRAFT (dual-button UX).
+  const status = opts?.open ? "OPEN" : data.status;
+
   const created = await db.bill.create({
     data: {
-      organizationId: organization.id, number, contactId: data.contactId, status: data.status,
-      issueDate: data.issueDate, dueDate: data.dueDate, notes: data.notes ?? null,
-      subtotal: t.subtotal, taxTotal: t.taxTotal, total: t.total,
-      lineItems: { create: data.lines.map((l) => ({ itemId: l.itemId || null, description: l.description, quantity: l.quantity, rate: l.rate, amount: l.quantity * l.rate })) },
+      organizationId: organization.id,
+      number: data.number,
+      referenceNumber: data.referenceNumber ?? null,
+      subject: data.subject ?? null,
+      contactId: data.contactId,
+      status,
+      issueDate: data.issueDate,
+      dueDate: data.dueDate,
+      paymentTermsId: data.paymentTermsId ?? null,
+      placeOfSupply: data.placeOfSupply ?? null,
+      accountsPayableId: data.accountsPayableId ?? null,
+      purchaseOrderId: data.purchaseOrderId ?? null,
+      currency: data.currency,
+      subtotal: totals.subTotal,
+      discountValue: data.documentDiscount?.value ?? 0,
+      discountType: data.documentDiscount?.type ?? "percentage",
+      taxId: data.documentTax?.taxId ?? null,
+      taxTotal: totals.documentTaxAmount,
+      adjustmentLabel: data.adjustmentLabel ?? "Adjustment",
+      adjustmentValue: data.adjustmentValue ?? 0,
+      total: totals.total,
+      notes: data.notes ?? null,
+      termsAndConditions: data.termsAndConditions ?? null,
+      pdfTemplateId: data.pdfTemplateId ?? null,
+      attachments:
+        data.attachments && data.attachments.length > 0
+          ? {
+              create: data.attachments.map((a) => ({
+                fileName: a.fileName,
+                fileUrl: a.fileUrl,
+                fileSize: a.fileSize,
+                mimeType: a.mimeType,
+              })),
+            }
+          : undefined,
+      lineItems: {
+        create: data.lines.map((l, i) => ({
+          itemId: l.itemId || null,
+          position: l.position ?? i,
+          name: l.name,
+          description: l.description ?? "",
+          hsnSacCode: l.hsnSacCode ?? null,
+          accountId: l.accountId ?? null,
+          billableToCustomerId: l.billableToCustomerId ?? null,
+          quantity: l.quantity,
+          rate: l.rate,
+          taxId: l.taxId ?? null,
+          amount: totals.lines[i]?.amount ?? 0,
+        })),
+      },
     },
   });
-  await writeAuditLog({ organizationId: organization.id, userId: user.id, action: "CREATE", entityType: "Bill", entityId: created.id, after: { number: created.number, total: t.total } });
+
+  await writeAuditLog({
+    organizationId: organization.id,
+    userId: user.id,
+    action: "CREATE",
+    entityType: "Bill",
+    entityId: created.id,
+    after: {
+      number: created.number,
+      total: totals.total,
+      status: created.status,
+    },
+  });
   revalidatePath("/purchases/bills");
   redirect(`/purchases/bills/${created.id}`);
 }
 
-export async function updateBillAction(id: string, input: BillInput) {
+export async function updateBillAction(
+  id: string,
+  input: BillInput,
+  opts?: { open?: boolean }
+) {
   const { user, organization } = await requireOrganization();
-  const data = schema.parse(input);
-  const before = await db.bill.findFirst({ where: { id, organizationId: organization.id } });
-  if (!before) throw new Error("Not found");
-  const t = totals(data.lines);
-  await db.$transaction([
-    db.billLineItem.deleteMany({ where: { billId: id } }),
-    db.bill.update({
+  const data = billSchema.parse(input);
+
+  const before = await db.bill.findFirst({
+    where: { id, organizationId: organization.id, deletedAt: null },
+  });
+  if (!before) throw new Error("Bill not found");
+  if (before.status === "PAID" || before.status === "WRITTEN_OFF") {
+    throw new Error(
+      `Cannot edit a ${before.status.toLowerCase()} bill — reverse the payment(s) or restore the bill first.`
+    );
+  }
+
+  // If the user changed the bill number, re-check uniqueness against
+  // the new (vendor, number) pair.
+  if (data.number !== before.number || data.contactId !== before.contactId) {
+    const dup = await db.bill.findFirst({
+      where: {
+        organizationId: organization.id,
+        contactId: data.contactId,
+        number: data.number,
+        deletedAt: null,
+        NOT: { id },
+      },
+      select: { id: true },
+    });
+    if (dup) {
+      throw new Error(
+        `Vendor already has a bill with number "${data.number}".`
+      );
+    }
+  }
+
+  const totals = await totalsFor(organization.id, data);
+  const nextStatus =
+    opts?.open && before.status === "DRAFT" ? "OPEN" : before.status;
+
+  await db.$transaction(async (tx) => {
+    await tx.billLineItem.deleteMany({ where: { billId: id } });
+    await tx.bill.update({
       where: { id },
       data: {
-        contactId: data.contactId, status: data.status, issueDate: data.issueDate, dueDate: data.dueDate,
-        notes: data.notes ?? null, subtotal: t.subtotal, taxTotal: t.taxTotal, total: t.total,
-        lineItems: { create: data.lines.map((l) => ({ itemId: l.itemId || null, description: l.description, quantity: l.quantity, rate: l.rate, amount: l.quantity * l.rate })) },
+        number: data.number,
+        referenceNumber: data.referenceNumber ?? null,
+        subject: data.subject ?? null,
+        contactId: data.contactId,
+        status: nextStatus,
+        issueDate: data.issueDate,
+        dueDate: data.dueDate,
+        paymentTermsId: data.paymentTermsId ?? null,
+        placeOfSupply: data.placeOfSupply ?? null,
+        accountsPayableId: data.accountsPayableId ?? null,
+        purchaseOrderId: data.purchaseOrderId ?? null,
+        currency: data.currency,
+        subtotal: totals.subTotal,
+        discountValue: data.documentDiscount?.value ?? 0,
+        discountType: data.documentDiscount?.type ?? "percentage",
+        taxId: data.documentTax?.taxId ?? null,
+        taxTotal: totals.documentTaxAmount,
+        adjustmentLabel: data.adjustmentLabel ?? "Adjustment",
+        adjustmentValue: data.adjustmentValue ?? 0,
+        total: totals.total,
+        notes: data.notes ?? null,
+        termsAndConditions: data.termsAndConditions ?? null,
+        pdfTemplateId: data.pdfTemplateId ?? null,
+        lineItems: {
+          create: data.lines.map((l, i) => ({
+            itemId: l.itemId || null,
+            position: l.position ?? i,
+            name: l.name,
+            description: l.description ?? "",
+            hsnSacCode: l.hsnSacCode ?? null,
+            accountId: l.accountId ?? null,
+            billableToCustomerId: l.billableToCustomerId ?? null,
+            quantity: l.quantity,
+            rate: l.rate,
+            taxId: l.taxId ?? null,
+            amount: totals.lines[i]?.amount ?? 0,
+          })),
+        },
       },
-    }),
-  ]);
-  await writeAuditLog({ organizationId: organization.id, userId: user.id, action: "UPDATE", entityType: "Bill", entityId: id, before: { total: before.total.toString() }, after: { total: t.total } });
+    });
+  });
+
+  await writeAuditLog({
+    organizationId: organization.id,
+    userId: user.id,
+    action: "UPDATE",
+    entityType: "Bill",
+    entityId: id,
+    before: {
+      number: before.number,
+      total: Number(before.total),
+      status: before.status,
+    },
+    after: { number: data.number, total: totals.total, status: nextStatus },
+  });
   revalidatePath("/purchases/bills");
   revalidatePath(`/purchases/bills/${id}`);
   redirect(`/purchases/bills/${id}`);
