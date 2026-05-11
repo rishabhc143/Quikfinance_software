@@ -19,6 +19,7 @@ import {
   bulkDeleteVendorsAction,
   bulkSetVendorActiveAction,
 } from "./actions";
+import { ExportVendorsDialog } from "./export-dialog";
 
 export const metadata = { title: "Vendors" };
 
@@ -206,6 +207,18 @@ export default async function VendorsListPage({
         newHref="/purchases/vendors/new"
         newLabel="New"
         importHref="/purchases/vendors/import"
+        exportDialog={
+          <ExportVendorsDialog
+            trigger={
+              <button
+                type="button"
+                className="flex w-full items-center gap-2 px-2 py-1.5 text-left text-sm hover:bg-accent rounded-sm"
+              >
+                Export vendors…
+              </button>
+            }
+          />
+        }
         savedViewBuilder={
           <SavedViewBuilderDialog
             module="vendors"
