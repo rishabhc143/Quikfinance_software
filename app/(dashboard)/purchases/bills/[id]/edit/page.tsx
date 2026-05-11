@@ -1,49 +1,202 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { format } from "date-fns";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Receipt } from "lucide-react";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
 import { Button } from "@/components/ui/button";
-import { BillForm, type BillFormValues } from "../../bill-form";
+import { BillForm } from "../../bill-form";
 import { updateBillAction } from "../../actions";
+import type { BillInput } from "@/lib/validations/bill";
+import type { LineItem } from "@/components/shared/transaction-line-items-table";
 
-export default async function EditBillPage({ params }: { params: { id: string } }) {
+export const metadata = { title: "Edit Bill" };
+
+export default async function EditBillPage({
+  params,
+}: {
+  params: { id: string };
+}) {
   const { organization } = await requireOrganization();
-  const b = await db.bill.findFirst({ where: { id: params.id, organizationId: organization.id, deletedAt: null }, include: { lineItems: true } });
+
+  const [b, vendors, customers, items, taxes, accounts, paymentTerms] =
+    await Promise.all([
+      db.bill.findFirst({
+        where: {
+          id: params.id,
+          organizationId: organization.id,
+          deletedAt: null,
+        },
+        include: {
+          lineItems: { orderBy: { position: "asc" } },
+          attachments: true,
+        },
+      }),
+      db.contact.findMany({
+        where: {
+          organizationId: organization.id,
+          type: { in: ["VENDOR", "BOTH"] },
+          deletedAt: null,
+          isInactive: false,
+        },
+        select: { id: true, displayName: true },
+        orderBy: { displayName: "asc" },
+      }),
+      db.contact.findMany({
+        where: {
+          organizationId: organization.id,
+          type: { in: ["CUSTOMER", "BOTH"] },
+          deletedAt: null,
+          isInactive: false,
+        },
+        select: { id: true, displayName: true },
+        orderBy: { displayName: "asc" },
+      }),
+      db.item.findMany({
+        where: { organizationId: organization.id, deletedAt: null },
+        select: {
+          id: true,
+          name: true,
+          sku: true,
+          costPrice: true,
+          purchaseDescription: true,
+          unit: true,
+        },
+        orderBy: { name: "asc" },
+      }),
+      db.tax.findMany({
+        where: { organizationId: organization.id, isActive: true },
+        select: { id: true, name: true, rate: true },
+        orderBy: { name: "asc" },
+      }),
+      db.chartOfAccount.findMany({
+        where: {
+          organizationId: organization.id,
+          isActive: true,
+          type: { in: ["EXPENSE", "COST_OF_GOODS_SOLD", "LIABILITY"] },
+        },
+        select: { id: true, name: true, code: true },
+        orderBy: { name: "asc" },
+      }),
+      db.paymentTerms.findMany({
+        where: { organizationId: organization.id },
+        orderBy: { numberOfDays: "asc" },
+        select: { id: true, name: true },
+      }),
+    ]);
+
   if (!b) notFound();
-  const [vendors, items] = await Promise.all([
-    db.contact.findMany({ where: { organizationId: organization.id, deletedAt: null, type: { in: ["VENDOR", "BOTH"] } }, orderBy: { displayName: "asc" }, select: { id: true, displayName: true } }),
-    db.item.findMany({ where: { organizationId: organization.id, deletedAt: null, isActive: true }, orderBy: { name: "asc" }, select: { id: true, name: true, costPrice: true, purchaseDescription: true } }),
-  ]);
-  // The new BillStatus enum adds WRITTEN_OFF; the stub form doesn't
-  // yet handle it. Coerce to a known value for now — the full
-  // Purchases UI rebuild swaps this form out per the master prompt.
-  const knownStatus = b.status === "WRITTEN_OFF" ? "VOID" : b.status;
-  const initial: Partial<BillFormValues> = {
+  // PAID / WRITTEN_OFF can't be edited (action also blocks; bail early).
+  if (b.status === "PAID" || b.status === "WRITTEN_OFF") notFound();
+
+  const initial: Partial<BillInput> = {
     contactId: b.contactId,
-    status: knownStatus as BillFormValues["status"],
-    issueDate: format(b.issueDate, "yyyy-MM-dd"), dueDate: format(b.dueDate, "yyyy-MM-dd"),
-    notes: b.notes ?? "",
-    lines: b.lineItems.map((l) => ({ itemId: l.itemId, description: l.description, quantity: Number(l.quantity), rate: Number(l.rate) })),
+    number: b.number,
+    referenceNumber: b.referenceNumber,
+    subject: b.subject,
+    issueDate: b.issueDate.toISOString().slice(0, 10) as unknown as Date,
+    dueDate: b.dueDate.toISOString().slice(0, 10) as unknown as Date,
+    paymentTermsId: b.paymentTermsId,
+    placeOfSupply: b.placeOfSupply,
+    purchaseOrderId: b.purchaseOrderId,
+    accountsPayableId: b.accountsPayableId,
+    status: b.status as BillInput["status"],
+    currency: b.currency ?? organization.currency,
+    documentDiscount: {
+      value: Number(b.discountValue),
+      type: b.discountType as "percentage" | "amount",
+    },
+    documentTax: b.taxId
+      ? { taxId: b.taxId, type: "TDS" as const }
+      : null,
+    adjustmentLabel: b.adjustmentLabel,
+    adjustmentValue: Number(b.adjustmentValue),
+    notes: b.notes,
+    termsAndConditions: b.termsAndConditions,
+    pdfTemplateId: b.pdfTemplateId,
+    attachments: b.attachments.map((a) => ({
+      fileName: a.fileName,
+      fileUrl: a.fileUrl,
+      fileSize: a.fileSize,
+      mimeType: a.mimeType ?? "application/octet-stream",
+    })),
   };
-  async function submit(values: BillFormValues) {
-    "use server";
-    if (!values.contactId) throw new Error("Vendor required");
-    await updateBillAction(params.id, { contactId: values.contactId, status: values.status, issueDate: new Date(values.issueDate), dueDate: new Date(values.dueDate), notes: values.notes || null, lines: values.lines });
-  }
+
+  const initialLines: LineItem[] = b.lineItems.map((l) => ({
+    id: l.id,
+    itemId: l.itemId,
+    name: l.name || l.description || "",
+    description: l.description ?? undefined,
+    hsnSacCode: l.hsnSacCode ?? undefined,
+    accountId: l.accountId,
+    billableToCustomerId: l.billableToCustomerId,
+    quantity: String(l.quantity),
+    rate: String(l.rate),
+    taxId: l.taxId,
+  }));
+
+  const action = updateBillAction.bind(null, b.id);
+
   return (
-    <div className="p-6 max-w-5xl mx-auto space-y-4">
+    <div className="p-6 max-w-6xl mx-auto space-y-4">
+      <nav aria-label="Breadcrumb" className="text-xs text-muted-foreground">
+        <Link href="/purchases/bills" className="hover:underline">
+          Bills
+        </Link>
+        <span className="mx-1">/</span>
+        <Link href={`/purchases/bills/${b.id}`} className="hover:underline">
+          {b.number}
+        </Link>
+        <span className="mx-1">/</span>
+        <span aria-current="page">Edit</span>
+      </nav>
       <div className="flex items-center gap-2">
-        <Button asChild variant="ghost" size="icon"><Link href={`/purchases/bills/${b.id}`}><ArrowLeft className="h-4 w-4" /></Link></Button>
+        <Button asChild variant="ghost" size="icon" aria-label="Back">
+          <Link href={`/purchases/bills/${b.id}`}>
+            <ArrowLeft className="h-4 w-4" />
+          </Link>
+        </Button>
+        <Receipt className="h-5 w-5 text-muted-foreground" />
+        <h1 className="text-2xl font-semibold tracking-tight">Edit bill</h1>
+        <span className="text-xs text-muted-foreground font-mono ml-2">
+          {b.number}
+        </span>
       </div>
       <BillForm
-        title={`Edit ${b.number}`}
+        isCreate={false}
+        singleAction
         initial={initial}
-        currency={organization.currency}
-        vendorOptions={vendors.map((v) => ({ value: v.id, label: v.displayName }))}
-        itemOptions={items.map((i) => ({ value: i.id, label: i.name, costPrice: i.costPrice ? Number(i.costPrice) : null, description: i.purchaseDescription ?? null }))}
-        onSubmit={submit}
+        initialLines={initialLines}
+        vendorOptions={vendors.map((v) => ({
+          value: v.id,
+          label: v.displayName,
+        }))}
+        customerOptions={customers.map((c) => ({
+          value: c.id,
+          label: c.displayName,
+        }))}
+        itemOptions={items.map((i) => ({
+          value: i.id,
+          label: i.name,
+          sku: i.sku ?? undefined,
+          rate: i.costPrice ? String(i.costPrice) : undefined,
+          description: i.purchaseDescription ?? undefined,
+          unit: i.unit ?? undefined,
+        }))}
+        taxOptions={taxes.map((t) => ({
+          value: t.id,
+          label: `${t.name} (${Number(t.rate)}%)`,
+          rate: Number(t.rate),
+        }))}
+        accountOptions={accounts.map((a) => ({
+          value: a.id,
+          label: a.code ? `${a.code} — ${a.name}` : a.name,
+        }))}
+        paymentTermsOptions={paymentTerms.map((p) => ({
+          value: p.id,
+          label: p.name,
+        }))}
+        defaultCurrency={b.currency ?? organization.currency}
+        onSubmitAction={action}
         submitLabel="Update bill"
       />
     </div>
