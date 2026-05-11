@@ -250,6 +250,208 @@ export async function updatePurchaseOrderAction(
   redirect(`/purchases/orders/${id}`);
 }
 
+/**
+ * Single-id status transitions used by the PO detail page action bar.
+ *
+ * State-machine guards (mirrored in tests/unit/purchases/po-transitions):
+ *  - DRAFT     → ISSUED         via markIssued
+ *  - ISSUED    → CLOSED         via close
+ *  - PARTIALLY_BILLED → CLOSED  via close
+ *  - any non-CANCELLED → CANCELLED via cancel
+ *  - DRAFT     → (deleted)      via deletePurchaseOrderAction
+ *  - clone     → new DRAFT with a fresh PO# and copied line items
+ */
+export async function markPurchaseOrderIssuedAction(
+  id: string
+): Promise<void> {
+  const { user, organization } = await requireOrganization();
+  const po = await db.purchaseOrder.findFirst({
+    where: { id, organizationId: organization.id, deletedAt: null },
+  });
+  if (!po) throw new Error("Purchase order not found");
+  if (po.status !== "DRAFT") {
+    throw new Error(
+      `Cannot mark as Issued — current status is ${po.status}.`
+    );
+  }
+  await db.purchaseOrder.update({
+    where: { id },
+    data: { status: "ISSUED", sentAt: po.sentAt ?? new Date() },
+  });
+  await writeAuditLog({
+    organizationId: organization.id,
+    userId: user.id,
+    action: "UPDATE",
+    entityType: "PurchaseOrder",
+    entityId: id,
+    before: { status: "DRAFT" },
+    after: { status: "ISSUED" },
+  });
+  revalidatePath("/purchases/orders");
+  revalidatePath(`/purchases/orders/${id}`);
+}
+
+export async function cancelPurchaseOrderAction(id: string): Promise<void> {
+  const { user, organization } = await requireOrganization();
+  const po = await db.purchaseOrder.findFirst({
+    where: { id, organizationId: organization.id, deletedAt: null },
+  });
+  if (!po) throw new Error("Purchase order not found");
+  if (po.status === "CANCELLED") {
+    throw new Error("Already cancelled.");
+  }
+  await db.purchaseOrder.update({
+    where: { id },
+    data: { status: "CANCELLED", cancelledAt: new Date() },
+  });
+  await writeAuditLog({
+    organizationId: organization.id,
+    userId: user.id,
+    action: "UPDATE",
+    entityType: "PurchaseOrder",
+    entityId: id,
+    before: { status: po.status },
+    after: { status: "CANCELLED" },
+  });
+  revalidatePath("/purchases/orders");
+  revalidatePath(`/purchases/orders/${id}`);
+}
+
+export async function closePurchaseOrderAction(id: string): Promise<void> {
+  const { user, organization } = await requireOrganization();
+  const po = await db.purchaseOrder.findFirst({
+    where: { id, organizationId: organization.id, deletedAt: null },
+  });
+  if (!po) throw new Error("Purchase order not found");
+  if (!["ISSUED", "PARTIALLY_BILLED", "BILLED"].includes(po.status)) {
+    throw new Error(
+      `Cannot close — only Issued / Partially Billed / Billed POs can be closed.`
+    );
+  }
+  await db.purchaseOrder.update({
+    where: { id },
+    data: { status: "CLOSED", closedAt: new Date() },
+  });
+  await writeAuditLog({
+    organizationId: organization.id,
+    userId: user.id,
+    action: "UPDATE",
+    entityType: "PurchaseOrder",
+    entityId: id,
+    before: { status: po.status },
+    after: { status: "CLOSED" },
+  });
+  revalidatePath("/purchases/orders");
+  revalidatePath(`/purchases/orders/${id}`);
+}
+
+/**
+ * Clone an existing PO — copies line items, attachments stay
+ * unattached (the user typically doesn't want a duplicate file
+ * pointer). The new PO is always a fresh DRAFT.
+ *
+ * Returns the new PO id; caller is expected to redirect.
+ */
+export async function clonePurchaseOrderAction(id: string) {
+  const { user, organization } = await requireOrganization();
+  const src = await db.purchaseOrder.findFirst({
+    where: { id, organizationId: organization.id, deletedAt: null },
+    include: { lineItems: { orderBy: { position: "asc" } } },
+  });
+  if (!src) throw new Error("Purchase order not found");
+  const number = await getNextDocumentNumber(organization.id, "PURCHASE_ORDER");
+  const cloned = await db.purchaseOrder.create({
+    data: {
+      organizationId: organization.id,
+      number,
+      referenceNumber: src.referenceNumber,
+      contactId: src.contactId,
+      status: "DRAFT",
+      orderDate: new Date(),
+      deliveryDate: src.deliveryDate,
+      paymentTermsId: src.paymentTermsId,
+      shipmentPreferenceId: src.shipmentPreferenceId,
+      deliveryAddressMode: src.deliveryAddressMode,
+      deliveryToCustomerId: src.deliveryToCustomerId,
+      deliveryAddressId: src.deliveryAddressId,
+      placeOfSupply: src.placeOfSupply,
+      currency: src.currency,
+      subTotal: src.subTotal,
+      discountValue: src.discountValue,
+      discountType: src.discountType,
+      taxType: src.taxType,
+      taxId: src.taxId,
+      taxAmount: src.taxAmount,
+      adjustmentLabel: src.adjustmentLabel,
+      adjustmentValue: src.adjustmentValue,
+      total: src.total,
+      notes: src.notes,
+      termsAndConditions: src.termsAndConditions,
+      pdfTemplateId: src.pdfTemplateId,
+      lineItems: {
+        create: src.lineItems.map((l, i) => ({
+          itemId: l.itemId,
+          position: i,
+          name: l.name,
+          description: l.description,
+          hsnSacCode: l.hsnSacCode,
+          accountId: l.accountId,
+          quantity: l.quantity,
+          unit: l.unit,
+          rate: l.rate,
+          discount: l.discount,
+          discountType: l.discountType,
+          taxId: l.taxId,
+          taxAmount: l.taxAmount,
+          amount: l.amount,
+        })),
+      },
+    },
+  });
+  await writeAuditLog({
+    organizationId: organization.id,
+    userId: user.id,
+    action: "CREATE",
+    entityType: "PurchaseOrder",
+    entityId: cloned.id,
+    after: {
+      number,
+      clonedFromId: src.id,
+      clonedFromNumber: src.number,
+    },
+  });
+  revalidatePath("/purchases/orders");
+  redirect(`/purchases/orders/${cloned.id}/edit`);
+}
+
+/**
+ * Convert PO → Bill. v1 just pre-fills the new-bill URL with a
+ * `?fromPO=<id>` query param; the Bill form (P4) will read that and
+ * seed the line items + vendor + PO link. Until P4 ships we just
+ * redirect to the new-bill page; the user can manually copy lines.
+ */
+export async function convertPurchaseOrderToBillAction(id: string) {
+  const { user, organization } = await requireOrganization();
+  const po = await db.purchaseOrder.findFirst({
+    where: { id, organizationId: organization.id, deletedAt: null },
+  });
+  if (!po) throw new Error("Purchase order not found");
+  if (!["ISSUED", "PARTIALLY_BILLED"].includes(po.status)) {
+    throw new Error(
+      `Can only convert Issued or Partially Billed POs to a Bill. Current: ${po.status}.`
+    );
+  }
+  await writeAuditLog({
+    organizationId: organization.id,
+    userId: user.id,
+    action: "UPDATE",
+    entityType: "PurchaseOrder",
+    entityId: id,
+    after: { convertToBillRequested: true, status: po.status },
+  });
+  redirect(`/purchases/bills/new?fromPO=${id}`);
+}
+
 export async function deletePurchaseOrderAction(id: string) {
   const { user, organization } = await requireOrganization();
   const po = await db.purchaseOrder.findFirst({
