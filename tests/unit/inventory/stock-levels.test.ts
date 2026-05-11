@@ -7,14 +7,14 @@ import { computeItemStock } from "@/lib/inventory/stock-levels";
  */
 
 describe("computeItemStock", () => {
-  it("status OK when current is above reorder point", () => {
+  it("status OK when current is above reorder point (no reservations)", () => {
     expect(
       computeItemStock({
         openingStock: 100,
         totalAdjustment: -20,
         reorderPoint: 30,
       })
-    ).toEqual({ currentStock: 80, status: "OK" });
+    ).toEqual({ currentStock: 80, reserved: 0, available: 80, status: "OK" });
   });
 
   it("status LOW when current is exactly at reorder point", () => {
@@ -24,7 +24,7 @@ describe("computeItemStock", () => {
         totalAdjustment: -20,
         reorderPoint: 30,
       })
-    ).toEqual({ currentStock: 30, status: "LOW" });
+    ).toEqual({ currentStock: 30, reserved: 0, available: 30, status: "LOW" });
   });
 
   it("status LOW when current is below reorder point but above 0", () => {
@@ -34,7 +34,7 @@ describe("computeItemStock", () => {
         totalAdjustment: -80,
         reorderPoint: 30,
       })
-    ).toEqual({ currentStock: 20, status: "LOW" });
+    ).toEqual({ currentStock: 20, reserved: 0, available: 20, status: "LOW" });
   });
 
   it("status OUT when current is exactly 0", () => {
@@ -44,7 +44,7 @@ describe("computeItemStock", () => {
         totalAdjustment: -50,
         reorderPoint: 10,
       })
-    ).toEqual({ currentStock: 0, status: "OUT" });
+    ).toEqual({ currentStock: 0, reserved: 0, available: 0, status: "OUT" });
   });
 
   it("status OUT when current goes negative (over-decremented)", () => {
@@ -54,7 +54,7 @@ describe("computeItemStock", () => {
         totalAdjustment: -15,
         reorderPoint: 5,
       })
-    ).toEqual({ currentStock: -5, status: "OUT" });
+    ).toEqual({ currentStock: -5, reserved: 0, available: -5, status: "OUT" });
   });
 
   it("status OK when no reorder point is set and current is positive", () => {
@@ -64,7 +64,7 @@ describe("computeItemStock", () => {
         totalAdjustment: 0,
         reorderPoint: null,
       })
-    ).toEqual({ currentStock: 5, status: "OK" });
+    ).toEqual({ currentStock: 5, reserved: 0, available: 5, status: "OK" });
   });
 
   it("status OUT when no reorder point but current is 0", () => {
@@ -74,7 +74,7 @@ describe("computeItemStock", () => {
         totalAdjustment: 0,
         reorderPoint: null,
       })
-    ).toEqual({ currentStock: 0, status: "OUT" });
+    ).toEqual({ currentStock: 0, reserved: 0, available: 0, status: "OUT" });
   });
 
   it("positive adjustments accumulate (restock)", () => {
@@ -84,7 +84,7 @@ describe("computeItemStock", () => {
         totalAdjustment: 25, // received 25 units back
         reorderPoint: 5,
       })
-    ).toEqual({ currentStock: 35, status: "OK" });
+    ).toEqual({ currentStock: 35, reserved: 0, available: 35, status: "OK" });
   });
 
   it("handles fractional stock (e.g. weighted items)", () => {
@@ -94,7 +94,7 @@ describe("computeItemStock", () => {
         totalAdjustment: -3.75,
         reorderPoint: 10,
       })
-    ).toEqual({ currentStock: 8.75, status: "LOW" });
+    ).toEqual({ currentStock: 8.75, reserved: 0, available: 8.75, status: "LOW" });
   });
 
   it("net adjustment is zero when invoice decrement is cancelled by credit-note return", () => {
@@ -107,7 +107,7 @@ describe("computeItemStock", () => {
         totalAdjustment: -10 /* invoice */ + 10 /* credit note */,
         reorderPoint: 20,
       })
-    ).toEqual({ currentStock: 100, status: "OK" });
+    ).toEqual({ currentStock: 100, reserved: 0, available: 100, status: "OK" });
   });
 
   it("partial return: invoice -10 + credit note +4 → net -6", () => {
@@ -117,6 +117,56 @@ describe("computeItemStock", () => {
         totalAdjustment: -10 + 4,
         reorderPoint: 20,
       })
-    ).toEqual({ currentStock: 24, status: "OK" });
+    ).toEqual({ currentStock: 24, reserved: 0, available: 24, status: "OK" });
+  });
+
+  it("reserved stock reduces available without touching on-hand", () => {
+    expect(
+      computeItemStock({
+        openingStock: 100,
+        totalAdjustment: 0,
+        reserved: 30,
+        reorderPoint: 20,
+      })
+    ).toEqual({
+      currentStock: 100,
+      reserved: 30,
+      available: 70,
+      status: "OK",
+    });
+  });
+
+  it("status uses available (not currentStock) — full warehouse, all reserved → OUT", () => {
+    expect(
+      computeItemStock({
+        openingStock: 50,
+        totalAdjustment: 0,
+        reserved: 50,
+        reorderPoint: 10,
+      })
+    ).toEqual({
+      currentStock: 50,
+      reserved: 50,
+      available: 0,
+      status: "OUT",
+    });
+  });
+
+  it("status LOW when available is at or below reorder, even if on-hand is high", () => {
+    // Warehouse has 100, but 90 are reserved — only 10 available,
+    // reorder point is 20.
+    expect(
+      computeItemStock({
+        openingStock: 100,
+        totalAdjustment: 0,
+        reserved: 90,
+        reorderPoint: 20,
+      })
+    ).toEqual({
+      currentStock: 100,
+      reserved: 90,
+      available: 10,
+      status: "LOW",
+    });
   });
 });
