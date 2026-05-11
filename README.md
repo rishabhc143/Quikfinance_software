@@ -2,156 +2,80 @@
 
 Production-grade accounting SaaS — Next.js 14 (App Router) + Prisma + PostgreSQL + NextAuth v5 + Tailwind + shadcn/ui + Anthropic AI.
 
-This is the build referenced in `Quikfinance_Master_Prompt.docx`. It follows the exact phased plan in `<delivery_plan>` from that prompt.
+**Production:** https://quikfinance-software.vercel.app
 
 ## Build status
 
-| Phase | Status |
-|-------|--------|
-| 1. Foundation (schema, auth, app shell, dashboard) | **complete (this commit)** |
-| 2. Items module (reference implementation) — list, sort, filter, search, paginate, bulk, export | **list page complete; new/edit/import wizard pending** |
-| 3. Settings + AI Assistant + Quick Create + Refer & Earn | AI Assistant + Quick Create + Refer & Earn complete; Settings grid + sub-page contents pending |
-| 4. Remaining modules (CRUD scaffolds) | route stubs in place; CRUD pending |
-| 5. Polish (loading skeletons, dark mode, Playwright, Lighthouse) | pending |
+| Module | State |
+|---|---|
+| **Auth / org / shell / dashboard** | Complete — credentials + Google, multi-tenant, command palette, collapsible sidebar |
+| **Items** | Complete — list / new / edit / import wizard / inventory adjustments + a **stock-levels page** (`/items/stock`) with reorder alerts + per-item adjustment history |
+| **Sales** | Complete — see [`app/(dashboard)/sales/README.md`](app/(dashboard)/sales/README.md) for the 8 sub-modules (Customers / Quotes / Sales Orders / Invoices / Recurring / Delivery Challans / Payments Received / Credit Notes), plus Debit Notes |
+| **Inventory mutation ledger** | Complete — invoice decrements, credit-note returns, DC ship/return, SO reservations; `available = on-hand − reserved` |
+| **Reports** | Complete — P&L, Balance Sheet, Cash Flow, Sales Summary, Tax Summary, AR Aging, AP Aging, **GSTR-1 export**, **Stock Valuation** |
+| **Settings** | Complete — Organization Profile (with GSTIN), General, Branding, Numbering, Taxes, PDF Templates, Online Payments (Razorpay), Direct Taxes (TDS), Custom Domain, Preferences per module, etc. |
+| **Customer portal** | Public invoice page + Razorpay Pay Now + payment-history page (per-customer receipts) |
+| **Purchases / Banking / Accountant / Time / Documents / Payroll / Payments** | Schema + landing pages; CRUD UI is sparse |
+| **AI Assistant** | Streaming Claude chat in the bottom-right rail |
 
 ## Setup (one-time)
 
-### 1. Install dependencies
-
 ```bash
 pnpm install
+cp .env.example .env.local           # fill in DATABASE_URL, DIRECT_URL, AUTH_SECRET
+pnpm prisma:migrate                   # apply schema; name first migration "init"
+pnpm db:seed                          # demo org + admin@quikfinance.dev / Quikfinance!123
+pnpm dev                              # http://localhost:3000
 ```
 
-If you don't have pnpm: `npm install -g pnpm`.
+Postgres: Neon, Supabase, or local Docker (`docker run --name qf-postgres -e POSTGRES_PASSWORD=quik -p 5432:5432 -d postgres:16`).
 
-### 2. Provision a PostgreSQL database
+## Deploy
 
-Any of the following works:
-- **Vercel Postgres** — create from the Vercel dashboard, copy the `DATABASE_URL`
-- **Neon** — `neon.tech`, free tier
-- **Supabase** — `supabase.com`, free tier (use the connection string under Project Settings → Database)
-- **Local** — `docker run --name qf-postgres -e POSTGRES_PASSWORD=quik -p 5432:5432 -d postgres:16` then `DATABASE_URL=postgresql://postgres:quik@localhost:5432/quikfinance`
+1. Push to GitHub → import on Vercel.
+2. Add `DATABASE_URL`, `DIRECT_URL`, `AUTH_SECRET`, `NEXTAUTH_URL`. Optional: `AUTH_GOOGLE_ID/SECRET`, `ANTHROPIC_API_KEY`, `RESEND_API_KEY`, `MIGRATION_KEY`.
+3. Set **`QUIK_AUTO_MIGRATE=1`** so every cold start applies pending Prisma migrations (the build script can't because Vercel marks DB env vars as Sensitive).
 
-### 3. Configure environment
+The hook lives in [`instrumentation.ts`](instrumentation.ts) and calls [`lib/admin/run-migrations.ts`](lib/admin/run-migrations.ts), which is also exposed manually at `POST /api/admin/migrate` (auth-gated by `MIGRATION_KEY`).
 
-```bash
-cp .env.example .env.local
-# fill in DATABASE_URL, AUTH_SECRET (openssl rand -base64 32), and any optional providers
-```
+## Architecture cheatsheet
 
-### 4. Migrate and seed
-
-```bash
-pnpm prisma:migrate    # applies schema, prompts for migration name (use "init")
-pnpm db:seed           # creates demo org + admin@quikfinance.dev / Quikfinance!123
-```
-
-### 5. Run
-
-```bash
-pnpm dev
-```
-
-Open `http://localhost:3000`. Sign in with the seeded credentials, or create a new account from `/signup`.
-
-## What you can do today
-
-- **Sign up / log in / Google OAuth** — full credentials flow with email verification + password reset
-- **Multi-tenant orgs** — switch between orgs in the header, create new ones via the org switcher
-- **Dashboard** — real receivables/payables, KPIs, recent activity reading from the DB
-- **Items** — list with server-side sort, filter (Active/Inactive), debounced search, pagination (25/50/100), bulk activate/deactivate/delete with audit log, three-dots menu (sort, import stub, export real CSV/XLSX, preferences, refresh, reset cols), URL state preserved via `nuqs`
-- **AI Assistant** — bottom-right chat that streams from Claude (set `ANTHROPIC_API_KEY`)
-- **Quick Create + Refer & Earn + Notifications + Profile popover + Org switcher + Command palette (`/`)** — all wired in the header
-- **Settings grid** — every section per `<settings_spec>` is present with the correct route
-
-## What's stubbed (Phase 2–4 work)
-
-- `/items/new` and `/items/import` — schema, server action, validation, and sample template are ready; only the form/wizard UI is pending
-- Settings sub-pages — routes will 404 until each is filled in
-- Sales / Purchases / Banking / Time / Accountant / Reports / Documents / Payroll / Payments — landing pages render `ModuleStub`; full CRUD comes in Phase 4
-- Playwright E2E test
-- Loading skeletons on every page
-
-## Architecture
-
-- **App Router**: `app/(auth)` for unauthenticated pages, `app/(dashboard)` for authenticated. Middleware redirects unauthenticated requests to `/login`.
-- **Auth**: NextAuth v5 with Prisma adapter, JWT sessions, credentials + Google providers.
-- **Multi-tenancy**: every business model has `organizationId`. The active org is stored in a cookie (`qf_active_org`) and resolved via `requireOrganization()` in `lib/auth-helpers.ts`. All queries filter by it.
-- **Audit log**: every mutation (server action) writes to `AuditLog` via `writeAuditLog()`.
+- **App Router**: `app/(auth)` for unauthenticated, `app/(dashboard)` for authenticated, `app/portal` for customer-facing.
+- **Multi-tenancy**: every business model has `organizationId`. Resolved in `requireOrganization()` (`lib/auth-helpers.ts`). All queries filter by it.
+- **Audit log**: every mutation writes to `AuditLog` via `writeAuditLog()`.
 - **Money**: `Decimal(18,4)` everywhere; UI formats via `Intl.NumberFormat` in `lib/money.ts`.
-- **Soft delete**: `deletedAt` on Item, Invoice, Bill, Contact. Hard delete only for drafts.
+- **Soft delete**: `deletedAt` on every business entity. Hard delete only for drafts.
+- **Crypto**: AES-256-GCM in `lib/crypto.ts` for at-rest secrets (Razorpay key secret, webhook secret).
 
-## Deploy to Vercel
+## Testing
 
-1. Push to GitHub.
-2. Import on Vercel.
-3. Add a Vercel Postgres or external Postgres, copy `DATABASE_URL` and `DIRECT_URL` to env.
-4. Add `AUTH_SECRET` (`openssl rand -base64 32`), `NEXTAUTH_URL=https://your-domain`, optionally `AUTH_GOOGLE_ID/SECRET`, `ANTHROPIC_API_KEY`, `RESEND_API_KEY`.
-5. Build command: `pnpm build`. Install: `pnpm install`.
-6. After first deploy, run `pnpm prisma:deploy && pnpm db:seed` from your local machine pointed at production DB (or use `vercel env pull` + a one-off script).
+```bash
+pnpm test --run        # vitest unit tests (currently 133)
+pnpm test:e2e          # Playwright lifecycle + receivables loop + invoice-create flow
+```
 
-## Scripts
+CI gates every PR on type-check + lint + vitest + Next.js build + Playwright. No admin-bypass merges (lesson learned the hard way — see PRs #54–#62).
 
-| Command | Effect |
-|---------|--------|
-| `pnpm dev` | start dev server |
-| `pnpm build` | `prisma generate && next build` |
-| `pnpm prisma:migrate` | create + apply migrations in dev |
-| `pnpm prisma:deploy` | apply pending migrations in prod |
-| `pnpm db:seed` | seed demo org + admin user + chart of accounts |
-| `pnpm prisma:studio` | open Prisma Studio at localhost:5555 |
-| `pnpm type-check` | strict TS pass without emitting |
-| `pnpm lint` | Next-flavored ESLint |
+### Test layout
+| Suite | Location | Covers |
+|---|---|---|
+| **Vitest unit** | `tests/unit/` | Money math (line totals, document tax, refund ratios), Razorpay HMAC + refund distribution, GSTR-1 generator, GSTIN validator, stock-level + valuation math, parse-source |
+| **Playwright lifecycle** | `tests/e2e/sales-lifecycle.spec.ts` | Every Sales sub-page renders without an error overlay |
+| **Playwright receivables** | `tests/e2e/sales-receivables-loop.spec.ts` | Customer → quote → invoice → payment end-to-end |
+| **Playwright invoice create** | `tests/e2e/invoice-create.spec.ts` | Full new-invoice form flow with line items |
+| **Playwright auth smoke** | `tests/e2e/auth-smoke.spec.ts` | Sign-in + dashboard reach + new-contact form |
 
-## Continuing the build
+## Module deep dives
 
-The master prompt is in `_archive_supabase_v1/` (along with the previous Supabase scaffold this replaced). Each subsequent turn extends one phase at a time without rewriting earlier phases.
+- **Sales**: [`app/(dashboard)/sales/README.md`](app/(dashboard)/sales/README.md) — saved views, inventory hooks, Razorpay flow, email queue, custom fields
+- **Contact import design** (Google / Microsoft, blocked on OAuth registration): [`docs/contact-import-design.md`](docs/contact-import-design.md)
 
-## Sales module
+## What's left (high level)
 
-Built per `quikfinance_sales_master_prompt.md`. Eight phases shipped on the `feat/sales-module` branch (S1–S8).
+- **Purchases** module to Sales parity (Bills, Vendor Credits, Payments Made, Recurring Bills)
+- **SaaS billing & trial enforcement** (`Organization.planTier` exists, no runtime gate)
+- **Indian compliance phase 2**: e-invoice IRN, e-way bill, GSTR-3B, GSTR-1 missing sections (B2CL, CDNR, exports, advances)
+- **Google / Microsoft contact import** (design doc shipped; OAuth apps not yet registered)
+- **Sales Order ↔ Delivery Challan FK** so DCs can auto-consume specific SO reservations
 
-### Sub-modules
-| Sub-module | List | Form | Detail | Lifecycle | Conversions |
-|-----------|------|------|--------|-----------|-------------|
-| Customers (`/sales/customers`) | empty state + table | 6-tab New/Edit | 5-tab detail with receivables, transactions timeline | Active/Inactive, soft-delete | — |
-| Quotes (`/sales/quotes`) | + lifecycle SVG | full form, line items, totals | status pill + status-aware actions | DRAFT→SENT→ACCEPTED/DECLINED→INVOICED/EXPIRED | → Invoice, → Sales Order |
-| Sales Orders (`/sales/orders`) | + lifecycle SVG | shipment date, payment terms, delivery method | status-aware actions | DRAFT→CONFIRMED→CLOSED, VOID | → Invoice, → Purchase Order (stub) |
-| Invoices (`/sales/invoices`) | populated table | shared form, payment-terms-driven due date | balance card + Record Payment / Send Reminder / Void / Write Off / Apply Credits | DRAFT→SENT→PARTIALLY_PAID→PAID, OVERDUE/VOID/WRITTEN_OFF | (target of conversion) |
-| Recurring Invoices (`/sales/recurring-invoices`) | next-occurrence date | frequency + intervalN, neverExpires | Pause/Resume/Stop/Run Now + generated invoices timeline | ACTIVE/PAUSED/STOPPED/EXPIRED | generates Invoice |
-| Delivery Challans (`/sales/delivery-challans`) | challan type column | challan type radio | Mark Delivered/Returned | DRAFT/OPEN/DELIVERED/INVOICED/RETURNED | — |
-| Payments Received (`/sales/payments-received`) | applied invoices column | customer-driven open-invoices loader, auto-allocate-oldest | allocations + bank charges + customer credit | (no lifecycle) | — |
-| Credit Notes (`/sales/credit-notes`) | balance column | reason picker | Apply-to-Invoice modal + Refund modal | OPEN/CLOSED/VOID | applies to Invoice |
-
-### Shared primitives
-- `<TransactionListPage>` — empty state, three-dots menu, sort options, paginated DataTable wrapper
-- `<TransactionLineItemsTable>` — line-items grid with reactive sub-total/discount/tax/adjustment/total computation; `lib/sales/totals.ts` is the single source of math (server + client share it)
-- `<MoneyInput>`, `<DatePicker>`, typed Combobox wrappers (`ContactCombobox`, `ItemCombobox`, `TaxSelect`, `SalespersonCombobox`, `ProjectCombobox`, `TermsCombobox`, `DeliveryMethodCombobox`)
-- `<RecordPaymentDialog>` for inline payment recording from invoices
-
-### Server utilities (`lib/sales/`)
-- `numbering.ts` — `getNextDocumentNumber(orgId, "QUOTE" | "INVOICE" | …)` atomic increment via `NumberSeries`
-- `totals.ts` — Decimal-safe document compute (lines + sub-total + discount + tax + adjustment + grand total)
-- `email-sender.ts` — `enqueueEmail()` writes EmailJob, `processEmailJob()` is idempotent, cron drains every 15 min
-- `pdf-renderer.ts` — HTML-fallback renderer (S3 swap to `@react-pdf/renderer` is the next iteration)
-- `cron.ts` — `assertCronAuthorized()` guard for cron routes
-- `recurring.ts` — `computeNextOccurrence()` + `generateRecurringOccurrence()` (idempotent on `(recurringInvoiceId × occurrenceDate)`)
-
-### Cron setup
-`vercel.json` schedules:
-- `/api/cron/recurring-invoices` daily at 02:00 UTC — generates invoices for due recurring profiles
-- `/api/cron/invoice-statuses` daily at 02:30 UTC — flips Sent invoices to Overdue when past due
-- `/api/cron/email-job-retry` every 15 min — drains pending EmailJobs
-
-Local triggering: `curl 'http://localhost:3000/api/cron/email-job-retry'` (no auth in dev when `CRON_SECRET` is unset). Production: configure `CRON_SECRET` env and Vercel sends it via `x-vercel-cron-secret` header.
-
-### Resend setup
-Set `RESEND_API_KEY` and `EMAIL_FROM` env vars to enable real email delivery. Without them, `sendEmail()` falls back to console-logging in dev — the EmailJob row still records, so the queue is observable.
-
-### GST stub
-The schema captures `gstin`, `gstTreatment`, `placeOfSupply`, `pan`, `taxPreference`, and HSN/SAC line-item fields. The "Prefill from GSTIN" UI flow per the spec stubs to a mock response — production wiring requires a real GST portal API key (`/api/gst/lookup` placeholder).
-
-### Feature flags
-- `gst.advanced` (Phase S6+) — gates GST split (CGST+SGST vs IGST), e-invoice JSON, place-of-supply autoswitch
-- `pdf.reactRenderer` (Phase S3 follow-up) — flips `lib/sales/pdf-renderer.ts` from HTML to `@react-pdf/renderer`
-- `purchases.bharatConnect` (Phase S4 stub) — Convert SO → Purchase Order writes a placeholder PO row when Purchases module is fuller
+See [`docs/contact-import-design.md`](docs/contact-import-design.md) for one of these in design-doc form.
