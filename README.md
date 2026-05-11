@@ -17,7 +17,9 @@ Production-grade accounting SaaS — Next.js 14 (App Router) + Prisma + PostgreS
 | **Customer portal** | Public invoice page + Razorpay Pay Now + payment-history page (per-customer receipts) |
 | **Purchases — Vendors** | Complete — list page with MSME banner + bulk actions, full 7-tab form, import wizard, 3-option export (vendors / contact persons / addresses) |
 | **Purchases — Purchase Orders** | Complete — list with saved views + bulk close/cancel/delete, full multi-line form with inline ACCOUNT column + place-of-supply + TDS/TCS, detail page with status transitions (Mark Issued / Convert to Bill / Cancel / Close / Clone), PDF render, email send via queue |
-| **Purchases — Bills / Payments Made / Vendor Credits / Recurring / Expenses** | Schema landed (PR #81); UI scaffold only |
+| **Purchases — Bills** | Complete — list with saved views + bulk Mark Open/Void/Delete, full multi-line form with manual numbering + duplicate detection + billable-to-customer per line + fromPO seeding, detail page with payments/credits applied + MSME-aware overdue banner + Draft→Open→Void/Write-off transitions |
+| **Purchases — Payments Made** | List rewrite with saved views + bulk delete (reverses bill balances safely); existing record-payment form with allocation table |
+| **Purchases — Vendor Credits / Recurring Bills / Recurring Expenses / Expenses** | List pages rewritten to Sales-grade parity (saved views, bulk actions: delete/pause/resume); forms still use the legacy thin shape |
 | **Banking / Accountant / Time / Documents / Payroll / Payments** | Schema + landing pages; CRUD UI is sparse |
 | **AI Assistant** | Streaming Claude chat in the bottom-right rail |
 
