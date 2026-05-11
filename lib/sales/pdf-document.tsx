@@ -131,6 +131,7 @@ const TYPE_LABEL: Record<RenderableSalesDocument["type"], string> = {
   CREDIT_NOTE: "Credit Note",
   DELIVERY_CHALLAN: "Delivery Challan",
   DEBIT_NOTE: "Debit Note",
+  PURCHASE_ORDER: "Purchase Order",
 };
 
 function SalesDocumentPdf({ doc }: { doc: RenderableSalesDocument }): React.ReactElement<unknown> {
@@ -156,7 +157,9 @@ function SalesDocumentPdf({ doc }: { doc: RenderableSalesDocument }): React.Reac
 
         <View style={styles.meta}>
           <View style={styles.customerCol}>
-            <Text style={styles.metaLabel}>Bill to</Text>
+            <Text style={styles.metaLabel}>
+              {doc.type === "PURCHASE_ORDER" ? "Vendor" : "Bill to"}
+            </Text>
             <Text style={[styles.metaValue, { fontFamily: "Helvetica-Bold" }]}>
               {doc.customer.displayName}
             </Text>
