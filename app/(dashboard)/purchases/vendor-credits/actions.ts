@@ -27,6 +27,59 @@ export async function createVendorCreditAction(input: VendorCreditInput) {
   redirect("/purchases/vendor-credits");
 }
 
+/**
+ * Bulk soft-delete vendor credits. Blocks any credit that has been
+ * partially applied or refunded — applying it again is fine, but
+ * deletion would orphan VendorCreditApplication / VendorCreditRefund
+ * rows.
+ */
+export async function bulkDeleteVendorCreditsAction(input: {
+  ids: string[];
+}): Promise<{ ok: boolean; updated?: number; error?: string }> {
+  const { user, organization } = await requireOrganization();
+  if (!input.ids?.length) return { ok: true, updated: 0 };
+
+  const blocked = await db.vendorCredit.count({
+    where: {
+      id: { in: input.ids },
+      organizationId: organization.id,
+      deletedAt: null,
+      OR: [
+        { amountApplied: { gt: 0 } },
+        { amountRefunded: { gt: 0 } },
+      ],
+    },
+  });
+  if (blocked > 0) {
+    return {
+      ok: false,
+      error: `${blocked} credit${
+        blocked === 1 ? "" : "s"
+      } already applied or refunded. Reverse those first.`,
+    };
+  }
+
+  const result = await db.vendorCredit.updateMany({
+    where: {
+      id: { in: input.ids },
+      organizationId: organization.id,
+      deletedAt: null,
+    },
+    data: { deletedAt: new Date() },
+  });
+
+  await writeAuditLog({
+    organizationId: organization.id,
+    userId: user.id,
+    action: "DELETE",
+    entityType: "VendorCredit",
+    entityId: `bulk-delete-${Date.now()}`,
+    before: { count: result.count, ids: input.ids },
+  });
+  revalidatePath("/purchases/vendor-credits");
+  return { ok: true, updated: result.count };
+}
+
 export async function deleteVendorCreditAction(id: string) {
   const { user, organization } = await requireOrganization();
   const vc = await db.vendorCredit.findFirst({ where: { id, organizationId: organization.id } });

@@ -32,6 +32,85 @@ export async function createRecurringExpenseAction(formData: FormData) {
   redirect("/purchases/recurring-expenses");
 }
 
+export async function bulkPauseRecurringExpensesAction(input: {
+  ids: string[];
+}): Promise<{ ok: boolean; updated?: number; error?: string }> {
+  const { user, organization } = await requireOrganization();
+  if (!input.ids?.length) return { ok: true, updated: 0 };
+  const result = await db.recurringExpense.updateMany({
+    where: {
+      id: { in: input.ids },
+      organizationId: organization.id,
+      deletedAt: null,
+    },
+    data: { isActive: false, status: "PAUSED" },
+  });
+  await writeAuditLog({
+    organizationId: organization.id,
+    userId: user.id,
+    action: "UPDATE",
+    entityType: "RecurringExpense",
+    entityId: `bulk-pause-${Date.now()}`,
+    after: { count: result.count, ids: input.ids, status: "PAUSED" },
+  });
+  revalidatePath("/purchases/recurring-expenses");
+  return { ok: true, updated: result.count };
+}
+
+export async function bulkResumeRecurringExpensesAction(input: {
+  ids: string[];
+}): Promise<{ ok: boolean; updated?: number; error?: string }> {
+  const { user, organization } = await requireOrganization();
+  if (!input.ids?.length) return { ok: true, updated: 0 };
+  const result = await db.recurringExpense.updateMany({
+    where: {
+      id: { in: input.ids },
+      organizationId: organization.id,
+      deletedAt: null,
+    },
+    data: { isActive: true, status: "ACTIVE" },
+  });
+  await writeAuditLog({
+    organizationId: organization.id,
+    userId: user.id,
+    action: "UPDATE",
+    entityType: "RecurringExpense",
+    entityId: `bulk-resume-${Date.now()}`,
+    after: { count: result.count, ids: input.ids, status: "ACTIVE" },
+  });
+  revalidatePath("/purchases/recurring-expenses");
+  return { ok: true, updated: result.count };
+}
+
+export async function bulkDeleteRecurringExpensesAction(input: {
+  ids: string[];
+}): Promise<{ ok: boolean; updated?: number; error?: string }> {
+  const { user, organization } = await requireOrganization();
+  if (!input.ids?.length) return { ok: true, updated: 0 };
+  const result = await db.recurringExpense.updateMany({
+    where: {
+      id: { in: input.ids },
+      organizationId: organization.id,
+      deletedAt: null,
+    },
+    data: {
+      deletedAt: new Date(),
+      isActive: false,
+      status: "STOPPED",
+    },
+  });
+  await writeAuditLog({
+    organizationId: organization.id,
+    userId: user.id,
+    action: "DELETE",
+    entityType: "RecurringExpense",
+    entityId: `bulk-delete-${Date.now()}`,
+    before: { count: result.count, ids: input.ids },
+  });
+  revalidatePath("/purchases/recurring-expenses");
+  return { ok: true, updated: result.count };
+}
+
 export async function deleteRecurringExpenseAction(id: string) {
   const { user, organization } = await requireOrganization();
   const r = await db.recurringExpense.findFirst({ where: { id, organizationId: organization.id } });
