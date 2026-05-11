@@ -72,9 +72,9 @@ test.describe("Purchases module smoke", () => {
     ).toBeVisible();
     // Vendor band label
     await expect(page.getByText(/vendor name/i).first()).toBeVisible();
-    // Line items table header — TransactionLineItemsTable always
-    // shows the Item column heading.
-    await expect(page.getByText(/^item$/i).first()).toBeVisible({
+    // Line items table header — TransactionLineItemsTable renders
+    // an "Item details" column heading.
+    await expect(page.getByText(/item details/i).first()).toBeVisible({
       timeout: 10_000,
     });
   });

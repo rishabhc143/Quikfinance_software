@@ -17,7 +17,8 @@ import {
 } from "@/lib/sales/saved-views";
 import {
   bulkDeleteVendorsAction,
-  bulkSetVendorActiveAction,
+  bulkMarkVendorsActiveAction,
+  bulkMarkVendorsInactiveAction,
 } from "./actions";
 import { ExportVendorsDialog } from "./export-dialog";
 
@@ -284,21 +285,13 @@ export default async function VendorsListPage({
                 label: "Mark Active",
                 doneVerb: "Marked",
                 noun: "vendor as active",
-                action: async (input) =>
-                  bulkSetVendorActiveAction({
-                    ids: input.ids,
-                    isInactive: false,
-                  }),
+                action: bulkMarkVendorsActiveAction,
               },
               {
                 label: "Mark Inactive",
                 doneVerb: "Marked",
                 noun: "vendor as inactive",
-                action: async (input) =>
-                  bulkSetVendorActiveAction({
-                    ids: input.ids,
-                    isInactive: true,
-                  }),
+                action: bulkMarkVendorsInactiveAction,
               },
               {
                 label: "Delete",
