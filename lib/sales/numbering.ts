@@ -1,9 +1,13 @@
 import { db } from "@/lib/db";
 
 /**
- * Document types the Sales module assigns numbers for. Each maps onto a
- * NumberSeries row (orgId × module). NumberSeries is shared with Purchases —
- * see DECISIONS.md (D40).
+ * Document types the Sales + Purchases modules assign numbers for.
+ * Each maps onto a NumberSeries row (orgId × module). NumberSeries is
+ * shared between Sales and Purchases — see DECISIONS.md (D40).
+ *
+ * Per Purchases master prompt: Bill numbers are MANUALLY entered by
+ * the user from the vendor's source doc, so there's no BILL entry
+ * here. Everything else auto-generates.
  */
 export type SalesDocumentType =
   | "QUOTE"
@@ -13,7 +17,14 @@ export type SalesDocumentType =
   | "CREDIT_NOTE"
   | "DEBIT_NOTE"
   | "PAYMENT_RECEIVED"
-  | "RECURRING_INVOICE";
+  | "RECURRING_INVOICE"
+  // Purchases
+  | "PURCHASE_ORDER"
+  | "PAYMENT_MADE"
+  | "VENDOR_CREDIT"
+  | "RECURRING_BILL"
+  | "RECURRING_EXPENSE"
+  | "EXPENSE";
 
 const SLUG: Record<SalesDocumentType, string> = {
   QUOTE: "quote",
@@ -24,6 +35,15 @@ const SLUG: Record<SalesDocumentType, string> = {
   DEBIT_NOTE: "debitNote",
   PAYMENT_RECEIVED: "paymentReceived",
   RECURRING_INVOICE: "recurringInvoice",
+  PURCHASE_ORDER: "purchaseOrder",
+  PAYMENT_MADE: "paymentMade",
+  // Per spec the UI label is "Credit Note#" for Vendor Credits but
+  // the slug is module-scoped so it doesn't collide with Sales
+  // CreditNote.
+  VENDOR_CREDIT: "vendorCredit",
+  RECURRING_BILL: "recurringBill",
+  RECURRING_EXPENSE: "recurringExpense",
+  EXPENSE: "expense",
 };
 
 const DEFAULT_PREFIX: Record<SalesDocumentType, string> = {
@@ -35,6 +55,12 @@ const DEFAULT_PREFIX: Record<SalesDocumentType, string> = {
   DEBIT_NOTE: "DN-",
   PAYMENT_RECEIVED: "RCV-",
   RECURRING_INVOICE: "RECINV-",
+  PURCHASE_ORDER: "PO-",
+  PAYMENT_MADE: "PM-",
+  VENDOR_CREDIT: "CN-", // labelled "Credit Note#" in UI; distinct from sales CreditNote
+  RECURRING_BILL: "RB-",
+  RECURRING_EXPENSE: "RE-",
+  EXPENSE: "EX-",
 };
 
 /**

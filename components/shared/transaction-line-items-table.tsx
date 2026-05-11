@@ -41,7 +41,17 @@ export type LineItem = {
   discount?: string;
   discountType?: "percentage" | "amount";
   taxId?: string | null;
+  // P1 (Purchases): inline account override per line. Reads from the
+  // selected item's purchaseAccountId or salesAccountId by default.
+  accountId?: string | null;
+  // P1 (Purchases): when set on a Bill/Expense line, marks this line
+  // as billable to the named customer. Surfaces on the next invoice
+  // for that customer via <BillableExpensesBanner>.
+  billableToCustomerId?: string | null;
 };
+
+export type AccountOption = ComboboxOption;
+export type CustomerOption = ComboboxOption;
 
 export type ItemOption = ComboboxOption & {
   rate?: string;
@@ -57,12 +67,32 @@ export type ColumnConfig = {
   showDiscount?: boolean;
   showTax?: boolean;
   showHsn?: boolean;
+  /**
+   * P1 (Purchases): account column.
+   * - `inline`     — renders an extra cell with a combobox per row
+   * - `expandable` — placeholder for future expand-row pattern
+   *                  (treated as `hidden` until that lands)
+   * - `hidden`     — no column (default; sales-side behavior)
+   * Purchase Order and Bill use `inline`.
+   */
+  accountColumnVisible?: "inline" | "expandable" | "hidden";
+  /**
+   * P1 (Purchases): "Customer Details" column.
+   * When true, renders a per-row customer combobox that marks the
+   * line as a billable expense.
+   * Bill, Recurring Bill, Expense pass true.
+   */
+  customerColumnVisible?: boolean;
 };
 
 export type TransactionLineItemsTableProps = {
   initialLines?: LineItem[];
   itemOptions: ItemOption[];
   taxOptions?: TaxOption[];
+  /** P1 (Purchases): account options for the inline column. */
+  accountOptions?: AccountOption[];
+  /** P1 (Purchases): customer options for the per-line billable picker. */
+  customerOptions?: CustomerOption[];
   columnConfig?: ColumnConfig;
   onChange?: (lines: LineItem[], totals: DocumentComputed) => void;
   /** Document-level tax for live-total readout. */
@@ -100,8 +130,12 @@ export function TransactionLineItemsTable(props: TransactionLineItemsTableProps)
     showDiscount: true,
     showTax: true,
     showHsn: true,
+    accountColumnVisible: "hidden",
+    customerColumnVisible: false,
     ...(props.columnConfig ?? {}),
   };
+  const accountColInline = cfg.accountColumnVisible === "inline";
+  const customerCol = !!cfg.customerColumnVisible;
   const [lines, setLines] = React.useState<LineItem[]>(
     props.initialLines && props.initialLines.length > 0 ? props.initialLines : [newLine()]
   );
@@ -161,10 +195,12 @@ export function TransactionLineItemsTable(props: TransactionLineItemsTableProps)
             <tr>
               <th className="w-8 p-2"></th>
               <th className="p-2 text-left">Item details</th>
+              {accountColInline ? <th className="p-2 text-left w-40">Account</th> : null}
               <th className="p-2 text-right w-24">Qty</th>
               {cfg.showRate ? <th className="p-2 text-right w-32">Rate</th> : null}
               {cfg.showDiscount ? <th className="p-2 text-right w-28">Discount</th> : null}
               {cfg.showTax ? <th className="p-2 text-left w-32">Tax</th> : null}
+              {customerCol ? <th className="p-2 text-left w-40">Customer details</th> : null}
               <th className="p-2 text-right w-32">Amount</th>
               <th className="w-8 p-2"></th>
             </tr>
@@ -221,6 +257,16 @@ export function TransactionLineItemsTable(props: TransactionLineItemsTableProps)
                         {isExpanded ? "Hide details" : "Description, HSN/SAC…"}
                       </button>
                     </td>
+                    {accountColInline ? (
+                      <td className="p-2 align-top">
+                        <Combobox
+                          options={props.accountOptions ?? []}
+                          value={l.accountId ?? null}
+                          onChange={(v) => patch(l.id, { accountId: v })}
+                          placeholder="Select account"
+                        />
+                      </td>
+                    ) : null}
                     <td className="p-2 align-top">
                       <Input
                         inputMode="decimal"
@@ -259,6 +305,18 @@ export function TransactionLineItemsTable(props: TransactionLineItemsTableProps)
                         />
                       </td>
                     ) : null}
+                    {customerCol ? (
+                      <td className="p-2 align-top">
+                        <Combobox
+                          options={props.customerOptions ?? []}
+                          value={l.billableToCustomerId ?? null}
+                          onChange={(v) =>
+                            patch(l.id, { billableToCustomerId: v })
+                          }
+                          placeholder="Non-billable"
+                        />
+                      </td>
+                    ) : null}
                     <td className="p-2 align-top text-right tabular-nums">
                       {lineComputed?.amount ?? "0.0000"}
                     </td>
@@ -276,7 +334,12 @@ export function TransactionLineItemsTable(props: TransactionLineItemsTableProps)
                   {isExpanded ? (
                     <tr className="bg-muted/20">
                       <td></td>
-                      <td colSpan={6} className="p-3 space-y-2">
+                      <td
+                        colSpan={
+                          6 + (accountColInline ? 1 : 0) + (customerCol ? 1 : 0)
+                        }
+                        className="p-3 space-y-2"
+                      >
                         <div className="grid gap-2 md:grid-cols-2">
                           {cfg.showHsn ? (
                             <Input
