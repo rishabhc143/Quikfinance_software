@@ -180,6 +180,15 @@ export default async function InvoicePortalPage({
           </div>
         ) : null}
 
+        <div className="text-center">
+          <a
+            href={`/portal/invoices/${params.token}/payments`}
+            className="text-sm text-primary hover:underline"
+          >
+            View all payments &amp; receipts &rarr;
+          </a>
+        </div>
+
         {inv.customerNotes ? (
           <Card>
             <CardContent className="pt-6 text-sm">
