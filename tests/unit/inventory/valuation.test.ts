@@ -21,6 +21,8 @@ function row(
     openingStock: 100,
     totalAdjustment: -20,
     currentStock: 80,
+    reserved: 0,
+    available: 80,
     reorderPoint: null,
     status: "OK",
     costPrice: 10,
