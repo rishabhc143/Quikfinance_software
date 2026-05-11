@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { saveProfileAction } from "./actions";
 import { toast } from "sonner";
+import { gstinErrors } from "@/lib/validators/gstin";
 
 const COUNTRIES = [
   { code: "IN", name: "India" }, { code: "US", name: "United States" },
@@ -21,7 +22,17 @@ const MONTHS = Array.from({ length: 12 }, (_, i) => ({ value: i + 1, label: new 
 
 export function ProfileForm({
   initial,
-}: { initial: { name: string; slug: string; country: string; currency: string; fiscalYearStart: number; logoUrl: string | null } }) {
+}: {
+  initial: {
+    name: string;
+    slug: string;
+    country: string;
+    currency: string;
+    fiscalYearStart: number;
+    gstin: string;
+    logoUrl: string | null;
+  };
+}) {
   const router = useRouter();
   const [busy, setBusy] = React.useState(false);
   const [values, setValues] = React.useState(initial);
@@ -83,6 +94,19 @@ export function ProfileForm({
         <Field label="Logo URL" hint="Public URL of your logo (PNG/JPG/SVG). Branding upload comes in Phase 4.">
           <Input value={values.logoUrl ?? ""} onChange={(e) => set("logoUrl", e.target.value || null)} placeholder="https://…" type="url" />
         </Field>
+        <Field
+          label="GSTIN"
+          hint="Indian Goods & Services Tax ID. Required for GSTR-1 export and e-invoicing."
+        >
+          <Input
+            value={values.gstin}
+            onChange={(e) => set("gstin", e.target.value.toUpperCase())}
+            placeholder="22AAAAA0000A1Z5"
+            className="uppercase font-mono"
+            maxLength={15}
+          />
+          <GstinHint value={values.gstin} />
+        </Field>
       </div>
       <div className="flex justify-end pt-2 border-t">
         <Button type="submit" disabled={busy}>
@@ -101,5 +125,23 @@ function Field({ label, hint, required, children }: { label: string; hint?: stri
       {children}
       {hint && <p className="text-xs text-muted-foreground mt-1">{hint}</p>}
     </div>
+  );
+}
+
+function GstinHint({ value }: { value: string }) {
+  const v = (value ?? "").trim();
+  if (v.length === 0) return null;
+  const errors = gstinErrors(v);
+  if (errors.length === 0) {
+    return (
+      <p className="text-xs text-emerald-700 dark:text-emerald-400 mt-1">
+        ✓ Valid GSTIN format
+      </p>
+    );
+  }
+  return (
+    <p className="text-xs text-amber-700 dark:text-amber-400 mt-1">
+      {errors[0]}
+    </p>
   );
 }

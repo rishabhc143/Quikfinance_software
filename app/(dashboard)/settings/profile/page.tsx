@@ -18,6 +18,7 @@ export default async function ProfilePage() {
               country: organization.country,
               currency: organization.currency,
               fiscalYearStart: organization.fiscalYearStart,
+              gstin: organization.gstin ?? "",
               logoUrl: organization.logoUrl,
             }}
           />
