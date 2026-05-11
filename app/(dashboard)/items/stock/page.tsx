@@ -2,9 +2,9 @@ import Link from "next/link";
 import { ArrowLeft, AlertTriangle, Package, Plus } from "lucide-react";
 import { requireOrganization } from "@/lib/auth-helpers";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { computeStockLevels } from "@/lib/inventory/stock-levels";
+import { StockTable } from "./stock-table";
 
 export const metadata = { title: "Stock Levels" };
 
@@ -108,86 +108,7 @@ export default async function StockLevelsPage({
             </CardTitle>
           </CardHeader>
           <CardContent className="p-0">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b text-left text-xs uppercase tracking-wider text-muted-foreground">
-                    <th className="py-2 px-4">Item</th>
-                    <th className="py-2 px-4 text-right">Opening</th>
-                    <th className="py-2 px-4 text-right">Net adjustments</th>
-                    <th className="py-2 px-4 text-right">Current</th>
-                    <th className="py-2 px-4 text-right">Reorder at</th>
-                    <th className="py-2 px-4">Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {shown.map((row) => (
-                    <tr
-                      key={row.id}
-                      className="border-b last:border-b-0 hover:bg-muted/40"
-                    >
-                      <td className="py-2 px-4">
-                        <Link
-                          href={`/items/${row.id}`}
-                          className="font-medium hover:underline"
-                        >
-                          {row.name}
-                        </Link>
-                        {row.sku ? (
-                          <span className="ml-2 text-xs text-muted-foreground font-mono">
-                            {row.sku}
-                          </span>
-                        ) : null}
-                      </td>
-                      <td className="py-2 px-4 text-right tabular-nums">
-                        {row.openingStock.toFixed(2)}
-                        {row.unit ? (
-                          <span className="ml-1 text-xs text-muted-foreground">
-                            {row.unit}
-                          </span>
-                        ) : null}
-                      </td>
-                      <td className="py-2 px-4 text-right tabular-nums">
-                        <span
-                          className={
-                            row.totalAdjustment < 0
-                              ? "text-destructive"
-                              : row.totalAdjustment > 0
-                              ? "text-emerald-600"
-                              : "text-muted-foreground"
-                          }
-                        >
-                          {row.totalAdjustment >= 0 ? "+" : ""}
-                          {row.totalAdjustment.toFixed(2)}
-                        </span>
-                      </td>
-                      <td className="py-2 px-4 text-right tabular-nums font-semibold">
-                        {row.currentStock.toFixed(2)}
-                      </td>
-                      <td className="py-2 px-4 text-right tabular-nums text-muted-foreground">
-                        {row.reorderPoint !== null
-                          ? row.reorderPoint.toFixed(2)
-                          : "—"}
-                      </td>
-                      <td className="py-2 px-4">
-                        {row.status === "OUT" ? (
-                          <Badge variant="destructive">Out of stock</Badge>
-                        ) : row.status === "LOW" ? (
-                          <Badge
-                            variant="outline"
-                            className="border-amber-400 text-amber-700 dark:text-amber-400"
-                          >
-                            Low
-                          </Badge>
-                        ) : (
-                          <Badge variant="secondary">In stock</Badge>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <StockTable rows={shown} />
           </CardContent>
         </Card>
       )}
