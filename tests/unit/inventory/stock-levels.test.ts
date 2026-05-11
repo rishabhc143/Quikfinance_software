@@ -96,4 +96,27 @@ describe("computeItemStock", () => {
       })
     ).toEqual({ currentStock: 8.75, status: "LOW" });
   });
+
+  it("net adjustment is zero when invoice decrement is cancelled by credit-note return", () => {
+    // Conventional flow: invoice sold 10 units, customer returned 10
+    // units via credit note. Net adjustment should be 0, returning the
+    // item to its opening-stock level.
+    expect(
+      computeItemStock({
+        openingStock: 100,
+        totalAdjustment: -10 /* invoice */ + 10 /* credit note */,
+        reorderPoint: 20,
+      })
+    ).toEqual({ currentStock: 100, status: "OK" });
+  });
+
+  it("partial return: invoice -10 + credit note +4 → net -6", () => {
+    expect(
+      computeItemStock({
+        openingStock: 30,
+        totalAdjustment: -10 + 4,
+        reorderPoint: 20,
+      })
+    ).toEqual({ currentStock: 24, status: "OK" });
+  });
 });
