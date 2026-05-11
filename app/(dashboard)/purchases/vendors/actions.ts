@@ -334,6 +334,19 @@ export async function deleteVendorAction(id: string) {
   return { ok: true };
 }
 
+/**
+ * Thin wrappers so the BulkAwareDataTable can be passed a direct
+ * server-action reference. Inline arrow wrappers (`async (input) =>
+ * bulkSetVendorActive(...)`) cannot cross the server-to-client
+ * component boundary — Next refuses to serialize them.
+ */
+export async function bulkMarkVendorsActiveAction(input: { ids: string[] }) {
+  return bulkSetVendorActiveAction({ ids: input.ids, isInactive: false });
+}
+export async function bulkMarkVendorsInactiveAction(input: { ids: string[] }) {
+  return bulkSetVendorActiveAction({ ids: input.ids, isInactive: true });
+}
+
 export async function bulkSetVendorActiveAction(input: {
   ids: string[];
   isInactive: boolean;

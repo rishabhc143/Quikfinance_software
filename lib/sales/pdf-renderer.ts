@@ -20,7 +20,10 @@ export type RenderableSalesDocument = {
     | "INVOICE"
     | "CREDIT_NOTE"
     | "DELIVERY_CHALLAN"
-    | "DEBIT_NOTE";
+    | "DEBIT_NOTE"
+    // P3-D (Purchases): the renderer is generic — the `customer`
+    // field is populated with the vendor when type=PURCHASE_ORDER.
+    | "PURCHASE_ORDER";
   organization: { name: string; logoUrl?: string | null; address?: string | null };
   document: {
     number: string;
@@ -61,6 +64,7 @@ const TYPE_LABEL: Record<RenderableSalesDocument["type"], string> = {
   CREDIT_NOTE: "Credit Note",
   DELIVERY_CHALLAN: "Delivery Challan",
   DEBIT_NOTE: "Debit Note",
+  PURCHASE_ORDER: "Purchase Order",
 };
 
 function escape(s: string | null | undefined): string {

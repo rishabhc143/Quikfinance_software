@@ -7,6 +7,7 @@ import { requireOrganization } from "@/lib/auth-helpers";
 import { writeAuditLog } from "@/lib/audit";
 import { getNextDocumentNumber } from "@/lib/sales/numbering";
 import { computeDocument } from "@/lib/sales/totals";
+import { enqueueEmail } from "@/lib/sales/email-sender";
 import {
   purchaseOrderSchema,
   type PurchaseOrderInput,
@@ -430,6 +431,106 @@ export async function clonePurchaseOrderAction(id: string) {
  * seed the line items + vendor + PO link. Until P4 ships we just
  * redirect to the new-bill page; the user can manually copy lines.
  */
+/**
+ * Send a Purchase Order to its vendor by email.
+ *
+ * Enqueues an EmailJob; the existing cron drain in
+ * /api/cron/email-job-retry handles the actual send (and retries).
+ * Per master prompt §architectural_decisions_locked, POs ARE emailed
+ * (unlike Bills, which are never emailed). On first successful queue,
+ * also flips the PO status DRAFT → ISSUED and sets sentAt — the
+ * canonical "this PO has gone out the door" marker.
+ */
+export async function sendPurchaseOrderAction(
+  id: string,
+  input: {
+    to: string;
+    cc?: string;
+    subject: string;
+    body: string;
+  }
+): Promise<void> {
+  const { user, organization } = await requireOrganization();
+  const po = await db.purchaseOrder.findFirst({
+    where: { id, organizationId: organization.id, deletedAt: null },
+    include: { contact: { select: { displayName: true } } },
+  });
+  if (!po) throw new Error("Purchase order not found");
+  if (po.status === "CANCELLED" || po.status === "CLOSED") {
+    throw new Error(
+      `Cannot send a ${po.status.toLowerCase()} purchase order.`
+    );
+  }
+  if (!input.to || !input.to.includes("@")) {
+    throw new Error("A valid recipient email is required.");
+  }
+
+  // The body the user typed in the composer. Wrap with a minimal
+  // HTML shell so the rendered email looks ok in major clients.
+  const bodyHtml = `<!doctype html><html><body style="font-family:Arial,sans-serif;line-height:1.5">
+    <div style="white-space:pre-line">${escapeHtml(input.body)}</div>
+    <p style="color:#666;font-size:12px;margin-top:24px">
+      PDF attached: Purchase Order ${po.number}
+    </p>
+  </body></html>`;
+
+  const ccList = (input.cc ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  await enqueueEmail({
+    organizationId: organization.id,
+    toEmail: input.to,
+    ccEmails: ccList,
+    subject: input.subject,
+    bodyHtml,
+    attachmentUrl: `/purchases/orders/${po.id}/pdf`,
+    documentType: "PurchaseOrder",
+    documentId: po.id,
+  });
+
+  // First-time send: bump status + record timestamp.
+  if (po.status === "DRAFT") {
+    await db.purchaseOrder.update({
+      where: { id },
+      data: { status: "ISSUED", sentAt: new Date() },
+    });
+  } else if (!po.sentAt) {
+    await db.purchaseOrder.update({
+      where: { id },
+      data: { sentAt: new Date() },
+    });
+  }
+
+  await writeAuditLog({
+    organizationId: organization.id,
+    userId: user.id,
+    action: "UPDATE",
+    entityType: "PurchaseOrder",
+    entityId: id,
+    after: {
+      sentTo: input.to,
+      ccTo: ccList,
+      subject: input.subject,
+      bumpedToIssued: po.status === "DRAFT",
+    },
+  });
+
+  revalidatePath("/purchases/orders");
+  revalidatePath(`/purchases/orders/${id}`);
+  redirect(`/purchases/orders/${id}`);
+}
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 export async function convertPurchaseOrderToBillAction(id: string) {
   const { user, organization } = await requireOrganization();
   const po = await db.purchaseOrder.findFirst({

@@ -236,8 +236,7 @@ export default async function PurchaseOrdersListPage({
                 label: "Mark Closed",
                 doneVerb: "Closed",
                 noun: "purchase order",
-                action: async (input) =>
-                  bulkClosePurchaseOrdersAction({ ids: input.ids }),
+                action: bulkClosePurchaseOrdersAction,
               },
               {
                 label: "Cancel",
@@ -245,8 +244,7 @@ export default async function PurchaseOrdersListPage({
                 noun: "purchase order",
                 confirm:
                   "Cancel the selected purchase orders? They can be reopened by editing.",
-                action: async (input) =>
-                  bulkCancelPurchaseOrdersAction({ ids: input.ids }),
+                action: bulkCancelPurchaseOrdersAction,
               },
               {
                 label: "Delete",
