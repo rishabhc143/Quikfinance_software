@@ -8,6 +8,10 @@ import { writeAuditLog } from "@/lib/audit";
 import { getNextDocumentNumber } from "@/lib/sales/numbering";
 import { computeDocument } from "@/lib/sales/totals";
 import {
+  applyCreditNoteStockReturn,
+  reverseCreditNoteStockReturn,
+} from "@/lib/inventory/stock-mutations";
+import {
   creditNoteSchema,
   applyCreditSchema,
   refundCreditSchema,
@@ -86,6 +90,20 @@ export async function createCreditNoteAction(input: CreditNoteInput) {
       },
     },
   });
+
+  // Customer-returns flow: credit note for goods returned ⇒ put
+  // those goods back into stock for any line whose item has
+  // trackInventory=true. Skipped silently for service-only lines.
+  await applyCreditNoteStockReturn(
+    db,
+    organization.id,
+    { number: created.number, date: created.date },
+    data.lines.map((l) => ({
+      itemId: l.itemId,
+      quantity: l.quantity,
+      description: l.description ?? l.name,
+    }))
+  );
 
   await writeAuditLog({
     organizationId: organization.id,
@@ -248,7 +266,16 @@ export async function reopenCreditNoteAction(id: string): Promise<void> {
 
 export async function voidCreditNoteAction(id: string): Promise<void> {
   const { user, organization } = await requireOrganization();
-  await db.creditNote.update({ where: { id }, data: { status: "VOID" } });
+  const before = await db.creditNote.findFirst({
+    where: { id, organizationId: organization.id },
+    select: { number: true, date: true },
+  });
+  if (!before) throw new Error("Credit note not found");
+  await db.$transaction(async (tx) => {
+    await tx.creditNote.update({ where: { id }, data: { status: "VOID" } });
+    // Voiding cancels the customer return — stock goes back out.
+    await reverseCreditNoteStockReturn(tx, organization.id, before);
+  });
   await writeAuditLog({
     organizationId: organization.id,
     userId: user.id,
@@ -269,9 +296,17 @@ export async function deleteCreditNoteAction(id: string) {
   if (Number(cn.amountApplied) > 0 || Number(cn.amountRefunded) > 0) {
     return { ok: false, error: "Credit notes with applications or refunds cannot be deleted" };
   }
-  await db.creditNote.update({
-    where: { id },
-    data: { deletedAt: new Date() },
+  await db.$transaction(async (tx) => {
+    await tx.creditNote.update({
+      where: { id },
+      data: { deletedAt: new Date() },
+    });
+    // Soft-delete = pretend the return never happened. Stock goes
+    // back to its pre-credit-note level.
+    await reverseCreditNoteStockReturn(tx, organization.id, {
+      number: cn.number,
+      date: cn.date,
+    });
   });
   await writeAuditLog({
     organizationId: organization.id,

@@ -152,3 +152,116 @@ function negate(q: Prisma.Decimal | string | number): Prisma.Decimal | string {
   // Decimal — call .neg()
   return q.neg();
 }
+
+function positive(q: Prisma.Decimal | string | number): Prisma.Decimal | string {
+  // Mirror of `negate`: ensure the resulting quantity is positive.
+  if (typeof q === "number") return Math.abs(q).toString();
+  if (typeof q === "string") {
+    return q.startsWith("-") ? q.slice(1) : q;
+  }
+  return q.abs();
+}
+
+/* =====================================================================
+ * Credit-note stock return
+ *
+ * Customer-returns flow: issuing a credit note for goods sent back
+ * should put those goods *back* on the shelf. Same row-level
+ * mechanics as the invoice helpers, just with opposite signs.
+ *
+ *   create credit note  → positive InventoryAdjustment per line
+ *   void / delete CN    → mirror with negative rows
+ *
+ * Reason string format: `Credit Note <number>` and `Reverse Credit
+ * Note <number>` — never overlaps with the invoice helpers, even when
+ * the numbering schemes do.
+ * ===================================================================== */
+
+export type CreditNoteStockLine = {
+  itemId: string | null | undefined;
+  quantity: Prisma.Decimal | string | number;
+  description?: string | null;
+};
+
+export type CreditNoteStockSummary = {
+  number: string;
+  date: Date;
+};
+
+const reasonForCreditNote = (creditNoteNumber: string) =>
+  `Credit Note ${creditNoteNumber}`;
+
+/**
+ * Create positive `InventoryAdjustment` rows for every line whose
+ * itemId points at an item with `trackInventory = true`. Use on
+ * credit-note create.
+ */
+export async function applyCreditNoteStockReturn(
+  tx: TxClient,
+  organizationId: string,
+  creditNote: CreditNoteStockSummary,
+  lines: CreditNoteStockLine[]
+): Promise<string[]> {
+  const trackedLines = await filterTrackedLines(tx, organizationId, lines);
+  if (trackedLines.length === 0) return [];
+
+  const reason = reasonForCreditNote(creditNote.number);
+  const ids: string[] = [];
+  for (const line of trackedLines) {
+    const adj = await tx.inventoryAdjustment.create({
+      data: {
+        organizationId,
+        itemId: line.itemId!,
+        date: creditNote.date,
+        quantity: positive(line.quantity),
+        reason,
+        notes: line.description ?? null,
+      },
+      select: { id: true },
+    });
+    ids.push(adj.id);
+  }
+  return ids;
+}
+
+/**
+ * Mirror every positive `InventoryAdjustment` tied to this credit
+ * note with a negative-quantity counterpart, so net stock impact
+ * returns to zero. Use on void/delete.
+ */
+export async function reverseCreditNoteStockReturn(
+  tx: TxClient,
+  organizationId: string,
+  creditNote: CreditNoteStockSummary
+): Promise<string[]> {
+  const reason = reasonForCreditNote(creditNote.number);
+  const reverseReason = `Reverse ${reason}`;
+
+  const originals = await tx.inventoryAdjustment.findMany({
+    where: { organizationId, reason },
+    select: { id: true, itemId: true, quantity: true, date: true, notes: true },
+  });
+  if (originals.length === 0) return [];
+
+  const existingReversals = await tx.inventoryAdjustment.count({
+    where: { organizationId, reason: reverseReason },
+  });
+  if (existingReversals >= originals.length) return [];
+
+  const ids: string[] = [];
+  for (const orig of originals) {
+    const adj = await tx.inventoryAdjustment.create({
+      data: {
+        organizationId,
+        itemId: orig.itemId,
+        date: new Date(),
+        quantity: negate(orig.quantity),
+        reason: reverseReason,
+        notes: orig.notes ?? null,
+      },
+      select: { id: true },
+    });
+    ids.push(adj.id);
+  }
+  return ids;
+}
