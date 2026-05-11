@@ -16,6 +16,30 @@ import { MoneyInput } from "@/components/shared/money-input";
 import { DatePicker } from "@/components/shared/date-picker";
 import { customerSchema, type CustomerInput } from "@/lib/validations/customer";
 import { GstinPrefillDialog } from "./gstin-prefill-dialog";
+import { gstinErrors } from "@/lib/validators/gstin";
+
+/**
+ * Soft warning hint shown under the GSTIN field. Doesn't block save —
+ * users with a known-bad GSTIN just see a red line of advice. Empty
+ * input is treated as valid (the field is optional).
+ */
+function GstinValidationHint({ value }: { value: string }) {
+  const v = (value ?? "").trim();
+  if (v.length === 0) return null;
+  const errors = gstinErrors(v);
+  if (errors.length === 0) {
+    return (
+      <p className="text-xs text-emerald-700 dark:text-emerald-400">
+        ✓ Valid GSTIN format
+      </p>
+    );
+  }
+  return (
+    <p className="text-xs text-amber-700 dark:text-amber-400">
+      {errors[0]}
+    </p>
+  );
+}
 import { toast } from "sonner";
 
 const SALUTATIONS = ["Mr.", "Mrs.", "Ms.", "Miss", "Dr.", ""] as const;
@@ -377,6 +401,7 @@ export function CustomerForm({
                 className="uppercase"
                 maxLength={15}
               />
+              <GstinValidationHint value={form.watch("gstin") ?? ""} />
               <GstinPrefillDialog
                 initialGstin={form.getValues("gstin") ?? ""}
                 onApply={(data) => {

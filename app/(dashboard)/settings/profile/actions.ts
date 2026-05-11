@@ -12,6 +12,16 @@ const schema = z.object({
   country: z.string().min(2),
   currency: z.string().min(3),
   fiscalYearStart: z.coerce.number().int().min(1).max(12),
+  // GSTIN is optional and stored as-is. Format validation is a soft
+  // warning on the client; users in countries other than India can
+  // leave it blank.
+  gstin: z
+    .string()
+    .trim()
+    .max(15)
+    .transform((v) => (v.length === 0 ? null : v.toUpperCase()))
+    .nullable()
+    .optional(),
   logoUrl: z.string().url().optional().nullable(),
 });
 
@@ -27,7 +37,7 @@ export async function saveProfileAction(input: z.input<typeof schema>) {
   const before = { name: organization.name, slug: organization.slug, currency: organization.currency };
   await db.organization.update({
     where: { id: organization.id },
-    data: { ...data, logoUrl: data.logoUrl ?? null },
+    data: { ...data, logoUrl: data.logoUrl ?? null, gstin: data.gstin ?? null },
   });
   await writeAuditLog({
     organizationId: organization.id,
