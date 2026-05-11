@@ -15,7 +15,10 @@ Production-grade accounting SaaS — Next.js 14 (App Router) + Prisma + PostgreS
 | **Reports** | Complete — P&L, Balance Sheet, Cash Flow, Sales Summary, Tax Summary, AR Aging, AP Aging, **GSTR-1 export**, **Stock Valuation** |
 | **Settings** | Complete — Organization Profile (with GSTIN), General, Branding, Numbering, Taxes, PDF Templates, Online Payments (Razorpay), Direct Taxes (TDS), Custom Domain, Preferences per module, etc. |
 | **Customer portal** | Public invoice page + Razorpay Pay Now + payment-history page (per-customer receipts) |
-| **Purchases / Banking / Accountant / Time / Documents / Payroll / Payments** | Schema + landing pages; CRUD UI is sparse |
+| **Purchases — Vendors** | Complete — list page with MSME banner + bulk actions, full 7-tab form, import wizard, 3-option export (vendors / contact persons / addresses) |
+| **Purchases — Purchase Orders** | Complete — list with saved views + bulk close/cancel/delete, full multi-line form with inline ACCOUNT column + place-of-supply + TDS/TCS, detail page with status transitions (Mark Issued / Convert to Bill / Cancel / Close / Clone), PDF render, email send via queue |
+| **Purchases — Bills / Payments Made / Vendor Credits / Recurring / Expenses** | Schema landed (PR #81); UI scaffold only |
+| **Banking / Accountant / Time / Documents / Payroll / Payments** | Schema + landing pages; CRUD UI is sparse |
 | **AI Assistant** | Streaming Claude chat in the bottom-right rail |
 
 ## Setup (one-time)
