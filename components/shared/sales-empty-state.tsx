@@ -82,10 +82,14 @@ export function SalesEmptyState({
           <div className="text-xs text-muted-foreground mb-3">- or -</div>
           <div className="flex items-center gap-3 mb-10">
             <span className="text-xs text-muted-foreground">Import using</span>
-            <Link
-              href={importUsingHref}
-              aria-label="Import via cloud storage"
-              className="rounded-full p-1 hover:bg-accent transition-colors"
+            {/* Cloud / Google / Microsoft contact import — these aren't
+                wired yet (OAuth apps not registered). Shown as disabled
+                so users know they exist; CSV import (the button above)
+                works today. See docs/contact-import-design.md. */}
+            <span
+              aria-label="Import via cloud storage — coming soon"
+              title="Cloud import coming soon — use Import File above for CSVs today"
+              className="rounded-full p-1 opacity-40 cursor-not-allowed"
             >
               <svg
                 viewBox="0 0 24 24"
@@ -100,11 +104,11 @@ export function SalesEmptyState({
                 <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
                 <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
               </svg>
-            </Link>
-            <Link
-              href={importUsingHref}
-              aria-label="Import from Google"
-              className="rounded-full p-1 hover:bg-accent transition-colors"
+            </span>
+            <span
+              aria-label="Import from Google — coming soon"
+              title="Google Contacts import coming soon — use Import File above for CSVs today"
+              className="rounded-full p-1 opacity-40 cursor-not-allowed"
             >
               <svg viewBox="0 0 48 48" className="h-5 w-5" aria-hidden>
                 <path
@@ -124,11 +128,11 @@ export function SalesEmptyState({
                   d="M43.611 20.083H42V20H24v8h11.303a12.04 12.04 0 0 1-4.087 5.571l.003-.002 6.19 5.238C36.971 39.205 44 34 44 24c0-1.341-.138-2.65-.389-3.917z"
                 />
               </svg>
-            </Link>
-            <Link
-              href={importUsingHref}
-              aria-label="Import from Microsoft"
-              className="rounded-full p-1 hover:bg-accent transition-colors"
+            </span>
+            <span
+              aria-label="Import from Microsoft — coming soon"
+              title="Microsoft Contacts import coming soon — use Import File above for CSVs today"
+              className="rounded-full p-1 opacity-40 cursor-not-allowed"
             >
               <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden>
                 <rect x="1" y="1" width="10" height="10" fill="#F25022" />
@@ -136,7 +140,7 @@ export function SalesEmptyState({
                 <rect x="1" y="13" width="10" height="10" fill="#00A4EF" />
                 <rect x="13" y="13" width="10" height="10" fill="#FFB900" />
               </svg>
-            </Link>
+            </span>
           </div>
         </>
       ) : null}
