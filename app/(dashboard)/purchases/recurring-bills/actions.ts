@@ -32,6 +32,93 @@ export async function createRecurringBillAction(formData: FormData) {
   redirect("/purchases/recurring-bills");
 }
 
+/**
+ * Bulk transitions for the Recurring Bills list.
+ *
+ * Pause/Resume flip both the legacy `isActive` flag (back-compat
+ * with the cron) and the new `status` string ("PAUSED" | "ACTIVE")
+ * so older queries and newer queries stay consistent.
+ */
+export async function bulkPauseRecurringBillsAction(input: {
+  ids: string[];
+}): Promise<{ ok: boolean; updated?: number; error?: string }> {
+  const { user, organization } = await requireOrganization();
+  if (!input.ids?.length) return { ok: true, updated: 0 };
+  const result = await db.recurringBill.updateMany({
+    where: {
+      id: { in: input.ids },
+      organizationId: organization.id,
+      deletedAt: null,
+    },
+    data: { isActive: false, status: "PAUSED" },
+  });
+  await writeAuditLog({
+    organizationId: organization.id,
+    userId: user.id,
+    action: "UPDATE",
+    entityType: "RecurringBill",
+    entityId: `bulk-pause-${Date.now()}`,
+    after: { count: result.count, ids: input.ids, status: "PAUSED" },
+  });
+  revalidatePath("/purchases/recurring-bills");
+  return { ok: true, updated: result.count };
+}
+
+export async function bulkResumeRecurringBillsAction(input: {
+  ids: string[];
+}): Promise<{ ok: boolean; updated?: number; error?: string }> {
+  const { user, organization } = await requireOrganization();
+  if (!input.ids?.length) return { ok: true, updated: 0 };
+  const result = await db.recurringBill.updateMany({
+    where: {
+      id: { in: input.ids },
+      organizationId: organization.id,
+      deletedAt: null,
+    },
+    data: { isActive: true, status: "ACTIVE" },
+  });
+  await writeAuditLog({
+    organizationId: organization.id,
+    userId: user.id,
+    action: "UPDATE",
+    entityType: "RecurringBill",
+    entityId: `bulk-resume-${Date.now()}`,
+    after: { count: result.count, ids: input.ids, status: "ACTIVE" },
+  });
+  revalidatePath("/purchases/recurring-bills");
+  return { ok: true, updated: result.count };
+}
+
+export async function bulkDeleteRecurringBillsAction(input: {
+  ids: string[];
+}): Promise<{ ok: boolean; updated?: number; error?: string }> {
+  const { user, organization } = await requireOrganization();
+  if (!input.ids?.length) return { ok: true, updated: 0 };
+  // Soft-delete + status=STOPPED so the cron skips the row.
+  const result = await db.recurringBill.updateMany({
+    where: {
+      id: { in: input.ids },
+      organizationId: organization.id,
+      deletedAt: null,
+    },
+    data: {
+      deletedAt: new Date(),
+      isActive: false,
+      status: "STOPPED",
+    },
+  });
+  await writeAuditLog({
+    organizationId: organization.id,
+    userId: user.id,
+    action: "DELETE",
+    entityType: "RecurringBill",
+    entityId: `bulk-delete-${Date.now()}`,
+    before: { count: result.count, ids: input.ids },
+  });
+  revalidatePath("/purchases/recurring-bills");
+  return { ok: true, updated: result.count };
+}
+
 export async function deleteRecurringBillAction(id: string) {
   const { user, organization } = await requireOrganization();
   const r = await db.recurringBill.findFirst({ where: { id, organizationId: organization.id } });
