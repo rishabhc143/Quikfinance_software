@@ -77,6 +77,15 @@ export default async function InvoicesListPage({
       : sort === "createdAt"
       ? { createdAt: dir }
       : { issueDate: dir };
+  const customers = await db.contact.findMany({
+    where: {
+      organizationId: organization.id,
+      type: { in: ["CUSTOMER", "BOTH"] },
+      deletedAt: null,
+    },
+    select: { id: true, displayName: true },
+    orderBy: { displayName: "asc" },
+  });
 
   const [invoices, total] = await Promise.all([
     db.invoice.findMany({
@@ -159,6 +168,7 @@ export default async function InvoicesListPage({
             module="invoices"
             dateField="issueDate"
             amountField="total"
+            customerOptions={customers.map((c) => ({ id: c.id, label: c.displayName }))}
             statusOptions={[
               { value: "DRAFT", label: "Draft" },
               { value: "SENT", label: "Sent" },

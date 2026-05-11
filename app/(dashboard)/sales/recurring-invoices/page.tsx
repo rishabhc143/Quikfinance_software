@@ -46,6 +46,15 @@ export default async function RecurringInvoicesListPage({
         }
       : {}),
   };
+  const customers = await db.contact.findMany({
+    where: {
+      organizationId: organization.id,
+      type: { in: ["CUSTOMER", "BOTH"] },
+      deletedAt: null,
+    },
+    select: { id: true, displayName: true },
+    orderBy: { displayName: "asc" },
+  });
 
   const [items, total] = await Promise.all([
     db.recurringInvoice.findMany({
@@ -103,6 +112,7 @@ export default async function RecurringInvoicesListPage({
             module="recurring_invoices"
             dateField="nextOccurrenceDate"
             amountField="amount"
+            customerOptions={customers.map((c) => ({ id: c.id, label: c.displayName }))}
             statusOptions={[
               { value: "ACTIVE", label: "Active" },
               { value: "PAUSED", label: "Paused" },

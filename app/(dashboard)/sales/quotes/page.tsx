@@ -71,6 +71,15 @@ export default async function QuotesListPage({
       : sort === "createdAt"
       ? { createdAt: dir }
       : { issueDate: dir };
+  const customers = await db.contact.findMany({
+    where: {
+      organizationId: organization.id,
+      type: { in: ["CUSTOMER", "BOTH"] },
+      deletedAt: null,
+    },
+    select: { id: true, displayName: true },
+    orderBy: { displayName: "asc" },
+  });
 
   const [quotes, total] = await Promise.all([
     db.quote.findMany({
@@ -140,6 +149,7 @@ export default async function QuotesListPage({
             module="quotes"
             dateField="issueDate"
             amountField="total"
+            customerOptions={customers.map((c) => ({ id: c.id, label: c.displayName }))}
             statusOptions={[
               { value: "DRAFT", label: "Draft" },
               { value: "SENT", label: "Sent" },

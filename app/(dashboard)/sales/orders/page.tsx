@@ -68,6 +68,15 @@ export default async function SalesOrdersListPage({
       : sort === "createdAt"
       ? { createdAt: dir }
       : { orderDate: dir };
+  const customers = await db.contact.findMany({
+    where: {
+      organizationId: organization.id,
+      type: { in: ["CUSTOMER", "BOTH"] },
+      deletedAt: null,
+    },
+    select: { id: true, displayName: true },
+    orderBy: { displayName: "asc" },
+  });
 
   const [orders, total] = await Promise.all([
     db.salesOrder.findMany({
@@ -133,6 +142,7 @@ export default async function SalesOrdersListPage({
             module="sales_orders"
             dateField="orderDate"
             amountField="total"
+            customerOptions={customers.map((c) => ({ id: c.id, label: c.displayName }))}
             statusOptions={[
               { value: "DRAFT", label: "Draft" },
               { value: "CONFIRMED", label: "Confirmed" },
