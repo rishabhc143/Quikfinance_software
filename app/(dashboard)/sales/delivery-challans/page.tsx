@@ -87,6 +87,8 @@ export default async function DeliveryChallansListPage({
         savedViewBuilder={
           <SavedViewBuilderDialog
             module="delivery_challans"
+            dateField="challanDate"
+            amountField="total"
             statusOptions={[
               { value: "DRAFT", label: "Draft" },
               { value: "OPEN", label: "Open" },

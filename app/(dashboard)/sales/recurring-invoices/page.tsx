@@ -101,6 +101,8 @@ export default async function RecurringInvoicesListPage({
         savedViewBuilder={
           <SavedViewBuilderDialog
             module="recurring_invoices"
+            dateField="nextOccurrenceDate"
+            amountField="amount"
             statusOptions={[
               { value: "ACTIVE", label: "Active" },
               { value: "PAUSED", label: "Paused" },

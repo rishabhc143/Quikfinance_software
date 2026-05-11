@@ -157,6 +157,8 @@ export default async function InvoicesListPage({
         savedViewBuilder={
           <SavedViewBuilderDialog
             module="invoices"
+            dateField="issueDate"
+            amountField="total"
             statusOptions={[
               { value: "DRAFT", label: "Draft" },
               { value: "SENT", label: "Sent" },

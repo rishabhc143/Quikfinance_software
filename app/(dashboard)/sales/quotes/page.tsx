@@ -138,6 +138,8 @@ export default async function QuotesListPage({
         savedViewBuilder={
           <SavedViewBuilderDialog
             module="quotes"
+            dateField="issueDate"
+            amountField="total"
             statusOptions={[
               { value: "DRAFT", label: "Draft" },
               { value: "SENT", label: "Sent" },

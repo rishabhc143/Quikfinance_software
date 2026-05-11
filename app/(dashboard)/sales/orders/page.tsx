@@ -131,6 +131,8 @@ export default async function SalesOrdersListPage({
         savedViewBuilder={
           <SavedViewBuilderDialog
             module="sales_orders"
+            dateField="orderDate"
+            amountField="total"
             statusOptions={[
               { value: "DRAFT", label: "Draft" },
               { value: "CONFIRMED", label: "Confirmed" },
