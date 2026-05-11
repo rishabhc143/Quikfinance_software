@@ -145,7 +145,8 @@ model Organization {
   integrations         Integration[]
   webForms             WebForm[]
   apiUsageLogs         ApiUsageLog[]
-  inventoryAdjustments InventoryAdjustment[]
+  inventoryAdjustments  InventoryAdjustment[]
+  inventoryReservations InventoryReservation[]
   paymentTerms         PaymentTerms[]
   deliveryMethods      DeliveryMethod[]
   salespeople          Salesperson[]
@@ -429,6 +430,24 @@ model ContactRemark {
 
 // ───────────────────────── ITEMS ─────────────────────────
 
+model InventoryReservation {
+  id             String       @id @default(cuid())
+  organizationId String
+  itemId         String
+  quantity       Decimal      @db.Decimal(18, 4)
+  sourceType     String // "SalesOrder" | "DeliveryChallan"
+  sourceId       String
+  sourceNumber   String // human-readable, for ledger UI
+  reservedAt     DateTime     @default(now())
+  releasedAt     DateTime? // null = active reservation
+  consumedAt     DateTime? // set when DC ships
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  item           Item         @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, itemId, releasedAt, consumedAt])
+  @@index([sourceType, sourceId])
+}
+
 model Item {
   id                   String                @id @default(cuid())
   organizationId       String
@@ -458,7 +477,8 @@ model Item {
   preferredVendor      Contact?              @relation("PreferredVendor", fields: [preferredVendorId], references: [id])
   invoiceLineItems     InvoiceLineItem[]
   billLineItems        BillLineItem[]
-  inventoryAdjustments InventoryAdjustment[]
+  inventoryAdjustments  InventoryAdjustment[]
+  inventoryReservations InventoryReservation[]
 
   @@index([organizationId, deletedAt])
   @@index([organizationId, name])
