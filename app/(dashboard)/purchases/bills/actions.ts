@@ -263,6 +263,193 @@ export async function updateBillAction(
 }
 
 /**
+ * Single-id status transitions used by the Bill detail page action
+ * bar.
+ *
+ * State-machine guards (mirrored in tests/unit/purchases/bill-transitions):
+ *  - DRAFT    → OPEN          via markOpen
+ *  - OPEN     → VOID          via voidBill (any non-PAID/VOID)
+ *  - any non-VOID → WRITTEN_OFF via writeOff
+ *  - DRAFT    → (hard delete) via softDeleteBillAction
+ *  - clone    → new DRAFT with a fresh manual number prompt
+ */
+
+export async function markBillOpenAction(id: string): Promise<void> {
+  const { user, organization } = await requireOrganization();
+  const b = await db.bill.findFirst({
+    where: { id, organizationId: organization.id, deletedAt: null },
+  });
+  if (!b) throw new Error("Bill not found");
+  if (b.status !== "DRAFT") {
+    throw new Error(
+      `Cannot mark as Open — current status is ${b.status}.`
+    );
+  }
+  await db.bill.update({
+    where: { id },
+    data: { status: "OPEN" },
+  });
+  await writeAuditLog({
+    organizationId: organization.id,
+    userId: user.id,
+    action: "UPDATE",
+    entityType: "Bill",
+    entityId: id,
+    before: { status: "DRAFT" },
+    after: { status: "OPEN" },
+  });
+  revalidatePath("/purchases/bills");
+  revalidatePath(`/purchases/bills/${id}`);
+}
+
+export async function voidBillAction(id: string): Promise<void> {
+  const { user, organization } = await requireOrganization();
+  const b = await db.bill.findFirst({
+    where: { id, organizationId: organization.id, deletedAt: null },
+  });
+  if (!b) throw new Error("Bill not found");
+  if (b.status === "VOID") throw new Error("Already voided.");
+  if (b.status === "PAID") {
+    throw new Error(
+      "Cannot void a paid bill — reverse the payment(s) first."
+    );
+  }
+  await db.bill.update({
+    where: { id },
+    data: { status: "VOID", voidedAt: new Date() },
+  });
+  await writeAuditLog({
+    organizationId: organization.id,
+    userId: user.id,
+    action: "UPDATE",
+    entityType: "Bill",
+    entityId: id,
+    before: { status: b.status },
+    after: { status: "VOID" },
+  });
+  revalidatePath("/purchases/bills");
+  revalidatePath(`/purchases/bills/${id}`);
+}
+
+export async function writeOffBillAction(id: string): Promise<void> {
+  const { user, organization } = await requireOrganization();
+  const b = await db.bill.findFirst({
+    where: { id, organizationId: organization.id, deletedAt: null },
+  });
+  if (!b) throw new Error("Bill not found");
+  if (b.status === "VOID" || b.status === "WRITTEN_OFF") {
+    throw new Error(
+      `Cannot write off a ${b.status.toLowerCase()} bill.`
+    );
+  }
+  if (b.status === "PAID") {
+    throw new Error(
+      "Cannot write off a paid bill — there's nothing left owed."
+    );
+  }
+  await db.bill.update({
+    where: { id },
+    data: { status: "WRITTEN_OFF", writtenOffAt: new Date() },
+  });
+  await writeAuditLog({
+    organizationId: organization.id,
+    userId: user.id,
+    action: "UPDATE",
+    entityType: "Bill",
+    entityId: id,
+    before: { status: b.status },
+    after: { status: "WRITTEN_OFF" },
+  });
+  revalidatePath("/purchases/bills");
+  revalidatePath(`/purchases/bills/${id}`);
+}
+
+export async function cloneBillAction(id: string): Promise<void> {
+  const { user, organization } = await requireOrganization();
+  const src = await db.bill.findFirst({
+    where: { id, organizationId: organization.id, deletedAt: null },
+    include: { lineItems: { orderBy: { position: "asc" } } },
+  });
+  if (!src) throw new Error("Bill not found");
+
+  // Append a `-copy` suffix to the bill number to keep the (vendor,
+  // number) unique constraint happy. The user can edit it in /edit.
+  let candidate = `${src.number}-copy`;
+  for (let i = 2; i < 20; i += 1) {
+    const dup = await db.bill.findFirst({
+      where: {
+        organizationId: organization.id,
+        contactId: src.contactId,
+        number: candidate,
+        deletedAt: null,
+      },
+      select: { id: true },
+    });
+    if (!dup) break;
+    candidate = `${src.number}-copy-${i}`;
+  }
+
+  const cloned = await db.bill.create({
+    data: {
+      organizationId: organization.id,
+      number: candidate,
+      referenceNumber: src.referenceNumber,
+      subject: src.subject,
+      contactId: src.contactId,
+      status: "DRAFT",
+      issueDate: new Date(),
+      dueDate: new Date(Date.now() + 30 * 86400000),
+      paymentTermsId: src.paymentTermsId,
+      placeOfSupply: src.placeOfSupply,
+      accountsPayableId: src.accountsPayableId,
+      currency: src.currency,
+      subtotal: src.subtotal,
+      discountValue: src.discountValue,
+      discountType: src.discountType,
+      taxId: src.taxId,
+      taxTotal: src.taxTotal,
+      adjustmentLabel: src.adjustmentLabel,
+      adjustmentValue: src.adjustmentValue,
+      total: src.total,
+      notes: src.notes,
+      termsAndConditions: src.termsAndConditions,
+      pdfTemplateId: src.pdfTemplateId,
+      lineItems: {
+        create: src.lineItems.map((l, i) => ({
+          itemId: l.itemId,
+          position: i,
+          name: l.name,
+          description: l.description,
+          hsnSacCode: l.hsnSacCode,
+          accountId: l.accountId,
+          billableToCustomerId: l.billableToCustomerId,
+          quantity: l.quantity,
+          rate: l.rate,
+          taxId: l.taxId,
+          amount: l.amount,
+        })),
+      },
+    },
+  });
+
+  await writeAuditLog({
+    organizationId: organization.id,
+    userId: user.id,
+    action: "CREATE",
+    entityType: "Bill",
+    entityId: cloned.id,
+    after: {
+      number: cloned.number,
+      clonedFromId: src.id,
+      clonedFromNumber: src.number,
+    },
+  });
+
+  revalidatePath("/purchases/bills");
+  redirect(`/purchases/bills/${cloned.id}/edit`);
+}
+
+/**
  * Bulk transitions used by the Bills list page's BulkAwareDataTable.
  *
  *  - bulkMarkBillsOpen: Draft bills → OPEN (the "I've reviewed it, it's
