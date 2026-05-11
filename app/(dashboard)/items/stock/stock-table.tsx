@@ -25,6 +25,8 @@ export type StockTableRow = {
   openingStock: number;
   totalAdjustment: number;
   currentStock: number;
+  reserved: number;
+  available: number;
   reorderPoint: number | null;
   status: "OUT" | "LOW" | "OK";
 };
@@ -55,8 +57,10 @@ export function StockTable({ rows }: { rows: StockTableRow[] }) {
             <tr className="border-b text-left text-xs uppercase tracking-wider text-muted-foreground">
               <th className="py-2 px-4">Item</th>
               <th className="py-2 px-4 text-right">Opening</th>
-              <th className="py-2 px-4 text-right">Net adjustments</th>
-              <th className="py-2 px-4 text-right">Current</th>
+              <th className="py-2 px-4 text-right">Net adj</th>
+              <th className="py-2 px-4 text-right">On hand</th>
+              <th className="py-2 px-4 text-right">Reserved</th>
+              <th className="py-2 px-4 text-right">Available</th>
               <th className="py-2 px-4 text-right">Reorder at</th>
               <th className="py-2 px-4">Status</th>
               <th className="py-2 px-4" />
@@ -103,8 +107,32 @@ export function StockTable({ rows }: { rows: StockTableRow[] }) {
                     {row.totalAdjustment.toFixed(2)}
                   </span>
                 </td>
-                <td className="py-2 px-4 text-right tabular-nums font-semibold">
+                <td className="py-2 px-4 text-right tabular-nums">
                   {row.currentStock.toFixed(2)}
+                </td>
+                <td className="py-2 px-4 text-right tabular-nums">
+                  <span
+                    className={
+                      row.reserved > 0
+                        ? "text-amber-700 dark:text-amber-400"
+                        : "text-muted-foreground"
+                    }
+                  >
+                    {row.reserved.toFixed(2)}
+                  </span>
+                </td>
+                <td
+                  className={
+                    "py-2 px-4 text-right tabular-nums font-semibold " +
+                    (row.available <= 0
+                      ? "text-destructive"
+                      : row.reorderPoint !== null &&
+                        row.available <= row.reorderPoint
+                      ? "text-amber-700 dark:text-amber-400"
+                      : "")
+                  }
+                >
+                  {row.available.toFixed(2)}
                 </td>
                 <td className="py-2 px-4 text-right tabular-nums text-muted-foreground">
                   {row.reorderPoint !== null
