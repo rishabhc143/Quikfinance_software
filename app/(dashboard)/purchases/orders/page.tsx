@@ -1,58 +1,303 @@
+import Link from "next/link";
 import { format } from "date-fns";
-import type { Prisma } from "@prisma/client";
+import { ShoppingBag } from "lucide-react";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
 import { Badge } from "@/components/ui/badge";
-import { DataTable, PageHeader, EmptyState, type ColumnDef } from "@/components/shared/data-table";
+import { TransactionListPage } from "@/components/shared/transaction-list-page";
+import { BulkAwareDataTable } from "@/components/shared/bulk-aware-data-table";
+import { SavedViewBuilderDialog } from "@/components/shared/saved-view-builder-dialog";
+import { SalesEmptyState } from "@/components/shared/sales-empty-state";
 import { formatMoney } from "@/lib/money";
+import {
+  getSavedViews,
+  resolveActiveView,
+  whereForFilter,
+} from "@/lib/sales/saved-views";
+import {
+  bulkCancelPurchaseOrdersAction,
+  bulkClosePurchaseOrdersAction,
+  bulkDeletePurchaseOrdersAction,
+} from "./actions";
 
 export const metadata = { title: "Purchase Orders" };
 
-const COLUMNS: ColumnDef[] = [
-  { key: "number", header: "Number", sortable: true },
-  { key: "vendor", header: "Vendor" },
-  { key: "status", header: "Status" },
-  { key: "orderDate", header: "Date", sortable: true },
-  { key: "total", header: "Total", sortable: true, align: "right" },
-];
+const PAGE_SIZE_DEFAULT = 25;
 
-export default async function PurchaseOrdersPage({ searchParams }: { searchParams: Record<string, string> }) {
+const STATUS_VARIANT: Record<
+  string,
+  "secondary" | "outline" | "destructive"
+> = {
+  DRAFT: "outline",
+  ISSUED: "secondary",
+  PARTIALLY_BILLED: "secondary",
+  BILLED: "secondary",
+  CLOSED: "secondary",
+  CANCELLED: "destructive",
+};
+
+type SearchParams = {
+  q?: string;
+  page?: string;
+  pageSize?: string;
+  sort?: string;
+  dir?: string;
+  view?: string;
+};
+
+export default async function PurchaseOrdersListPage({
+  searchParams,
+}: {
+  searchParams: SearchParams;
+}) {
   const { organization } = await requireOrganization();
-  const q = (searchParams.q ?? "").trim();
-  const sort = ["number", "orderDate", "total"].includes(searchParams.sort ?? "") ? searchParams.sort! : "orderDate";
+  const q = searchParams.q?.trim() ?? "";
+  const page = Math.max(1, Number(searchParams.page ?? "1"));
+  const pageSize = Number(searchParams.pageSize ?? PAGE_SIZE_DEFAULT);
+  const sort = searchParams.sort ?? "orderDate";
   const dir: "asc" | "desc" = searchParams.dir === "asc" ? "asc" : "desc";
-  const page = Math.max(1, parseInt(searchParams.page ?? "1", 10));
-  const pageSize = 25;
 
-  const where: Prisma.PurchaseOrderWhereInput = {
+  const savedViews = await getSavedViews(organization.id, "purchase_orders");
+  const activeView = resolveActiveView(savedViews, searchParams.view);
+  const view = activeView?.slug ?? "all";
+
+  const where = {
     organizationId: organization.id,
-    ...(q ? { OR: [{ number: { contains: q, mode: "insensitive" } }, { contact: { displayName: { contains: q, mode: "insensitive" } } }] } : {}),
+    deletedAt: null,
+    ...(activeView ? whereForFilter(activeView.filter) : {}),
+    ...(q
+      ? {
+          OR: [
+            { number: { contains: q, mode: "insensitive" as const } },
+            { referenceNumber: { contains: q, mode: "insensitive" as const } },
+            {
+              contact: {
+                displayName: { contains: q, mode: "insensitive" as const },
+              },
+            },
+          ],
+        }
+      : {}),
   };
 
-  const [total, rows] = await Promise.all([
+  const orderBy =
+    sort === "number"
+      ? { number: dir }
+      : sort === "total"
+      ? { total: dir }
+      : sort === "createdAt"
+      ? { createdAt: dir }
+      : sort === "deliveryDate"
+      ? { deliveryDate: dir }
+      : { orderDate: dir };
+
+  // Pre-fetch vendors for the saved-view builder's customer-multi-select
+  // analog (PO views can filter by vendor).
+  const vendors = await db.contact.findMany({
+    where: {
+      organizationId: organization.id,
+      type: { in: ["VENDOR", "BOTH"] },
+      deletedAt: null,
+    },
+    select: { id: true, displayName: true },
+    orderBy: { displayName: "asc" },
+  });
+
+  const [pos, total] = await Promise.all([
+    db.purchaseOrder.findMany({
+      where,
+      orderBy,
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+      include: {
+        contact: { select: { displayName: true } },
+        bills: { select: { id: true }, take: 1 },
+      },
+    }),
     db.purchaseOrder.count({ where }),
-    db.purchaseOrder.findMany({ where, orderBy: { [sort]: dir }, skip: (page - 1) * pageSize, take: pageSize, include: { contact: { select: { displayName: true } } } }),
   ]);
 
-  const dataRows = rows.map((p) => ({
-    id: p.id,
+  const rows = pos.map((po) => ({
+    id: po.id,
+    href: `/purchases/orders/${po.id}`,
     cells: [
-      <span key="n" className="font-mono">{p.number}</span>,
-      p.contact.displayName,
-      <Badge key="s" variant="outline">{p.status}</Badge>,
-      format(p.orderDate, "dd MMM yyyy"),
-      formatMoney(Number(p.total), organization.currency),
+      <span key="d">{format(po.orderDate, "dd MMM yyyy")}</span>,
+      <span key="n" className="font-mono">{po.number}</span>,
+      <span key="r">{po.referenceNumber ?? "—"}</span>,
+      <span key="v">{po.contact.displayName}</span>,
+      <Badge key="s" variant={STATUS_VARIANT[po.status] ?? "outline"}>
+        {po.status.replaceAll("_", " ")}
+      </Badge>,
+      <span key="a" className="text-right tabular-nums">
+        {formatMoney(Number(po.total), po.currency ?? organization.currency)}
+      </span>,
+      <span key="dd">
+        {po.deliveryDate ? format(po.deliveryDate, "dd MMM yyyy") : "—"}
+      </span>,
+      <span key="b">{po.bills.length > 0 ? "Yes" : "No"}</span>,
     ],
   }));
 
+  const empty = (
+    <SalesEmptyState
+      icon={ShoppingBag}
+      title="Start managing your purchase activities"
+      description="Pre-commit purchases to vendors. Track expected deliveries, then convert to Bills when goods arrive."
+      primaryAction={{
+        label: "Create new purchase order",
+        href: "/purchases/orders/new",
+      }}
+      secondaryAction={{ label: "Import file", href: "/purchases/orders" }}
+      benefits={[
+        "Lock in vendor commitments before goods ship",
+        "Convert each PO into a Bill in one click",
+        "Track partial vs full receipt status",
+        "Email the PO directly to the vendor as a PDF",
+      ]}
+    />
+  );
+
+  // The vendors list is wired into the saved-view builder via the
+  // customer-multi-select prop name (the component is module-agnostic;
+  // for `purchase_orders` it filters by vendorId/contactId).
+  const customerOptionsForBuilder = vendors.map((v) => ({
+    id: v.id,
+    label: v.displayName,
+  }));
+
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-4">
-      <PageHeader title="Purchase Orders" ctaHref="/purchases/orders/new" ctaLabel="+ New Purchase Order" />
-      {total === 0 && !q ? (
-        <EmptyState title="No purchase orders yet" description="Pre-purchase commitments to vendors before bills arrive." ctaHref="/purchases/orders/new" ctaLabel="+ Create first PO" />
-      ) : (
-        <DataTable rows={dataRows} columns={COLUMNS} total={total} page={page} pageSize={pageSize} sort={sort} dir={dir} search={q} />
-      )}
+    <div className="p-6">
+      <TransactionListPage
+        title="Purchase Orders"
+        view={viewLabel(view)}
+        views={savedViews.map((v) => ({
+          value: v.slug,
+          label: v.label,
+          id: v.id,
+          isSystem: v.isSystem,
+        }))}
+        activeView={view}
+        newHref="/purchases/orders/new"
+        newLabel="New"
+        savedViewBuilder={
+          <SavedViewBuilderDialog
+            module="purchase_orders"
+            dateField="orderDate"
+            amountField="total"
+            customerOptions={customerOptionsForBuilder}
+            statusOptions={[
+              { value: "DRAFT", label: "Draft" },
+              { value: "ISSUED", label: "Issued" },
+              { value: "PARTIALLY_BILLED", label: "Partially Billed" },
+              { value: "BILLED", label: "Billed" },
+              { value: "CLOSED", label: "Closed" },
+              { value: "CANCELLED", label: "Cancelled" },
+            ]}
+            trigger={
+              <button
+                type="button"
+                className="flex w-full items-center gap-2 px-2 py-1.5 text-left text-sm text-primary hover:bg-accent rounded-sm"
+              >
+                + New Custom View
+              </button>
+            }
+          />
+        }
+        preferencesHref="/settings/preferences/customers-and-vendors"
+        sortOptions={[
+          { label: "Date", value: "orderDate" },
+          { label: "PO number", value: "number" },
+          { label: "Amount", value: "total" },
+          { label: "Expected delivery", value: "deliveryDate" },
+          { label: "Created time", value: "createdAt" },
+        ]}
+        columns={POL_COLUMNS}
+        rows={rows}
+        total={total}
+        page={page}
+        pageSize={pageSize}
+        sort={sort}
+        dir={dir}
+        search={q}
+        empty={empty}
+        customTable={
+          <BulkAwareDataTable
+            columns={POL_COLUMNS}
+            rows={rows}
+            total={total}
+            page={page}
+            pageSize={pageSize}
+            sort={sort}
+            dir={dir}
+            search={q}
+            rowNoun="purchase order"
+            bulkActions={[
+              {
+                label: "Mark Closed",
+                doneVerb: "Closed",
+                noun: "purchase order",
+                action: async (input) =>
+                  bulkClosePurchaseOrdersAction({ ids: input.ids }),
+              },
+              {
+                label: "Cancel",
+                doneVerb: "Cancelled",
+                noun: "purchase order",
+                confirm:
+                  "Cancel the selected purchase orders? They can be reopened by editing.",
+                action: async (input) =>
+                  bulkCancelPurchaseOrdersAction({ ids: input.ids }),
+              },
+              {
+                label: "Delete",
+                variant: "destructive",
+                doneVerb: "Deleted",
+                noun: "purchase order",
+                confirm:
+                  "Delete the selected purchase orders? Blocked if any are linked to bills.",
+                action: bulkDeletePurchaseOrdersAction,
+              },
+            ]}
+          />
+        }
+      />
+      <p className="mt-4 text-xs text-muted-foreground">
+        Need to import POs from another tool?{" "}
+        <Link href="/purchases/vendors/import" className="underline">
+          Import vendors first
+        </Link>{" "}
+        — POs require an existing vendor record.
+      </p>
     </div>
   );
+}
+
+const POL_COLUMNS = [
+  { key: "date", header: "Date", sortable: true },
+  { key: "number", header: "PO #", sortable: true },
+  { key: "ref", header: "Reference #" },
+  { key: "vendor", header: "Vendor name" },
+  { key: "status", header: "Status" },
+  { key: "amount", header: "Amount", align: "right" as const, sortable: true },
+  { key: "delivery", header: "Expected delivery" },
+  { key: "billed", header: "Billed?" },
+];
+
+function viewLabel(view: string) {
+  switch (view) {
+    case "draft":
+      return "Draft purchase orders";
+    case "issued":
+      return "Issued purchase orders";
+    case "partially_billed":
+      return "Partially billed purchase orders";
+    case "billed":
+      return "Billed purchase orders";
+    case "closed":
+      return "Closed purchase orders";
+    case "cancelled":
+      return "Cancelled purchase orders";
+    default:
+      return "All purchase orders";
+  }
 }
