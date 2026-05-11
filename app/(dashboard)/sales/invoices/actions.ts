@@ -16,12 +16,30 @@ import {
   reverseInvoiceStockDecrement,
 } from "@/lib/inventory/stock-mutations";
 import {
+  loadBillableSourcesForCustomer,
+  markBillableSourcesUsed,
+  type BillableSource,
+} from "@/lib/sales/billable-expenses";
+import {
   invoiceSchema,
   recordPaymentSchema,
   type InvoiceInput,
   type RecordPaymentInput,
 } from "@/lib/validations/invoice";
 import { format } from "date-fns";
+
+/**
+ * P9-A: client-callable wrapper around the billable-expenses loader.
+ * The Invoice form's <BillableExpensesPanel> calls this whenever the
+ * selected customer changes.
+ */
+export async function getBillableExpensesForCustomerAction(input: {
+  customerId: string;
+}): Promise<BillableSource[]> {
+  const { organization } = await requireOrganization();
+  if (!input.customerId) return [];
+  return loadBillableSourcesForCustomer(organization.id, input.customerId);
+}
 
 async function totalsFor(orgId: string, input: InvoiceInput) {
   const taxes = await db.tax.findMany({
@@ -128,6 +146,27 @@ export async function createInvoiceAction(
       description: l.description ?? l.name,
     }))
   );
+
+  // P9-A: mark BillLineItem.billableUsedAt + Expense.isBilled for
+  // any billable sources the user pulled onto this invoice. Fetches
+  // the newly-created invoice line ids in stable order (by id —
+  // matches the nested-create insertion order) so the audit row
+  // points at the right line. Idempotent + bounded by the
+  // BillableExpenseUsage (sourceType, sourceId) unique index.
+  if (data.billableSources && data.billableSources.length > 0) {
+    const createdLines = await db.invoiceLineItem.findMany({
+      where: { invoiceId: created.id },
+      orderBy: { id: "asc" },
+      select: { id: true },
+    });
+    await markBillableSourcesUsed(db, {
+      organizationId: organization.id,
+      customerId: data.contactId,
+      invoiceId: created.id,
+      invoiceLineItemIds: createdLines.map((l) => l.id),
+      sources: data.billableSources,
+    });
+  }
 
   // M17c: persist custom field values, if any
   if (data.customFieldValues && data.customFieldValues.length > 0) {

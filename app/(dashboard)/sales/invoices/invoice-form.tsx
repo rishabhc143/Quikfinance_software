@@ -21,6 +21,11 @@ import {
 import { AttachFilesField, type AttachedFile } from "@/components/shared/attach-files-field";
 import { PdfTemplatePicker } from "@/components/shared/pdf-template-picker";
 import { CustomFieldsSection } from "@/components/shared/custom-fields-section";
+import {
+  BillableExpensesPanel,
+  type BillableExpenseAdd,
+} from "@/components/shared/billable-expenses-panel";
+import type { BillableSource } from "@/lib/sales/billable-expenses";
 import { NumberSeriesPopover } from "@/components/shared/number-series-popover";
 import { updateNumberSeriesInlineAction } from "@/app/(dashboard)/settings/number-series/inline-actions";
 import {
@@ -69,6 +74,14 @@ export type InvoiceFormProps = {
    * /sales/recurring-invoices/new?fromInvoiceId=<id>. Hidden on create.
    */
   existingInvoiceId?: string;
+  /**
+   * P9-A: when supplied, the form renders the BillableExpensesPanel
+   * under the customer band and watches contactId for changes.
+   * Returns Bill line items + Expense rows the customer owes back.
+   */
+  loadBillableExpensesAction?: (input: {
+    customerId: string;
+  }) => Promise<BillableSource[]>;
   onSubmitAction: (
     values: InvoiceInput,
     opts?: { send?: boolean }
@@ -98,6 +111,7 @@ export function InvoiceForm({
   customFieldDefinitions = [],
   customFieldInitialValues = {},
   existingInvoiceId,
+  loadBillableExpensesAction,
   onSubmitAction,
   submitLabel = "Save as Draft",
   cancelHref = "/sales/invoices",
@@ -146,10 +160,72 @@ export function InvoiceForm({
   const [salespeopleState, setSalespeopleState] = React.useState(salespersonOptions);
   const [lines, setLines] = React.useState<LineItem[]>(initialLines ?? []);
 
+  // P9-A: Billable-expenses tracking.
+  //
+  //   - `lineTableKey` bumps every time we inject billable lines so
+  //     <TransactionLineItemsTable> remounts with the merged
+  //     `linesSeed` as initialLines. Without the key change, the
+  //     table's internal useState keeps the old line list.
+  //   - `linesSeed` holds the canonical line list including any
+  //     billable additions — `initialLines` for the next remount.
+  //   - `billableSources` collects {type,id,amount,invoiceLineIndex}
+  //     records for every billable item the user pulled in. The
+  //     save action consumes this to mark the source rows used.
+  const [lineTableKey, setLineTableKey] = React.useState(0);
+  const [linesSeed, setLinesSeed] = React.useState<LineItem[]>(
+    initialLines ?? []
+  );
+  const [billableSources, setBillableSources] = React.useState<
+    InvoiceInput["billableSources"]
+  >([]);
+
   // M17c: Custom Fields state — keyed by fieldDefinitionId
   const [customFieldValues, setCustomFieldValues] = React.useState<
     Record<string, unknown>
   >(customFieldInitialValues);
+
+  /**
+   * P9-A: handler for <BillableExpensesPanel>. Merges new lines into
+   * `linesSeed`, bumps the table key so the table remounts with
+   * those lines pre-populated, and records {type,id,amount,index}
+   * tuples in billableSources for the save action to consume.
+   *
+   * Known v1 limitation: if the user deletes one of the injected
+   * billable lines before saving, the source still gets marked used.
+   * The BillableExpenseUsage unique index prevents double-billing on
+   * the next attempt, but the source row's `billableUsedAt`/
+   * `isBilled` flag remains set. Real-world impact is small; revisit
+   * once we have a stable LineItem identifier across table remounts.
+   */
+  const addBillableLines = React.useCallback(
+    (adds: BillableExpenseAdd[]) => {
+      const baseLines = lines.length > 0 ? lines : linesSeed;
+      const offset = baseLines.length;
+      const newLines: LineItem[] = adds.map((a, i) => ({
+        id: `billable-${Date.now()}-${i}`,
+        itemId: null,
+        name: a.line.name,
+        description: a.line.description,
+        accountId: a.line.accountId,
+        quantity: a.line.quantity,
+        rate: a.line.rate,
+      }));
+      const merged = [...baseLines, ...newLines];
+      setLinesSeed(merged);
+      setLines(merged);
+      setLineTableKey((k) => k + 1);
+      setBillableSources((prev) => [
+        ...(prev ?? []),
+        ...adds.map((a, i) => ({
+          type: a.source.type,
+          id: a.source.id,
+          amount: a.source.amount,
+          invoiceLineIndex: offset + i,
+        })),
+      ]);
+    },
+    [lines, linesSeed]
+  );
 
   // When payment terms change, recompute due date from invoice date.
   React.useEffect(() => {
@@ -208,6 +284,8 @@ export function InvoiceForm({
           fieldDefinitionId,
           value,
         })),
+      // P9-A: billable-expense sources to mark used on save.
+      billableSources: billableSources ?? [],
     };
     try {
       await onSubmitAction(payload, { send });
@@ -302,13 +380,26 @@ export function InvoiceForm({
         />
       </section>
 
+      {/* P9-A: Billable-expense banner + picker. Renders only when
+          a customer is selected AND the page server passed
+          `loadBillableExpensesAction`. */}
+      {loadBillableExpensesAction ? (
+        <BillableExpensesPanel
+          customerId={contactId}
+          currency={defaultCurrency}
+          loadAction={loadBillableExpensesAction}
+          onAddLines={addBillableLines}
+        />
+      ) : null}
+
       <TransactionLineItemsTable
+        key={`lt-${lineTableKey}`}
         itemOptions={itemOptions}
         taxOptions={taxOptions}
         documentDiscount={{ value: discountValue, type: discountType }}
         adjustment={adjustmentValue}
         onChange={(ls) => setLines(ls)}
-        initialLines={initialLines}
+        initialLines={lineTableKey === 0 ? initialLines : linesSeed}
         scanItemAction={findItemBySkuAction}
       />
 

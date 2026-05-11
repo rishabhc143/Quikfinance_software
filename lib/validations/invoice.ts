@@ -62,6 +62,29 @@ export const invoiceSchema = z.object({
     .optional()
     .default([]),
   lines: z.array(lineItemSchema).min(1, "At least one line item required"),
+  /**
+   * P9-A: when the user added one or more lines via the Billable
+   * Expenses panel, the invoice save action marks those source rows
+   * as "used" — sets `BillLineItem.billableUsedAt = now()`,
+   * `Expense.isBilled = true`, links `Expense.invoiceId`, and writes
+   * a `BillableExpenseUsage` audit row. Optional + defaults to [].
+   */
+  billableSources: z
+    .array(
+      z.object({
+        type: z.enum(["BILL_LINE_ITEM", "EXPENSE"]),
+        id: z.string().min(1),
+        /** Snapshot of the amount we're billing — used for the
+         *  BillableExpenseUsage audit record. */
+        amount: z.coerce.number().nonnegative().default(0),
+        /** Which line on the new invoice references this source.
+         *  Index into the `lines` array — used to backfill
+         *  `invoiceLineItemId` once the invoice rows have ids. */
+        invoiceLineIndex: z.coerce.number().int().nonnegative(),
+      })
+    )
+    .optional()
+    .default([]),
 });
 export type InvoiceInput = z.input<typeof invoiceSchema>;
 
