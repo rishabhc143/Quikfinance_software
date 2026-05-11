@@ -11,6 +11,8 @@ import { enqueueEmail } from "@/lib/sales/email-sender";
 import { renderSalesDocumentHtml } from "@/lib/sales/pdf-renderer";
 import { loadVisibleCustomFields } from "@/lib/sales/custom-fields-loader";
 import { salesOrderSchema, type SalesOrderInput } from "@/lib/validations/sales-order";
+import { reserveStock, releaseStock } from "@/lib/inventory/reservations";
+import { applyInvoiceStockDecrement } from "@/lib/inventory/stock-mutations";
 import { format } from "date-fns";
 
 async function totalsFor(orgId: string, input: SalesOrderInput) {
@@ -229,9 +231,25 @@ export async function updateSalesOrderAction(id: string, input: SalesOrderInput)
 
 export async function confirmSalesOrderAction(id: string): Promise<void> {
   const { user, organization } = await requireOrganization();
-  await db.salesOrder.update({
-    where: { id },
-    data: { status: "CONFIRMED" },
+  const so = await db.salesOrder.findFirst({
+    where: { id, organizationId: organization.id, deletedAt: null },
+    include: { lineItems: true },
+  });
+  if (!so) throw new Error("Sales Order not found");
+
+  await db.$transaction(async (tx) => {
+    await tx.salesOrder.update({
+      where: { id },
+      data: { status: "CONFIRMED" },
+    });
+    // Reserve stock for every tracked item on the SO. reserveStock
+    // is idempotent — re-confirming an already-confirmed SO is safe.
+    await reserveStock(
+      tx,
+      organization.id,
+      { type: "SalesOrder", id: so.id, number: so.number },
+      so.lineItems.map((l) => ({ itemId: l.itemId, quantity: l.quantity }))
+    );
   });
   await writeAuditLog({
     organizationId: organization.id,
@@ -246,9 +264,15 @@ export async function confirmSalesOrderAction(id: string): Promise<void> {
 
 export async function closeSalesOrderAction(id: string): Promise<void> {
   const { user, organization } = await requireOrganization();
-  await db.salesOrder.update({
-    where: { id },
-    data: { status: "CLOSED" },
+  await db.$transaction(async (tx) => {
+    await tx.salesOrder.update({
+      where: { id },
+      data: { status: "CLOSED" },
+    });
+    // Closed = order completed. If any reservations are still active
+    // (i.e., the SO was closed without ever shipping via a DC), free
+    // them now. consumed/released rows stay untouched.
+    await releaseStock(tx, organization.id, "SalesOrder", id);
   });
   await writeAuditLog({
     organizationId: organization.id,
@@ -319,6 +343,21 @@ export async function convertSalesOrderToInvoiceAction(soId: string) {
       where: { id: soId },
       data: { status: "CLOSED", convertedInvoiceId: created.id },
     });
+    // Stock bookkeeping:
+    //  - Release any SO reservations (the invoice is the new source
+    //    of truth for the sale)
+    //  - Decrement on-hand for every tracked line on the new invoice
+    await releaseStock(tx, organization.id, "SalesOrder", soId);
+    await applyInvoiceStockDecrement(
+      tx,
+      organization.id,
+      { number: created.number, date: created.issueDate },
+      so.lineItems.map((l) => ({
+        itemId: l.itemId,
+        quantity: l.quantity,
+        description: l.description ?? l.name,
+      }))
+    );
     return created;
   });
 
@@ -388,7 +427,14 @@ export async function deleteSalesOrderAction(id: string) {
   if (so.convertedInvoiceId) {
     return { ok: false, error: "Sales order already invoiced" };
   }
-  await db.salesOrder.update({ where: { id }, data: { deletedAt: new Date() } });
+  await db.$transaction(async (tx) => {
+    await tx.salesOrder.update({
+      where: { id },
+      data: { deletedAt: new Date() },
+    });
+    // Free any reserved stock so it's available again.
+    await releaseStock(tx, organization.id, "SalesOrder", id);
+  });
   await writeAuditLog({
     organizationId: organization.id,
     userId: user.id,
@@ -467,25 +513,47 @@ export async function bulkMarkSalesOrdersOpenAction(input: {
 }): Promise<{ ok: boolean; updated?: number; error?: string }> {
   const { user, organization } = await requireOrganization();
   if (!input.ids?.length) return { ok: true, updated: 0 };
-  const result = await db.salesOrder.updateMany({
+  // Fetch the DRAFT orders we're about to confirm so we can reserve
+  // stock for their line items. We need lineItems + number, hence a
+  // findMany rather than the bulk updateMany.
+  const drafts = await db.salesOrder.findMany({
     where: {
       id: { in: input.ids },
       organizationId: organization.id,
       deletedAt: null,
       status: "DRAFT",
     },
-    data: { status: "CONFIRMED" },
+    include: { lineItems: true },
   });
+  let count = 0;
+  for (const so of drafts) {
+    await db.$transaction(async (tx) => {
+      await tx.salesOrder.update({
+        where: { id: so.id },
+        data: { status: "CONFIRMED" },
+      });
+      await reserveStock(
+        tx,
+        organization.id,
+        { type: "SalesOrder", id: so.id, number: so.number },
+        so.lineItems.map((l) => ({
+          itemId: l.itemId,
+          quantity: l.quantity,
+        }))
+      );
+    });
+    count += 1;
+  }
   await writeAuditLog({
     organizationId: organization.id,
     userId: user.id,
     action: "UPDATE",
     entityType: "SalesOrder",
     entityId: `bulk-${Date.now()}`,
-    after: { status: "CONFIRMED", count: result.count, ids: input.ids },
+    after: { status: "CONFIRMED", count, ids: input.ids },
   });
   revalidatePath("/sales/orders");
-  return { ok: true, updated: result.count };
+  return { ok: true, updated: count };
 }
 
 export async function bulkDeleteSalesOrdersAction(input: {
@@ -515,6 +583,12 @@ export async function bulkDeleteSalesOrdersAction(input: {
     },
     data: { deletedAt: new Date() },
   });
+  // Release any active reservations tied to these SOs. updateMany
+  // doesn't give us per-row context but releaseStock is per-source,
+  // so iterate.
+  for (const id of input.ids) {
+    await releaseStock(db, organization.id, "SalesOrder", id);
+  }
   await writeAuditLog({
     organizationId: organization.id,
     userId: user.id,
