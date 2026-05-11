@@ -2,450 +2,1035 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, Plus, Trash2 } from "lucide-react";
+import { useForm, useFieldArray, Controller } from "react-hook-form";
+import { Eye, EyeOff, Loader2, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Combobox, type ComboboxOption } from "@/components/ui/combobox";
+import { MoneyInput } from "@/components/shared/money-input";
+import { PartnerBankPromo } from "@/components/shared/partner-bank-promo";
 import { gstinErrors } from "@/lib/validators/gstin";
 import type { VendorInput } from "./actions";
 
 /**
- * P2-A: Minimal Vendor form so the /new and /edit routes resolve.
- * The full 7-tab form (Other Details / Address / Contact Persons /
- * Bank Details / Custom Fields / Reporting Tags / Remarks) lands in
- * P2-B. This v1 captures only the primary-contact + company-info
- * essentials + a minimal bank-account block.
+ * P2-B full 7-tab Vendor form.
  *
- * Fields exposed:
- *   - Primary contact: salutation / first / last
- *   - Company: companyName
- *   - Display name (required, unique)
- *   - Email, work phone, mobile
- *   - GSTIN, PAN, place of supply
- *   - MSME registered + number/category/date (revealed when checked)
- *   - Currency
- *   - One bank account (account holder / bank name / account no / IFSC)
- *   - Notes (Remarks)
+ * Tabs (per master prompt's <vendors_spec>):
+ *   - Other Details (default) — PAN / MSME / Currency / A/P account /
+ *     Opening Balance / Payment Terms / TDS / Portal / GST extras
+ *     (collapsible)
+ *   - Address — Billing | Shipping side-by-side, "Copy billing to
+ *     shipping" link
+ *   - Contact Persons — inline editable table, primary radio
+ *   - Bank Details — multi-account, account-number eye-toggle,
+ *     re-enter validation, IFSC regex, partner-bank promo on right
+ *   - Custom Fields / Reporting Tags — stub-with-link cards (config
+ *     elsewhere; renderer reused from Customer)
+ *   - Remarks — free-form notes
+ *
+ * Mirrors `app/(dashboard)/sales/customers/customer-form.tsx` for
+ * consistency. Uses react-hook-form + the existing zod schema in
+ * `./actions` for validation.
  */
-export function VendorForm({
-  initial,
-  action,
-  submitLabel,
-}: {
+
+const SALUTATIONS = ["Mr.", "Mrs.", "Ms.", "Miss", "Dr.", ""] as const;
+const LANGUAGES = [
+  { value: "en", label: "English" },
+  { value: "hi", label: "Hindi" },
+  { value: "ta", label: "Tamil" },
+  { value: "te", label: "Telugu" },
+  { value: "mr", label: "Marathi" },
+  { value: "bn", label: "Bengali" },
+  { value: "kn", label: "Kannada" },
+  { value: "ml", label: "Malayalam" },
+  { value: "gu", label: "Gujarati" },
+  { value: "pa", label: "Punjabi" },
+];
+const MSME_CATEGORIES: ComboboxOption[] = [
+  { value: "MICRO", label: "Micro" },
+  { value: "SMALL", label: "Small" },
+  { value: "MEDIUM", label: "Medium" },
+];
+
+const blankAddress = {
+  kind: "billing" as const,
+  attention: "",
+  country: "India",
+  addressLine1: "",
+  addressLine2: "",
+  city: "",
+  state: "",
+  zipCode: "",
+  phone: "",
+  fax: "",
+  isDefault: false,
+};
+
+const blankContactPerson = {
+  salutation: "",
+  firstName: "",
+  lastName: "",
+  email: "",
+  workPhone: "",
+  mobile: "",
+  designation: "",
+  department: "",
+  isPrimary: false,
+};
+
+const blankBank = {
+  accountHolderName: "",
+  bankName: "",
+  accountNumber: "",
+  reEnteredAccountNumber: "",
+  ifscCode: "",
+  isDefault: false,
+};
+
+export type VendorFormProps = {
   initial?: Partial<VendorInput> & { id?: string };
+  paymentTermsOptions?: ComboboxOption[];
+  accountsPayableOptions?: ComboboxOption[];
+  tdsOptions?: ComboboxOption[];
   action: (input: VendorInput) => Promise<unknown>;
   submitLabel: string;
-}) {
+  cancelHref?: string;
+};
+
+function GstinValidationHint({ value }: { value: string }) {
+  const v = (value ?? "").trim();
+  if (v.length === 0) return null;
+  const errors = gstinErrors(v);
+  if (errors.length === 0) {
+    return (
+      <p className="text-xs text-emerald-700 dark:text-emerald-400">
+        ✓ Valid GSTIN format
+      </p>
+    );
+  }
+  return (
+    <p className="text-xs text-amber-700 dark:text-amber-400">{errors[0]}</p>
+  );
+}
+
+export function VendorForm({
+  initial,
+  paymentTermsOptions = [],
+  accountsPayableOptions = [],
+  tdsOptions = [],
+  action,
+  submitLabel,
+  cancelHref = "/purchases/vendors",
+}: VendorFormProps) {
   const router = useRouter();
   const [busy, setBusy] = React.useState(false);
+  const [showMore, setShowMore] = React.useState(false);
+  const [showAcctNos, setShowAcctNos] = React.useState<Record<number, boolean>>(
+    {}
+  );
 
-  type BankRow = NonNullable<VendorInput["bankAccounts"]>[number];
-  const [v, setV] = React.useState<VendorInput>({
-    salutation: initial?.salutation ?? "",
-    firstName: initial?.firstName ?? "",
-    lastName: initial?.lastName ?? "",
-    companyName: initial?.companyName ?? "",
-    displayName: initial?.displayName ?? "",
-    email: initial?.email ?? "",
-    workPhone: initial?.workPhone ?? "",
-    workPhoneCountry: initial?.workPhoneCountry ?? "+91",
-    mobile: initial?.mobile ?? "",
-    mobileCountry: initial?.mobileCountry ?? "+91",
-    language: initial?.language ?? "en",
-    pan: initial?.pan ?? "",
-    gstin: initial?.gstin ?? "",
-    gstTreatment: initial?.gstTreatment ?? "",
-    placeOfSupply: initial?.placeOfSupply ?? "",
-    taxPreference: initial?.taxPreference ?? "",
-    currency: initial?.currency ?? "INR",
-    accountsPayableId: initial?.accountsPayableId ?? "",
-    openingBalance: initial?.openingBalance ?? 0,
-    paymentTermsId: initial?.paymentTermsId ?? "",
-    defaultTdsId: initial?.defaultTdsId ?? "",
-    enableVendorPortal: initial?.enableVendorPortal ?? false,
-    msmeRegistered: initial?.msmeRegistered ?? false,
-    msmeNumber: initial?.msmeNumber ?? "",
-    msmeCategory: initial?.msmeCategory ?? "",
-    msmeRegisteredDate: initial?.msmeRegisteredDate ?? "",
-    notes: initial?.notes ?? "",
-    bankAccounts: initial?.bankAccounts ?? [],
+  const form = useForm<VendorInput>({
+    defaultValues: {
+      salutation: "",
+      firstName: "",
+      lastName: "",
+      companyName: "",
+      displayName: "",
+      email: "",
+      workPhone: "",
+      workPhoneCountry: "+91",
+      mobile: "",
+      mobileCountry: "+91",
+      language: "en",
+      pan: "",
+      gstin: "",
+      gstTreatment: "",
+      placeOfSupply: "",
+      taxPreference: "taxable",
+      currency: "INR",
+      accountsPayableId: "",
+      openingBalance: 0,
+      paymentTermsId: "",
+      defaultTdsId: "",
+      enableVendorPortal: false,
+      msmeRegistered: false,
+      msmeNumber: "",
+      msmeCategory: "",
+      msmeRegisteredDate: "",
+      websiteUrl: "",
+      facebookUrl: "",
+      twitterHandle: "",
+      notes: "",
+      bankAccounts: [],
+      addresses: [],
+      contactPersons: [],
+      ...(initial ?? {}),
+    },
   });
 
-  function set<K extends keyof VendorInput>(k: K, val: VendorInput[K]) {
-    setV((s) => ({ ...s, [k]: val }));
+  const addresses = useFieldArray({
+    control: form.control,
+    name: "addresses",
+  });
+  const persons = useFieldArray({
+    control: form.control,
+    name: "contactPersons",
+  });
+  const banks = useFieldArray({
+    control: form.control,
+    name: "bankAccounts",
+  });
+
+  // Seed the two canonical address rows (Billing + Shipping) on
+  // first mount when the form is creating a new vendor.
+  React.useEffect(() => {
+    if (addresses.fields.length === 0) {
+      addresses.append({
+        ...blankAddress,
+        kind: "billing",
+        isDefault: true,
+      });
+      addresses.append({ ...blankAddress, kind: "shipping" });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Auto-suggest display name combinations as the user types.
+  const firstName = form.watch("firstName");
+  const lastName = form.watch("lastName");
+  const salutation = form.watch("salutation");
+  const companyName = form.watch("companyName");
+  const displayNameSuggestions = React.useMemo(() => {
+    const out = new Set<string>();
+    const name = [firstName, lastName].filter(Boolean).join(" ").trim();
+    if (name) {
+      out.add(name);
+      if (salutation) out.add(`${salutation} ${name}`);
+    }
+    if (lastName && firstName) out.add(`${lastName}, ${firstName}`);
+    if (companyName) out.add(companyName);
+    return Array.from(out);
+  }, [firstName, lastName, salutation, companyName]);
+
+  const msmeRegistered = form.watch("msmeRegistered");
+
+  function copyBillingToShipping() {
+    const all = form.getValues("addresses") ?? [];
+    const billing = all.find((a) => a?.kind === "billing");
+    if (!billing) return;
+    const shippingIdx = all.findIndex((a) => a?.kind === "shipping");
+    const next = {
+      ...billing,
+      kind: "shipping" as const,
+      isDefault: false,
+    };
+    if (shippingIdx >= 0) addresses.update(shippingIdx, next);
+    else addresses.append(next);
+    toast.success("Copied billing address to shipping");
   }
 
-  // Auto-suggest displayName when first/last/company change and the
-  // user hasn't manually edited it yet.
-  const displayNameTouched = React.useRef(!!initial?.displayName);
-  React.useEffect(() => {
-    if (displayNameTouched.current) return;
-    const composed =
-      v.companyName ||
-      [v.firstName, v.lastName].filter(Boolean).join(" ") ||
-      "";
-    if (composed) set("displayName", composed);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [v.firstName, v.lastName, v.companyName]);
-
-  const gstWarning =
-    v.gstin && v.gstin.length > 0 ? gstinErrors(v.gstin)[0] : null;
-
-  async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
+  async function onSubmit(values: VendorInput) {
     setBusy(true);
     try {
-      await action(v);
+      await action(values);
       toast.success("Vendor saved");
-      router.refresh();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Save failed");
-    } finally {
       setBusy(false);
     }
   }
 
   return (
-    <form onSubmit={onSubmit} className="space-y-6">
-      {/* Primary contact */}
-      <Section title="Primary contact">
-        <div className="grid gap-3 md:grid-cols-3">
-          <Field label="Salutation">
-            <Input
-              value={v.salutation ?? ""}
-              onChange={(e) => set("salutation", e.target.value)}
-              placeholder="Mr. / Ms. / Mrs."
+    <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+      {/* ───── Top fixed section ───── */}
+      <section className="space-y-4 rounded-md border bg-card p-6">
+        <div className="grid gap-3 md:grid-cols-[10rem_1fr] items-start">
+          <Label className="pt-2">Primary contact</Label>
+          <div className="grid gap-2 md:grid-cols-3">
+            <Controller
+              name="salutation"
+              control={form.control}
+              render={({ field }) => (
+                <Combobox
+                  options={SALUTATIONS.map((s) => ({
+                    value: s,
+                    label: s || "—",
+                  }))}
+                  value={field.value ?? null}
+                  onChange={(v) => field.onChange(v ?? "")}
+                  placeholder="Salutation"
+                />
+              )}
             />
-          </Field>
-          <Field label="First name">
             <Input
-              value={v.firstName ?? ""}
-              onChange={(e) => set("firstName", e.target.value)}
+              placeholder="First name"
+              autoFocus
+              {...form.register("firstName")}
             />
-          </Field>
-          <Field label="Last name">
-            <Input
-              value={v.lastName ?? ""}
-              onChange={(e) => set("lastName", e.target.value)}
-            />
-          </Field>
-        </div>
-        <div className="grid gap-3 md:grid-cols-2 mt-3">
-          <Field label="Company name">
-            <Input
-              value={v.companyName ?? ""}
-              onChange={(e) => set("companyName", e.target.value)}
-            />
-          </Field>
-          <Field label="Display name" required>
-            <Input
-              value={v.displayName}
-              onChange={(e) => {
-                displayNameTouched.current = true;
-                set("displayName", e.target.value);
-              }}
-              required
-            />
-          </Field>
-        </div>
-        <div className="grid gap-3 md:grid-cols-3 mt-3">
-          <Field label="Email">
-            <Input
-              type="email"
-              value={v.email ?? ""}
-              onChange={(e) => set("email", e.target.value)}
-            />
-          </Field>
-          <Field label="Work phone">
-            <Input
-              value={v.workPhone ?? ""}
-              onChange={(e) => set("workPhone", e.target.value)}
-            />
-          </Field>
-          <Field label="Mobile">
-            <Input
-              value={v.mobile ?? ""}
-              onChange={(e) => set("mobile", e.target.value)}
-            />
-          </Field>
-        </div>
-      </Section>
-
-      {/* Tax + identity */}
-      <Section title="Tax & identity">
-        <div className="grid gap-3 md:grid-cols-3">
-          <Field
-            label="GSTIN"
-            hint={gstWarning ?? (v.gstin ? "✓ Looks valid" : undefined)}
-            hintTone={gstWarning ? "warn" : v.gstin ? "ok" : undefined}
-          >
-            <Input
-              value={v.gstin ?? ""}
-              onChange={(e) => set("gstin", e.target.value.toUpperCase())}
-              placeholder="22AAAAA0000A1Z5"
-              className="uppercase font-mono"
-              maxLength={15}
-            />
-          </Field>
-          <Field label="PAN">
-            <Input
-              value={v.pan ?? ""}
-              onChange={(e) => set("pan", e.target.value.toUpperCase())}
-              placeholder="AAAAA0000A"
-              className="uppercase font-mono"
-              maxLength={10}
-            />
-          </Field>
-          <Field label="Place of supply (state code)">
-            <Input
-              value={v.placeOfSupply ?? ""}
-              onChange={(e) => set("placeOfSupply", e.target.value)}
-              placeholder="e.g. 27 for Maharashtra"
-              maxLength={2}
-            />
-          </Field>
-        </div>
-      </Section>
-
-      {/* MSME */}
-      <Section title="MSME registration">
-        <label className="flex items-center gap-2 text-sm cursor-pointer">
-          <input
-            type="checkbox"
-            checked={!!v.msmeRegistered}
-            onChange={(e) => set("msmeRegistered", e.target.checked)}
-          />
-          This vendor is MSME registered
-        </label>
-        {v.msmeRegistered ? (
-          <div className="grid gap-3 md:grid-cols-3 mt-3">
-            <Field label="MSME number">
-              <Input
-                value={v.msmeNumber ?? ""}
-                onChange={(e) => set("msmeNumber", e.target.value)}
-              />
-            </Field>
-            <Field label="Category">
-              <select
-                value={v.msmeCategory ?? ""}
-                onChange={(e) => set("msmeCategory", e.target.value || null)}
-                className="h-10 w-full rounded-md border bg-background px-3 text-sm"
-              >
-                <option value="">— Select —</option>
-                <option value="MICRO">Micro</option>
-                <option value="SMALL">Small</option>
-                <option value="MEDIUM">Medium</option>
-              </select>
-            </Field>
-            <Field label="Registration date">
-              <Input
-                type="date"
-                value={(v.msmeRegisteredDate as string) ?? ""}
-                onChange={(e) => set("msmeRegisteredDate", e.target.value)}
-              />
-            </Field>
+            <Input placeholder="Last name" {...form.register("lastName")} />
           </div>
-        ) : null}
-      </Section>
 
-      {/* Bank accounts */}
-      <Section title="Bank account">
-        <div className="space-y-3">
-          {(v.bankAccounts ?? []).map((b, i) => (
-            <div
-              key={i}
-              className="grid gap-3 md:grid-cols-4 items-end rounded border p-3"
-            >
-              <Field label="Holder name">
-                <Input
-                  value={b.accountHolderName ?? ""}
-                  onChange={(e) =>
-                    set(
-                      "bankAccounts",
-                      (v.bankAccounts ?? []).map((row, idx) =>
-                        idx === i
-                          ? { ...row, accountHolderName: e.target.value }
-                          : row
-                      )
-                    )
-                  }
+          <Label className="pt-2">Company name</Label>
+          <Input
+            {...form.register("companyName")}
+            placeholder="Company name"
+          />
+
+          <Label className="pt-2" htmlFor="displayName">
+            Display name *
+          </Label>
+          <div>
+            <Controller
+              name="displayName"
+              control={form.control}
+              render={({ field }) => (
+                <Combobox
+                  options={[
+                    ...displayNameSuggestions.map((s) => ({
+                      value: s,
+                      label: s,
+                    })),
+                    ...(field.value &&
+                    !displayNameSuggestions.includes(field.value)
+                      ? [{ value: field.value, label: field.value }]
+                      : []),
+                  ]}
+                  value={field.value || null}
+                  onChange={(v) => field.onChange(v ?? "")}
+                  placeholder="Vendor display name"
+                  allowCreate
+                  onCreate={(input) => field.onChange(input)}
                 />
-              </Field>
-              <Field label="Bank name">
-                <Input
-                  value={b.bankName ?? ""}
-                  onChange={(e) =>
-                    set(
-                      "bankAccounts",
-                      (v.bankAccounts ?? []).map((row, idx) =>
-                        idx === i ? { ...row, bankName: e.target.value } : row
-                      )
-                    )
-                  }
-                />
-              </Field>
-              <Field label="Account #" required>
-                <Input
-                  type="password"
-                  value={b.accountNumber}
-                  onChange={(e) =>
-                    set(
-                      "bankAccounts",
-                      (v.bankAccounts ?? []).map((row, idx) =>
-                        idx === i
-                          ? { ...row, accountNumber: e.target.value }
-                          : row
-                      )
-                    )
-                  }
-                  required
-                />
-              </Field>
-              <div className="flex items-end gap-2">
-                <Field label="IFSC" required>
-                  <Input
-                    value={b.ifscCode}
-                    onChange={(e) =>
-                      set(
-                        "bankAccounts",
-                        (v.bankAccounts ?? []).map((row, idx) =>
-                          idx === i
-                            ? {
-                                ...row,
-                                ifscCode: e.target.value.toUpperCase(),
-                              }
-                            : row
-                        )
-                      )
-                    }
-                    placeholder="HDFC0001234"
-                    className="uppercase font-mono"
-                    maxLength={11}
-                    required
-                  />
-                </Field>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  onClick={() =>
-                    set(
-                      "bankAccounts",
-                      (v.bankAccounts ?? []).filter((_, idx) => idx !== i)
-                    )
-                  }
-                  aria-label="Remove bank account"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </div>
+              )}
+            />
+            {form.formState.errors.displayName ? (
+              <p className="mt-1 text-xs text-destructive">
+                {form.formState.errors.displayName.message}
+              </p>
+            ) : null}
+          </div>
+
+          <Label className="pt-2" htmlFor="email">
+            Email address
+          </Label>
+          <Input
+            type="email"
+            {...form.register("email")}
+            placeholder="email@example.com"
+          />
+
+          <Label className="pt-2">Phone</Label>
+          <div className="grid gap-2 md:grid-cols-2">
+            <div className="flex gap-2">
+              <Input
+                {...form.register("workPhoneCountry")}
+                className="w-20"
+                placeholder="+91"
+              />
+              <Input
+                {...form.register("workPhone")}
+                placeholder="Work phone"
+              />
             </div>
-          ))}
+            <div className="flex gap-2">
+              <Input
+                {...form.register("mobileCountry")}
+                className="w-20"
+                placeholder="+91"
+              />
+              <Input {...form.register("mobile")} placeholder="Mobile" />
+            </div>
+          </div>
+
+          <Label className="pt-2">Vendor language</Label>
+          <Controller
+            name="language"
+            control={form.control}
+            render={({ field }) => (
+              <Combobox
+                options={LANGUAGES}
+                value={field.value ?? "en"}
+                onChange={(v) => field.onChange(v ?? "en")}
+              />
+            )}
+          />
+        </div>
+      </section>
+
+      {/* ───── Tabs ───── */}
+      <Tabs defaultValue="other" className="space-y-4">
+        <TabsList className="flex-wrap">
+          <TabsTrigger value="other">Other Details</TabsTrigger>
+          <TabsTrigger value="address">Address</TabsTrigger>
+          <TabsTrigger value="persons">Contact Persons</TabsTrigger>
+          <TabsTrigger value="bank">Bank Details</TabsTrigger>
+          <TabsTrigger value="custom">Custom Fields</TabsTrigger>
+          <TabsTrigger value="tags">Reporting Tags</TabsTrigger>
+          <TabsTrigger value="remarks">Remarks</TabsTrigger>
+        </TabsList>
+
+        {/* ─── Other Details ─── */}
+        <TabsContent value="other" className="space-y-4">
+          <div className="grid gap-3 md:grid-cols-[10rem_1fr] items-start">
+            <Label className="pt-2">PAN</Label>
+            <div>
+              <Input
+                {...form.register("pan")}
+                placeholder="ABCDE1234F"
+                className="uppercase"
+                maxLength={10}
+              />
+              {form.formState.errors.pan ? (
+                <p className="mt-1 text-xs text-destructive">
+                  {form.formState.errors.pan.message}
+                </p>
+              ) : null}
+            </div>
+
+            <Label className="pt-2">MSME registered?</Label>
+            <div className="space-y-3">
+              <Controller
+                name="msmeRegistered"
+                control={form.control}
+                render={({ field }) => (
+                  <div className="flex items-center gap-2">
+                    <Switch
+                      checked={!!field.value}
+                      onCheckedChange={field.onChange}
+                    />
+                    <span className="text-sm text-muted-foreground">
+                      This vendor is MSME registered
+                    </span>
+                  </div>
+                )}
+              />
+              {msmeRegistered ? (
+                <div className="grid gap-2 md:grid-cols-3">
+                  <Input
+                    {...form.register("msmeNumber")}
+                    placeholder="MSME / Udyam number"
+                  />
+                  <Controller
+                    name="msmeCategory"
+                    control={form.control}
+                    render={({ field }) => (
+                      <Combobox
+                        options={MSME_CATEGORIES}
+                        value={field.value ?? null}
+                        onChange={(v) => field.onChange(v ?? "")}
+                        placeholder="Category"
+                      />
+                    )}
+                  />
+                  <Input
+                    type="date"
+                    {...form.register("msmeRegisteredDate")}
+                  />
+                </div>
+              ) : null}
+              {form.formState.errors.msmeNumber ? (
+                <p className="text-xs text-destructive">
+                  {form.formState.errors.msmeNumber.message}
+                </p>
+              ) : null}
+            </div>
+
+            <Label className="pt-2">Currency</Label>
+            <Input
+              {...form.register("currency")}
+              placeholder="INR"
+              className="uppercase"
+              maxLength={3}
+            />
+
+            <Label className="pt-2">Accounts payable</Label>
+            <Controller
+              name="accountsPayableId"
+              control={form.control}
+              render={({ field }) => (
+                <Combobox
+                  options={accountsPayableOptions}
+                  value={field.value ?? null}
+                  onChange={(v) => field.onChange(v ?? "")}
+                  placeholder={
+                    accountsPayableOptions.length === 0
+                      ? "Default A/P account"
+                      : "Choose A/P account"
+                  }
+                />
+              )}
+            />
+
+            <Label className="pt-2">Opening balance</Label>
+            <div>
+              <Controller
+                name="openingBalance"
+                control={form.control}
+                render={({ field }) => (
+                  <MoneyInput
+                    value={field.value ?? ""}
+                    onChange={(v) =>
+                      field.onChange(v === "" ? null : Number(v))
+                    }
+                    currencyCode="INR"
+                    allowNegative
+                  />
+                )}
+              />
+              <p className="mt-1 text-xs text-muted-foreground">
+                Positive = you owe the vendor. Negative = vendor owes you.
+              </p>
+            </div>
+
+            <Label className="pt-2">Payment terms</Label>
+            <Controller
+              name="paymentTermsId"
+              control={form.control}
+              render={({ field }) => (
+                <Combobox
+                  options={paymentTermsOptions}
+                  value={field.value ?? null}
+                  onChange={(v) => field.onChange(v ?? "")}
+                  placeholder="Due on Receipt"
+                />
+              )}
+            />
+
+            <Label className="pt-2">TDS</Label>
+            <Controller
+              name="defaultTdsId"
+              control={form.control}
+              render={({ field }) => (
+                <Combobox
+                  options={tdsOptions}
+                  value={field.value ?? null}
+                  onChange={(v) => field.onChange(v ?? "")}
+                  placeholder={
+                    tdsOptions.length === 0
+                      ? "No TDS taxes configured"
+                      : "Select TDS"
+                  }
+                />
+              )}
+            />
+
+            <Label className="pt-2 flex items-start gap-2">
+              <span>Enable portal?</span>
+            </Label>
+            <Controller
+              name="enableVendorPortal"
+              control={form.control}
+              render={({ field }) => (
+                <div className="flex items-center gap-2">
+                  <Switch
+                    checked={!!field.value}
+                    onCheckedChange={field.onChange}
+                  />
+                  <span className="text-sm text-muted-foreground">
+                    Allow portal access for this vendor
+                  </span>
+                </div>
+              )}
+            />
+          </div>
+
+          <div>
+            <button
+              type="button"
+              onClick={() => setShowMore((s) => !s)}
+              className="text-sm text-primary hover:underline"
+            >
+              {showMore ? "− Hide additional details" : "+ Add more details"}
+            </button>
+          </div>
+          {showMore ? (
+            <div className="grid gap-3 md:grid-cols-[10rem_1fr] items-start border-t pt-4">
+              <Label className="pt-2">Tax preference</Label>
+              <Controller
+                name="taxPreference"
+                control={form.control}
+                render={({ field }) => (
+                  <Combobox
+                    options={[
+                      { value: "taxable", label: "Taxable" },
+                      { value: "tax_exempt", label: "Tax Exempt" },
+                    ]}
+                    value={field.value ?? "taxable"}
+                    onChange={(v) => field.onChange(v ?? "taxable")}
+                  />
+                )}
+              />
+
+              <Label className="pt-2">GSTIN</Label>
+              <div className="space-y-1">
+                <Input
+                  {...form.register("gstin")}
+                  placeholder="22AAAAA0000A1Z5"
+                  className="uppercase"
+                  maxLength={15}
+                />
+                <GstinValidationHint value={form.watch("gstin") ?? ""} />
+              </div>
+
+              <Label className="pt-2">GST treatment</Label>
+              <Controller
+                name="gstTreatment"
+                control={form.control}
+                render={({ field }) => (
+                  <Combobox
+                    options={[
+                      { value: "registered", label: "Registered Business" },
+                      {
+                        value: "unregistered",
+                        label: "Unregistered Business",
+                      },
+                      { value: "composition", label: "Composition Scheme" },
+                      { value: "consumer", label: "Consumer" },
+                      { value: "overseas", label: "Overseas" },
+                    ]}
+                    value={field.value ?? null}
+                    onChange={(v) => field.onChange(v ?? "")}
+                  />
+                )}
+              />
+
+              <Label className="pt-2">Place of supply</Label>
+              <Input
+                {...form.register("placeOfSupply")}
+                placeholder="State name"
+              />
+
+              <Label className="pt-2">Website</Label>
+              <Input
+                {...form.register("websiteUrl")}
+                placeholder="https://"
+              />
+
+              <Label className="pt-2">Twitter</Label>
+              <Input
+                {...form.register("twitterHandle")}
+                placeholder="@handle"
+              />
+
+              <Label className="pt-2">Facebook</Label>
+              <Input
+                {...form.register("facebookUrl")}
+                placeholder="https://facebook.com/..."
+              />
+            </div>
+          ) : null}
+        </TabsContent>
+
+        {/* ─── Address ─── */}
+        <TabsContent value="address" className="space-y-4">
+          <div className="grid gap-4 md:grid-cols-2">
+            {(["billing", "shipping"] as const).map((kind) => {
+              const idx = addresses.fields.findIndex((a) => a.kind === kind);
+              if (idx === -1) return null;
+              return (
+                <div
+                  key={kind}
+                  className="rounded-md border p-4 space-y-2"
+                >
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-semibold capitalize">
+                      {kind} address
+                    </h3>
+                    {kind === "shipping" ? (
+                      <Button
+                        type="button"
+                        variant="link"
+                        size="sm"
+                        onClick={copyBillingToShipping}
+                      >
+                        ↓ Copy billing address
+                      </Button>
+                    ) : null}
+                  </div>
+                  <Input
+                    placeholder="Attention"
+                    {...form.register(`addresses.${idx}.attention`)}
+                  />
+                  <Input
+                    placeholder="Country / Region"
+                    {...form.register(`addresses.${idx}.country`)}
+                  />
+                  <Textarea
+                    placeholder="Street 1"
+                    rows={2}
+                    {...form.register(`addresses.${idx}.addressLine1`)}
+                  />
+                  <Textarea
+                    placeholder="Street 2"
+                    rows={2}
+                    {...form.register(`addresses.${idx}.addressLine2`)}
+                  />
+                  <div className="grid gap-2 md:grid-cols-3">
+                    <Input
+                      placeholder="City"
+                      {...form.register(`addresses.${idx}.city`)}
+                    />
+                    <Input
+                      placeholder="State"
+                      {...form.register(`addresses.${idx}.state`)}
+                    />
+                    <Input
+                      placeholder="Pin code"
+                      {...form.register(`addresses.${idx}.zipCode`)}
+                    />
+                  </div>
+                  <div className="grid gap-2 md:grid-cols-2">
+                    <Input
+                      placeholder="Phone"
+                      {...form.register(`addresses.${idx}.phone`)}
+                    />
+                    <Input
+                      placeholder="Fax"
+                      {...form.register(`addresses.${idx}.fax`)}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <div className="rounded-md border-l-4 border-amber-400 bg-amber-50 dark:bg-amber-950/30 p-3 text-xs">
+            Adding more than two addresses? Save the vendor first, then
+            manage extra addresses from the Vendors list. PDF customization
+            picks the default address.
+          </div>
+        </TabsContent>
+
+        {/* ─── Contact Persons ─── */}
+        <TabsContent value="persons" className="space-y-3">
+          <div className="rounded-md border bg-background overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-muted/40 text-xs uppercase tracking-wider text-muted-foreground">
+                <tr>
+                  <th className="p-2 text-left">Salutation</th>
+                  <th className="p-2 text-left">First name</th>
+                  <th className="p-2 text-left">Last name</th>
+                  <th className="p-2 text-left">Email</th>
+                  <th className="p-2 text-left">Work phone</th>
+                  <th className="p-2 text-left">Mobile</th>
+                  <th className="p-2 text-left">Primary</th>
+                  <th className="w-8 p-2"></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {persons.fields.map((f, i) => (
+                  <tr key={f.id}>
+                    <td className="p-2">
+                      <Input
+                        className="h-8"
+                        {...form.register(`contactPersons.${i}.salutation`)}
+                      />
+                    </td>
+                    <td className="p-2">
+                      <Input
+                        className="h-8"
+                        {...form.register(`contactPersons.${i}.firstName`)}
+                      />
+                    </td>
+                    <td className="p-2">
+                      <Input
+                        className="h-8"
+                        {...form.register(`contactPersons.${i}.lastName`)}
+                      />
+                    </td>
+                    <td className="p-2">
+                      <Input
+                        className="h-8"
+                        type="email"
+                        {...form.register(`contactPersons.${i}.email`)}
+                      />
+                    </td>
+                    <td className="p-2">
+                      <Input
+                        className="h-8"
+                        {...form.register(`contactPersons.${i}.workPhone`)}
+                      />
+                    </td>
+                    <td className="p-2">
+                      <Input
+                        className="h-8"
+                        {...form.register(`contactPersons.${i}.mobile`)}
+                      />
+                    </td>
+                    <td className="p-2">
+                      <Controller
+                        name={`contactPersons.${i}.isPrimary`}
+                        control={form.control}
+                        render={({ field }) => (
+                          <input
+                            type="radio"
+                            name="primaryContactPerson"
+                            checked={!!field.value}
+                            onChange={() => {
+                              persons.fields.forEach((_p, j) =>
+                                form.setValue(
+                                  `contactPersons.${j}.isPrimary`,
+                                  j === i
+                                )
+                              );
+                            }}
+                          />
+                        )}
+                      />
+                    </td>
+                    <td className="p-2">
+                      <button
+                        type="button"
+                        onClick={() => persons.remove(i)}
+                        aria-label="Remove contact person"
+                        className="text-muted-foreground hover:text-destructive"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+                {persons.fields.length === 0 ? (
+                  <tr>
+                    <td
+                      colSpan={8}
+                      className="p-3 text-center text-sm text-muted-foreground"
+                    >
+                      No contact persons yet.
+                    </td>
+                  </tr>
+                ) : null}
+              </tbody>
+            </table>
+          </div>
           <Button
             type="button"
             variant="outline"
             size="sm"
-            onClick={() =>
-              set("bankAccounts", [
-                ...(v.bankAccounts ?? []),
-                {
-                  accountHolderName: "",
-                  bankName: "",
-                  accountNumber: "",
-                  ifscCode: "",
-                  isDefault: (v.bankAccounts ?? []).length === 0,
-                } as BankRow,
-              ])
-            }
             className="gap-1"
+            onClick={() => persons.append({ ...blankContactPerson })}
           >
-            <Plus className="h-4 w-4" /> Add bank account
+            <Plus className="h-4 w-4" /> Add contact person
           </Button>
-        </div>
-      </Section>
+        </TabsContent>
 
-      {/* Vendor-portal access */}
-      <Section title="Portal access">
-        <label className="flex items-center gap-2 text-sm cursor-pointer">
-          <input
-            type="checkbox"
-            checked={!!v.enableVendorPortal}
-            onChange={(e) => set("enableVendorPortal", e.target.checked)}
-          />
-          Allow portal access for this vendor (UI lands in a follow-up)
-        </label>
-      </Section>
+        {/* ─── Bank Details ─── */}
+        <TabsContent value="bank" className="space-y-3">
+          <div className="grid gap-4 md:grid-cols-[1fr_18rem] items-start">
+            <div className="space-y-4">
+              {banks.fields.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  No bank accounts yet — add one below to enable Bill
+                  Payments.
+                </p>
+              ) : null}
+              {banks.fields.map((f, i) => {
+                const visible = !!showAcctNos[i];
+                return (
+                  <div
+                    key={f.id}
+                    className="rounded-md border p-4 space-y-3"
+                  >
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-sm font-semibold">
+                        Bank account #{i + 1}
+                      </h3>
+                      <button
+                        type="button"
+                        onClick={() => banks.remove(i)}
+                        aria-label="Remove bank account"
+                        className="text-muted-foreground hover:text-destructive"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                    <div className="grid gap-2 md:grid-cols-2">
+                      <Input
+                        placeholder="Account holder name"
+                        {...form.register(
+                          `bankAccounts.${i}.accountHolderName`
+                        )}
+                      />
+                      <Input
+                        placeholder="Bank name"
+                        {...form.register(`bankAccounts.${i}.bankName`)}
+                      />
+                    </div>
+                    <div className="grid gap-2 md:grid-cols-2">
+                      <div className="flex gap-2">
+                        <Input
+                          type={visible ? "text" : "password"}
+                          placeholder="Account number *"
+                          {...form.register(
+                            `bankAccounts.${i}.accountNumber`
+                          )}
+                        />
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          aria-label={
+                            visible
+                              ? "Hide account number"
+                              : "Show account number"
+                          }
+                          onClick={() =>
+                            setShowAcctNos((s) => ({
+                              ...s,
+                              [i]: !s[i],
+                            }))
+                          }
+                        >
+                          {visible ? (
+                            <EyeOff className="h-4 w-4" />
+                          ) : (
+                            <Eye className="h-4 w-4" />
+                          )}
+                        </Button>
+                      </div>
+                      <div>
+                        <Input
+                          type={visible ? "text" : "password"}
+                          placeholder="Re-enter account number *"
+                          {...form.register(
+                            `bankAccounts.${i}.reEnteredAccountNumber`
+                          )}
+                        />
+                        {form.formState.errors.bankAccounts?.[i]
+                          ?.reEnteredAccountNumber ? (
+                          <p className="mt-1 text-xs text-destructive">
+                            {
+                              form.formState.errors.bankAccounts[i]
+                                ?.reEnteredAccountNumber?.message
+                            }
+                          </p>
+                        ) : null}
+                      </div>
+                    </div>
+                    <div className="grid gap-2 md:grid-cols-2 items-start">
+                      <div>
+                        <Input
+                          placeholder="IFSC *"
+                          className="uppercase"
+                          maxLength={11}
+                          {...form.register(`bankAccounts.${i}.ifscCode`)}
+                        />
+                        {form.formState.errors.bankAccounts?.[i]?.ifscCode ? (
+                          <p className="mt-1 text-xs text-destructive">
+                            {
+                              form.formState.errors.bankAccounts[i]?.ifscCode
+                                ?.message
+                            }
+                          </p>
+                        ) : null}
+                      </div>
+                      <Controller
+                        name={`bankAccounts.${i}.isDefault`}
+                        control={form.control}
+                        render={({ field }) => (
+                          <label className="inline-flex items-center gap-2 text-sm pt-2">
+                            <input
+                              type="checkbox"
+                              checked={!!field.value}
+                              onChange={(e) => {
+                                // Single default — clear others when
+                                // selecting this one.
+                                if (e.target.checked) {
+                                  banks.fields.forEach((_b, j) =>
+                                    form.setValue(
+                                      `bankAccounts.${j}.isDefault`,
+                                      j === i
+                                    )
+                                  );
+                                } else {
+                                  field.onChange(false);
+                                }
+                              }}
+                            />
+                            Default for payments
+                          </label>
+                        )}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="gap-1"
+                onClick={() => banks.append({ ...blankBank })}
+              >
+                <Plus className="h-4 w-4" /> Add new bank
+              </Button>
+            </div>
+            <PartnerBankPromo />
+          </div>
+        </TabsContent>
 
-      <Section title="Remarks">
-        <Textarea
-          value={v.notes ?? ""}
-          onChange={(e) => set("notes", e.target.value)}
-          rows={3}
-        />
-      </Section>
+        {/* ─── Custom Fields ─── */}
+        <TabsContent value="custom">
+          <div className="rounded-md border bg-card p-8 text-center text-sm text-muted-foreground">
+            No custom fields yet — configure them in{" "}
+            <a
+              className="underline"
+              href="/settings/preferences/customers-and-vendors"
+            >
+              settings → preferences
+            </a>
+            .
+          </div>
+        </TabsContent>
 
-      <div className="flex justify-end gap-2">
-        <Button type="button" variant="ghost" onClick={() => router.back()}>
-          Cancel
-        </Button>
+        {/* ─── Reporting Tags ─── */}
+        <TabsContent value="tags">
+          <div className="rounded-md border bg-card p-8 text-center text-sm text-muted-foreground">
+            Reporting tag options will appear here once configured in{" "}
+            <a className="underline" href="/settings/reporting-tags">
+              settings → reporting tags
+            </a>
+            .
+          </div>
+        </TabsContent>
+
+        {/* ─── Remarks ─── */}
+        <TabsContent value="remarks">
+          <div className="space-y-2">
+            <Label htmlFor="notes">Remarks</Label>
+            <Textarea
+              id="notes"
+              {...form.register("notes")}
+              placeholder="Free-form notes about this vendor."
+              rows={6}
+            />
+          </div>
+        </TabsContent>
+      </Tabs>
+
+      {/* ───── Sticky action bar ───── */}
+      <div className="flex items-center gap-2 sticky bottom-0 bg-background border-t -mx-6 px-6 py-3">
         <Button type="submit" disabled={busy} className="gap-1">
           {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
           {submitLabel}
         </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          onClick={() => {
+            if (form.formState.isDirty) {
+              if (!confirm("Discard your changes?")) return;
+            }
+            router.push(cancelHref);
+          }}
+        >
+          Cancel
+        </Button>
       </div>
     </form>
-  );
-}
-
-function Section({
-  title,
-  children,
-}: {
-  title: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <fieldset className="rounded-lg border bg-card p-4">
-      <legend className="px-2 text-sm font-medium">{title}</legend>
-      {children}
-    </fieldset>
-  );
-}
-
-function Field({
-  label,
-  required,
-  hint,
-  hintTone,
-  children,
-}: {
-  label: string;
-  required?: boolean;
-  hint?: string | null;
-  hintTone?: "ok" | "warn";
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="space-y-1">
-      <Label>
-        {label}
-        {required ? <span className="text-destructive ml-0.5">*</span> : null}
-      </Label>
-      {children}
-      {hint ? (
-        <p
-          className={
-            "text-xs " +
-            (hintTone === "warn"
-              ? "text-amber-700 dark:text-amber-400"
-              : "text-emerald-700 dark:text-emerald-400")
-          }
-        >
-          {hint}
-        </p>
-      ) : null}
-    </div>
   );
 }

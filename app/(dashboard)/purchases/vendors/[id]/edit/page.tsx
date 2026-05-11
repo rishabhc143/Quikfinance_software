@@ -15,19 +15,47 @@ export default async function EditVendorPage({
   params: { id: string };
 }) {
   const { organization } = await requireOrganization();
-  const v = await db.contact.findFirst({
-    where: {
-      id: params.id,
-      organizationId: organization.id,
-      type: { in: ["VENDOR", "BOTH"] },
-    },
-    include: { bankAccounts: { orderBy: { position: "asc" } } },
-  });
+  const [v, paymentTerms, apAccounts, tdsTaxes] = await Promise.all([
+    db.contact.findFirst({
+      where: {
+        id: params.id,
+        organizationId: organization.id,
+        type: { in: ["VENDOR", "BOTH"] },
+      },
+      include: {
+        bankAccounts: { orderBy: { position: "asc" } },
+        addresses: true,
+        contactPersons: { orderBy: { isPrimary: "desc" } },
+      },
+    }),
+    db.paymentTerms.findMany({
+      where: { organizationId: organization.id },
+      orderBy: { numberOfDays: "asc" },
+      select: { id: true, name: true },
+    }),
+    db.chartOfAccount.findMany({
+      where: {
+        organizationId: organization.id,
+        type: "LIABILITY",
+        isActive: true,
+      },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true, code: true },
+    }),
+    db.tax.findMany({
+      where: {
+        organizationId: organization.id,
+        isActive: true,
+        OR: [{ type: "TDS" }, { type: "tds" }],
+      },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true, rate: true },
+    }),
+  ]);
   if (!v) notFound();
 
-  // Map the Contact row + bank accounts into the VendorInput shape
-  // the form expects. ISO strings for dates so the <Input type="date">
-  // pre-fills.
+  // Map the Contact row + child collections into the VendorInput
+  // shape the form expects.
   const initial: Partial<VendorInput> & { id: string } = {
     id: v.id,
     salutation: v.salutation,
@@ -58,13 +86,43 @@ export default async function EditVendorPage({
     msmeRegisteredDate: v.msmeRegisteredDate
       ? v.msmeRegisteredDate.toISOString().slice(0, 10)
       : "",
+    websiteUrl: v.websiteUrl,
+    facebookUrl: v.facebookUrl,
+    twitterHandle: v.twitterHandle,
     notes: v.notes,
     bankAccounts: v.bankAccounts.map((b) => ({
       accountHolderName: b.accountHolderName,
       bankName: b.bankName,
       accountNumber: b.accountNumber,
+      reEnteredAccountNumber: b.accountNumber,
       ifscCode: b.ifscCode,
       isDefault: b.isDefault,
+    })),
+    addresses: v.addresses
+      .filter((a) => a.kind === "billing" || a.kind === "shipping")
+      .map((a) => ({
+        kind: a.kind as "billing" | "shipping",
+        attention: a.attention ?? "",
+        country: a.country ?? "India",
+        addressLine1: a.addressLine1 ?? "",
+        addressLine2: a.addressLine2 ?? "",
+        city: a.city ?? "",
+        state: a.state ?? "",
+        zipCode: a.zipCode ?? "",
+        phone: a.phone ?? "",
+        fax: a.fax ?? "",
+        isDefault: a.isDefault,
+      })),
+    contactPersons: v.contactPersons.map((p) => ({
+      salutation: p.salutation ?? "",
+      firstName: p.firstName ?? "",
+      lastName: p.lastName ?? "",
+      email: p.email ?? "",
+      workPhone: p.workPhone ?? "",
+      mobile: p.mobile ?? "",
+      designation: p.designation ?? "",
+      department: p.department ?? "",
+      isPrimary: p.isPrimary,
     })),
   };
 
@@ -101,6 +159,18 @@ export default async function EditVendorPage({
         initial={initial}
         action={action}
         submitLabel="Update vendor"
+        paymentTermsOptions={paymentTerms.map((p) => ({
+          value: p.id,
+          label: p.name,
+        }))}
+        accountsPayableOptions={apAccounts.map((a) => ({
+          value: a.id,
+          label: a.code ? `${a.code} — ${a.name}` : a.name,
+        }))}
+        tdsOptions={tdsTaxes.map((t) => ({
+          value: t.id,
+          label: `${t.name} (${Number(t.rate)}%)`,
+        }))}
       />
     </div>
   );
