@@ -71,6 +71,138 @@ export async function updateBillAction(id: string, input: BillInput) {
   redirect(`/purchases/bills/${id}`);
 }
 
+/**
+ * Bulk transitions used by the Bills list page's BulkAwareDataTable.
+ *
+ *  - bulkMarkBillsOpen: Draft bills → OPEN (the "I've reviewed it, it's
+ *    real, I owe this" transition). Skips non-Draft rows silently.
+ *  - bulkVoidBills: any non-void, non-paid → VOID + voidedAt timestamp.
+ *    Paid bills can't be voided (would orphan PaymentMadeAllocation rows).
+ *  - bulkDeleteBills: Draft → hard delete; others → soft-void with
+ *    deletedAt set. Mirrors the single-id softDeleteBillAction policy.
+ */
+export async function bulkMarkBillsOpenAction(input: {
+  ids: string[];
+}): Promise<{ ok: boolean; updated?: number; error?: string }> {
+  const { user, organization } = await requireOrganization();
+  if (!input.ids?.length) return { ok: true, updated: 0 };
+  const result = await db.bill.updateMany({
+    where: {
+      id: { in: input.ids },
+      organizationId: organization.id,
+      deletedAt: null,
+      status: "DRAFT",
+    },
+    data: { status: "OPEN" },
+  });
+  await writeAuditLog({
+    organizationId: organization.id,
+    userId: user.id,
+    action: "UPDATE",
+    entityType: "Bill",
+    entityId: `bulk-open-${Date.now()}`,
+    after: { count: result.count, ids: input.ids },
+  });
+  revalidatePath("/purchases/bills");
+  return { ok: true, updated: result.count };
+}
+
+export async function bulkVoidBillsAction(input: {
+  ids: string[];
+}): Promise<{ ok: boolean; updated?: number; error?: string }> {
+  const { user, organization } = await requireOrganization();
+  if (!input.ids?.length) return { ok: true, updated: 0 };
+  // Paid bills block voiding — voiding would orphan their payment
+  // allocations. Surface a clear error rather than silently skipping.
+  const blocked = await db.bill.count({
+    where: {
+      id: { in: input.ids },
+      organizationId: organization.id,
+      deletedAt: null,
+      status: "PAID",
+    },
+  });
+  if (blocked > 0) {
+    return {
+      ok: false,
+      error: `${blocked} paid bill${
+        blocked === 1 ? "" : "s"
+      } block the void. Reverse the payments first.`,
+    };
+  }
+  const result = await db.bill.updateMany({
+    where: {
+      id: { in: input.ids },
+      organizationId: organization.id,
+      deletedAt: null,
+      status: { notIn: ["VOID", "PAID"] },
+    },
+    data: { status: "VOID", voidedAt: new Date() },
+  });
+  await writeAuditLog({
+    organizationId: organization.id,
+    userId: user.id,
+    action: "UPDATE",
+    entityType: "Bill",
+    entityId: `bulk-void-${Date.now()}`,
+    after: { count: result.count, ids: input.ids },
+  });
+  revalidatePath("/purchases/bills");
+  return { ok: true, updated: result.count };
+}
+
+export async function bulkDeleteBillsAction(input: {
+  ids: string[];
+}): Promise<{ ok: boolean; updated?: number; error?: string }> {
+  const { user, organization } = await requireOrganization();
+  if (!input.ids?.length) return { ok: true, updated: 0 };
+  // Soft-delete + flip status to VOID for non-drafts; hard-delete
+  // draft rows (no business consequence — nothing is referencing
+  // them yet). Match the single-id action's behavior.
+  const drafts = await db.bill.findMany({
+    where: {
+      id: { in: input.ids },
+      organizationId: organization.id,
+      deletedAt: null,
+      status: "DRAFT",
+    },
+    select: { id: true },
+  });
+  const draftIds = new Set(drafts.map((d) => d.id));
+  const nonDraftIds = input.ids.filter((id) => !draftIds.has(id));
+  let total = 0;
+  if (draftIds.size > 0) {
+    const r1 = await db.bill.deleteMany({
+      where: {
+        id: { in: Array.from(draftIds) },
+        organizationId: organization.id,
+      },
+    });
+    total += r1.count;
+  }
+  if (nonDraftIds.length > 0) {
+    const r2 = await db.bill.updateMany({
+      where: {
+        id: { in: nonDraftIds },
+        organizationId: organization.id,
+        deletedAt: null,
+      },
+      data: { deletedAt: new Date(), status: "VOID" },
+    });
+    total += r2.count;
+  }
+  await writeAuditLog({
+    organizationId: organization.id,
+    userId: user.id,
+    action: "DELETE",
+    entityType: "Bill",
+    entityId: `bulk-delete-${Date.now()}`,
+    before: { count: total, ids: input.ids },
+  });
+  revalidatePath("/purchases/bills");
+  return { ok: true, updated: total };
+}
+
 export async function softDeleteBillAction(id: string) {
   const { user, organization } = await requireOrganization();
   const b = await db.bill.findFirst({ where: { id, organizationId: organization.id } });
