@@ -62,3 +62,4 @@ playwright/.cache/
 .vercel
 .migration-key.local
 .tmp-purchases/
+.tmp-purchases-plan/
