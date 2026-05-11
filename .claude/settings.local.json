@@ -4,7 +4,8 @@
       "Bash(pandoc --version)",
       "Bash(gh pr create --base main --head feat/sales-module --title 'feat\\(sales\\): Sales module — Phases S1–S8' --body ' *)",
       "Bash(git checkout *)",
-      "Bash(vercel deploy *)"
+      "Bash(vercel deploy *)",
+      "Bash(gh pr *)"
     ]
   }
 }
