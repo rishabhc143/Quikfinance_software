@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createHmac, timingSafeEqual } from "node:crypto";
 import { db } from "@/lib/db";
 import { decryptSecret } from "@/lib/crypto";
 import { writeAuditLog } from "@/lib/audit";
 import { enqueueEmail } from "@/lib/sales/email-sender";
 import { getNextDocumentNumber } from "@/lib/sales/numbering";
+import {
+  verifyRazorpaySignature,
+  distributeRefundAcrossAllocations,
+} from "@/lib/sales/razorpay-webhook";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -73,15 +76,7 @@ async function findMatchingOrg(rawBody: string, signature: string) {
     } catch {
       continue;
     }
-    const expected = createHmac("sha256", secret).update(rawBody).digest();
-    let actual: Buffer;
-    try {
-      actual = Buffer.from(signature, "hex");
-    } catch {
-      continue;
-    }
-    if (expected.length !== actual.length) continue;
-    if (timingSafeEqual(expected, actual)) {
+    if (verifyRazorpaySignature(rawBody, signature, secret)) {
       return o.organizationId;
     }
   }
@@ -383,38 +378,34 @@ async function handleRefundProcessed(orgId: string, event: RazorpayEvent) {
   // Distribute the refund proportionally across allocations. With a
   // single allocation (the typical webhook-created payment) this is a
   // straight subtract from the lone invoice's amountPaid.
-  const totalAllocated = pr.allocations.reduce(
-    (sum, a) => sum + Number(a.amount),
-    0
+  const invoices = await Promise.all(
+    pr.allocations.map((alloc) =>
+      db.invoice.findUnique({ where: { id: alloc.invoiceId } })
+    )
+  );
+  const reversalInputs = pr.allocations
+    .map((alloc, i) => {
+      const inv = invoices[i];
+      if (!inv) return null;
+      return {
+        invoiceId: alloc.invoiceId,
+        amount: Number(alloc.amount),
+        invoiceAmountPaid: Number(inv.amountPaid),
+        invoiceTotal: Number(inv.total),
+        invoiceStatus: inv.status,
+      };
+    })
+    .filter((x): x is NonNullable<typeof x> => x !== null);
+  const reversals = distributeRefundAcrossAllocations(
+    refundAmount,
+    reversalInputs
   );
 
   await db.$transaction(async (tx) => {
-    for (const alloc of pr.allocations) {
-      const share =
-        totalAllocated > 0
-          ? Number(alloc.amount) / totalAllocated
-          : 1 / pr.allocations.length;
-      const reverse = refundAmount * share;
-      const inv = await tx.invoice.findUnique({
-        where: { id: alloc.invoiceId },
-      });
-      if (!inv) continue;
-      const newAmountPaid = Math.max(
-        0,
-        Number(inv.amountPaid) - reverse
-      );
-      const total = Number(inv.total);
-      const newStatus =
-        newAmountPaid >= total - 0.0001
-          ? "PAID"
-          : newAmountPaid > 0
-          ? "PARTIALLY_PAID"
-          : inv.status === "PAID" || inv.status === "PARTIALLY_PAID"
-          ? "SENT"
-          : inv.status;
+    for (const r of reversals) {
       await tx.invoice.update({
-        where: { id: alloc.invoiceId },
-        data: { amountPaid: newAmountPaid, status: newStatus },
+        where: { id: r.invoiceId },
+        data: { amountPaid: r.newAmountPaid, status: r.newStatus as never },
       });
     }
 
