@@ -28,6 +28,13 @@ describe("parseSourceFromReason", () => {
     });
   });
 
+  it("matches a delivery-challan reason", () => {
+    expect(parseSourceFromReason("DeliveryChallan DC-007")).toEqual({
+      type: "delivery-challan",
+      number: "DC-007",
+    });
+  });
+
   it("strips the `Reverse ` prefix (so both directions deep-link the same way)", () => {
     expect(parseSourceFromReason("Reverse Invoice INV-001")).toEqual({
       type: "invoice",
@@ -36,6 +43,10 @@ describe("parseSourceFromReason", () => {
     expect(parseSourceFromReason("Reverse Credit Note CN-042")).toEqual({
       type: "credit-note",
       number: "CN-042",
+    });
+    expect(parseSourceFromReason("Reverse DeliveryChallan DC-007")).toEqual({
+      type: "delivery-challan",
+      number: "DC-007",
     });
   });
 

@@ -8,6 +8,10 @@ import { writeAuditLog } from "@/lib/audit";
 import { getNextDocumentNumber } from "@/lib/sales/numbering";
 import { computeDocument } from "@/lib/sales/totals";
 import {
+  applyDeliveryChallanShip,
+  reverseDeliveryChallanShip,
+} from "@/lib/inventory/stock-mutations";
+import {
   deliveryChallanSchema,
   type DeliveryChallanInput,
 } from "@/lib/validations/delivery-challan";
@@ -107,9 +111,27 @@ export async function createDeliveryChallanAction(input: DeliveryChallanInput) {
 
 export async function markChallanDeliveredAction(id: string): Promise<void> {
   const { user, organization } = await requireOrganization();
-  await db.deliveryChallan.update({
-    where: { id },
-    data: { status: "DELIVERED" },
+  const dc = await db.deliveryChallan.findFirst({
+    where: { id, organizationId: organization.id, deletedAt: null },
+    include: { lineItems: true },
+  });
+  if (!dc) throw new Error("Delivery Challan not found");
+  await db.$transaction(async (tx) => {
+    await tx.deliveryChallan.update({
+      where: { id },
+      data: { status: "DELIVERED" },
+    });
+    // Goods shipped — decrement on-hand for every tracked line.
+    await applyDeliveryChallanShip(
+      tx,
+      organization.id,
+      { number: dc.number, date: dc.date },
+      dc.lineItems.map((l) => ({
+        itemId: l.itemId,
+        quantity: l.quantity,
+        description: l.description ?? l.name,
+      }))
+    );
   });
   await writeAuditLog({
     organizationId: organization.id,
@@ -124,9 +146,18 @@ export async function markChallanDeliveredAction(id: string): Promise<void> {
 
 export async function markChallanReturnedAction(id: string): Promise<void> {
   const { user, organization } = await requireOrganization();
-  await db.deliveryChallan.update({
-    where: { id },
-    data: { status: "RETURNED" },
+  const dc = await db.deliveryChallan.findFirst({
+    where: { id, organizationId: organization.id },
+    select: { number: true, date: true },
+  });
+  if (!dc) throw new Error("Delivery Challan not found");
+  await db.$transaction(async (tx) => {
+    await tx.deliveryChallan.update({
+      where: { id },
+      data: { status: "RETURNED" },
+    });
+    // Goods came back. Mirror the original ship with positive rows.
+    await reverseDeliveryChallanShip(tx, organization.id, dc);
   });
   await writeAuditLog({
     organizationId: organization.id,
@@ -226,9 +257,17 @@ export async function deleteDeliveryChallanAction(id: string) {
     where: { id, organizationId: organization.id },
   });
   if (!c) return { ok: false };
-  await db.deliveryChallan.update({
-    where: { id },
-    data: { deletedAt: new Date() },
+  await db.$transaction(async (tx) => {
+    await tx.deliveryChallan.update({
+      where: { id },
+      data: { deletedAt: new Date() },
+    });
+    // Soft-delete → undo any ship adjustments tied to this DC.
+    // No-op if it was never delivered.
+    await reverseDeliveryChallanShip(tx, organization.id, {
+      number: c.number,
+      date: c.date,
+    });
   });
   await writeAuditLog({
     organizationId: organization.id,

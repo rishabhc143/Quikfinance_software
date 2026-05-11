@@ -163,6 +163,90 @@ function positive(q: Prisma.Decimal | string | number): Prisma.Decimal | string 
 }
 
 /* =====================================================================
+ * Delivery-challan ship & return
+ *
+ * DCs are issued when goods physically leave the premises. Same row-
+ * level mechanics as the invoice helpers — negative on DELIVERED,
+ * positive mirror on RETURNED / void / delete.
+ *
+ * Reason strings: "DeliveryChallan <number>" and
+ * "Reverse DeliveryChallan <number>".
+ * ===================================================================== */
+
+export type DeliveryChallanStockSummary = {
+  number: string;
+  date: Date;
+};
+
+const reasonForDeliveryChallan = (challanNumber: string) =>
+  `DeliveryChallan ${challanNumber}`;
+
+export async function applyDeliveryChallanShip(
+  tx: TxClient,
+  organizationId: string,
+  challan: DeliveryChallanStockSummary,
+  lines: InvoiceStockLine[]
+): Promise<string[]> {
+  const trackedLines = await filterTrackedLines(tx, organizationId, lines);
+  if (trackedLines.length === 0) return [];
+
+  const reason = reasonForDeliveryChallan(challan.number);
+  const ids: string[] = [];
+  for (const line of trackedLines) {
+    const adj = await tx.inventoryAdjustment.create({
+      data: {
+        organizationId,
+        itemId: line.itemId!,
+        date: challan.date,
+        quantity: negate(line.quantity),
+        reason,
+        notes: line.description ?? null,
+      },
+      select: { id: true },
+    });
+    ids.push(adj.id);
+  }
+  return ids;
+}
+
+export async function reverseDeliveryChallanShip(
+  tx: TxClient,
+  organizationId: string,
+  challan: DeliveryChallanStockSummary
+): Promise<string[]> {
+  const reason = reasonForDeliveryChallan(challan.number);
+  const reverseReason = `Reverse ${reason}`;
+
+  const originals = await tx.inventoryAdjustment.findMany({
+    where: { organizationId, reason },
+    select: { id: true, itemId: true, quantity: true, date: true, notes: true },
+  });
+  if (originals.length === 0) return [];
+
+  const existingReversals = await tx.inventoryAdjustment.count({
+    where: { organizationId, reason: reverseReason },
+  });
+  if (existingReversals >= originals.length) return [];
+
+  const ids: string[] = [];
+  for (const orig of originals) {
+    const adj = await tx.inventoryAdjustment.create({
+      data: {
+        organizationId,
+        itemId: orig.itemId,
+        date: new Date(),
+        quantity: negate(orig.quantity),
+        reason: reverseReason,
+        notes: orig.notes ?? null,
+      },
+      select: { id: true },
+    });
+    ids.push(adj.id);
+  }
+  return ids;
+}
+
+/* =====================================================================
  * Credit-note stock return
  *
  * Customer-returns flow: issuing a credit note for goods sent back

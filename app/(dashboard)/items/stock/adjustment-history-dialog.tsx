@@ -143,7 +143,9 @@ export function AdjustmentHistoryDialog({
                           href={
                             row.sourceLink.type === "invoice"
                               ? `/sales/invoices/${row.sourceLink.id}`
-                              : `/sales/credit-notes/${row.sourceLink.id}`
+                              : row.sourceLink.type === "credit-note"
+                              ? `/sales/credit-notes/${row.sourceLink.id}`
+                              : `/sales/delivery-challans/${row.sourceLink.id}`
                           }
                           className="text-primary hover:underline inline-flex items-center gap-1 text-xs"
                         >

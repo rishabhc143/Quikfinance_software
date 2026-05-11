@@ -19,12 +19,15 @@ export type AdjustmentHistoryRow = {
   reason: string;
   notes: string | null;
   /**
-   * When `reason` matches `Invoice <num>` or `Credit Note <num>`,
-   * sourceLink is the entity ID for a client-side <Link>. Null
-   * otherwise.
+   * When `reason` matches a known source-doc pattern, sourceLink is
+   * the entity ID for a client-side <Link>. Null otherwise.
    */
   sourceLink:
-    | { type: "invoice" | "credit-note"; id: string; number: string }
+    | {
+        type: "invoice" | "credit-note" | "delivery-challan";
+        id: string;
+        number: string;
+      }
     | null;
 };
 
@@ -58,24 +61,29 @@ export async function getAdjustmentHistoryAction(input: {
 
   // For each row whose reason names a source doc, look up the doc's
   // id so the UI can deep-link. Doing the lookups in batch.
-  const invoiceNumbers = rows
-    .map((r) => parseSourceFromReason(r.reason))
-    .filter((p): p is { type: "invoice"; number: string } => p?.type === "invoice")
-    .map((p) => p.number);
-  const creditNoteNumbers = rows
-    .map((r) => parseSourceFromReason(r.reason))
-    .filter(
-      (p): p is { type: "credit-note"; number: string } => p?.type === "credit-note"
-    )
-    .map((p) => p.number);
+  const parsed = rows.map((r) => parseSourceFromReason(r.reason));
+  const numbersFor = (
+    type: "invoice" | "credit-note" | "delivery-challan"
+  ): string[] =>
+    Array.from(
+      new Set(
+        parsed
+          .filter((p): p is NonNullable<typeof p> => p?.type === type)
+          .map((p) => p.number)
+      )
+    );
 
-  const [invoiceMap, creditNoteMap] = await Promise.all([
+  const invoiceNumbers = numbersFor("invoice");
+  const creditNoteNumbers = numbersFor("credit-note");
+  const dcNumbers = numbersFor("delivery-challan");
+
+  const [invoiceMap, creditNoteMap, dcMap] = await Promise.all([
     invoiceNumbers.length
       ? db.invoice
           .findMany({
             where: {
               organizationId: organization.id,
-              number: { in: Array.from(new Set(invoiceNumbers)) },
+              number: { in: invoiceNumbers },
             },
             select: { id: true, number: true },
           })
@@ -86,11 +94,22 @@ export async function getAdjustmentHistoryAction(input: {
           .findMany({
             where: {
               organizationId: organization.id,
-              number: { in: Array.from(new Set(creditNoteNumbers)) },
+              number: { in: creditNoteNumbers },
             },
             select: { id: true, number: true },
           })
           .then((arr) => new Map(arr.map((c) => [c.number, c.id])))
+      : Promise.resolve(new Map<string, string>()),
+    dcNumbers.length
+      ? db.deliveryChallan
+          .findMany({
+            where: {
+              organizationId: organization.id,
+              number: { in: dcNumbers },
+            },
+            select: { id: true, number: true },
+          })
+          .then((arr) => new Map(arr.map((d) => [d.number, d.id])))
       : Promise.resolve(new Map<string, string>()),
   ]);
 
@@ -98,15 +117,17 @@ export async function getAdjustmentHistoryAction(input: {
     ok: true,
     item: item.name,
     rows: rows.map((r) => {
-      const parsed = parseSourceFromReason(r.reason);
+      const p = parseSourceFromReason(r.reason);
       let sourceLink: AdjustmentHistoryRow["sourceLink"] = null;
-      if (parsed?.type === "invoice") {
-        const id = invoiceMap.get(parsed.number);
-        if (id) sourceLink = { type: "invoice", id, number: parsed.number };
-      } else if (parsed?.type === "credit-note") {
-        const id = creditNoteMap.get(parsed.number);
-        if (id)
-          sourceLink = { type: "credit-note", id, number: parsed.number };
+      if (p?.type === "invoice") {
+        const id = invoiceMap.get(p.number);
+        if (id) sourceLink = { type: "invoice", id, number: p.number };
+      } else if (p?.type === "credit-note") {
+        const id = creditNoteMap.get(p.number);
+        if (id) sourceLink = { type: "credit-note", id, number: p.number };
+      } else if (p?.type === "delivery-challan") {
+        const id = dcMap.get(p.number);
+        if (id) sourceLink = { type: "delivery-challan", id, number: p.number };
       }
       return {
         id: r.id,
