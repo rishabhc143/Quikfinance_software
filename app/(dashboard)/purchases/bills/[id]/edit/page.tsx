@@ -16,8 +16,13 @@ export default async function EditBillPage({ params }: { params: { id: string } 
     db.contact.findMany({ where: { organizationId: organization.id, deletedAt: null, type: { in: ["VENDOR", "BOTH"] } }, orderBy: { displayName: "asc" }, select: { id: true, displayName: true } }),
     db.item.findMany({ where: { organizationId: organization.id, deletedAt: null, isActive: true }, orderBy: { name: "asc" }, select: { id: true, name: true, costPrice: true, purchaseDescription: true } }),
   ]);
+  // The new BillStatus enum adds WRITTEN_OFF; the stub form doesn't
+  // yet handle it. Coerce to a known value for now — the full
+  // Purchases UI rebuild swaps this form out per the master prompt.
+  const knownStatus = b.status === "WRITTEN_OFF" ? "VOID" : b.status;
   const initial: Partial<BillFormValues> = {
-    contactId: b.contactId, status: b.status,
+    contactId: b.contactId,
+    status: knownStatus as BillFormValues["status"],
     issueDate: format(b.issueDate, "yyyy-MM-dd"), dueDate: format(b.dueDate, "yyyy-MM-dd"),
     notes: b.notes ?? "",
     lines: b.lineItems.map((l) => ({ itemId: l.itemId, description: l.description, quantity: Number(l.quantity), rate: Number(l.rate) })),

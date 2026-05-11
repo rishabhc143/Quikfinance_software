@@ -86,72 +86,72 @@ model PasswordResetToken {
 // ───────────────────────── ORGANIZATIONS ─────────────────────────
 
 model Organization {
-  id                   String                   @id @default(cuid())
-  name                 String
-  slug                 String                   @unique
-  currency             String                   @default("INR")
-  country              String                   @default("IN")
-  fiscalYearStart      Int                      @default(4)
-  gstin                String? // Supplier GSTIN, used by GSTR-1 export
-  logoUrl              String?
-  planTier             String                   @default("trial")
-  trialEndsAt          DateTime?
-  createdAt            DateTime                 @default(now())
-  updatedAt            DateTime                 @updatedAt
-  members              OrganizationMembership[]
-  items                Item[]
-  contacts             Contact[]
-  invoices             Invoice[]
-  bills                Bill[]
-  quotes               Quote[]
-  salesOrders          SalesOrder[]
-  deliveryChallans     DeliveryChallan[]
-  recurringInvoices    RecurringInvoice[]
-  creditNotes          CreditNote[]
-  paymentsReceived     PaymentReceived[]
-  purchaseOrders       PurchaseOrder[]
-  recurringBills       RecurringBill[]
-  paymentsMade         PaymentMade[]
-  vendorCredits        VendorCredit[]
-  expenses             Expense[]
-  recurringExpenses    RecurringExpense[]
-  bankAccounts         BankAccount[]
-  bankTransactions     BankTransaction[]
-  journalEntries       JournalEntry[]
-  manualJournals       ManualJournal[]
-  chartOfAccounts      ChartOfAccount[]
-  taxes                Tax[]
-  projects             Project[]
-  tasks                Task[]
-  timeEntries          TimeEntry[]
-  documents            Document[]
-  auditLogs            AuditLog[]
-  notifications        Notification[]
-  apiKeys              ApiKey[]
-  webhooks             Webhook[]
-  workflowRules        WorkflowRule[]
-  numberSeries         NumberSeries[]
-  preferences          OrganizationPreference?
-  locations            Location[]
-  promoBanners         PromoBanner[]
-  aiConversations      AiConversation[]
-  reminders            Reminder[]
-  workflowActions      WorkflowAction[]
-  workflowLogs         WorkflowLog[]
-  schedules            Schedule[]
-  reportingTags        ReportingTag[]
-  webTabs              WebTab[]
-  customRoles          CustomRole[]
-  integrations         Integration[]
-  webForms             WebForm[]
-  apiUsageLogs         ApiUsageLog[]
+  id                    String                   @id @default(cuid())
+  name                  String
+  slug                  String                   @unique
+  currency              String                   @default("INR")
+  country               String                   @default("IN")
+  fiscalYearStart       Int                      @default(4)
+  gstin                 String? // Supplier GSTIN, used by GSTR-1 export
+  logoUrl               String?
+  planTier              String                   @default("trial")
+  trialEndsAt           DateTime?
+  createdAt             DateTime                 @default(now())
+  updatedAt             DateTime                 @updatedAt
+  members               OrganizationMembership[]
+  items                 Item[]
+  contacts              Contact[]
+  invoices              Invoice[]
+  bills                 Bill[]
+  quotes                Quote[]
+  salesOrders           SalesOrder[]
+  deliveryChallans      DeliveryChallan[]
+  recurringInvoices     RecurringInvoice[]
+  creditNotes           CreditNote[]
+  paymentsReceived      PaymentReceived[]
+  purchaseOrders        PurchaseOrder[]
+  recurringBills        RecurringBill[]
+  paymentsMade          PaymentMade[]
+  vendorCredits         VendorCredit[]
+  expenses              Expense[]
+  recurringExpenses     RecurringExpense[]
+  bankAccounts          BankAccount[]
+  bankTransactions      BankTransaction[]
+  journalEntries        JournalEntry[]
+  manualJournals        ManualJournal[]
+  chartOfAccounts       ChartOfAccount[]
+  taxes                 Tax[]
+  projects              Project[]
+  tasks                 Task[]
+  timeEntries           TimeEntry[]
+  documents             Document[]
+  auditLogs             AuditLog[]
+  notifications         Notification[]
+  apiKeys               ApiKey[]
+  webhooks              Webhook[]
+  workflowRules         WorkflowRule[]
+  numberSeries          NumberSeries[]
+  preferences           OrganizationPreference?
+  locations             Location[]
+  promoBanners          PromoBanner[]
+  aiConversations       AiConversation[]
+  reminders             Reminder[]
+  workflowActions       WorkflowAction[]
+  workflowLogs          WorkflowLog[]
+  schedules             Schedule[]
+  reportingTags         ReportingTag[]
+  webTabs               WebTab[]
+  customRoles           CustomRole[]
+  integrations          Integration[]
+  webForms              WebForm[]
+  apiUsageLogs          ApiUsageLog[]
   inventoryAdjustments  InventoryAdjustment[]
   inventoryReservations InventoryReservation[]
-  paymentTerms         PaymentTerms[]
-  deliveryMethods      DeliveryMethod[]
-  salespeople          Salesperson[]
-  pdfTemplates         PdfTemplate[]
-  emailJobs            EmailJob[]
+  paymentTerms          PaymentTerms[]
+  deliveryMethods       DeliveryMethod[]
+  salespeople           Salesperson[]
+  pdfTemplates          PdfTemplate[]
+  emailJobs             EmailJob[]
 }
 
 model OrganizationMembership {
@@ -305,6 +305,19 @@ model Contact {
   twitterHandle        String?
   isInactive           Boolean               @default(false)
   notes                String?
+  // === Purchases-module additions ===
+  // MSME registration (Indian compliance — surfaced as a banner on
+  // the Vendors list when org.country='IN' AND any vendor's
+  // msmeRegistered is still null).
+  msmeRegistered       Boolean?
+  msmeNumber           String?
+  msmeCategory         String? // MICRO | SMALL | MEDIUM
+  msmeRegisteredDate   DateTime?
+  // Default TDS tax used when this vendor is selected on a Bill / PO
+  defaultTdsId         String?
+  // Vendor-portal scaffolding (no UI in v1)
+  enableVendorPortal   Boolean               @default(false)
+  vendorPortalToken    String?               @unique
   createdAt            DateTime              @default(now())
   updatedAt            DateTime              @updatedAt
   deletedAt            DateTime?
@@ -331,10 +344,27 @@ model Contact {
   recurringInvoices    RecurringInvoice[]
   recurringBills       RecurringBill[]
   recurringExpenses    RecurringExpense[]
+  bankAccounts         ContactBankAccount[]
 
   @@index([organizationId, type, deletedAt])
   @@index([organizationId, displayName])
   @@index([organizationId, isInactive])
+}
+
+model ContactBankAccount {
+  id                String   @id @default(cuid())
+  contactId         String
+  accountHolderName String?
+  bankName          String?
+  accountNumber     String
+  ifscCode          String
+  isDefault         Boolean  @default(false)
+  position          Int      @default(0)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  contact           Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@index([contactId])
 }
 
 enum ContactType {
@@ -449,36 +479,38 @@ model InventoryReservation {
 }
 
 model Item {
-  id                   String                @id @default(cuid())
-  organizationId       String
-  name                 String
-  sku                  String?
-  type                 ItemType              @default(GOODS)
-  unit                 String?
-  sellingPrice         Decimal?              @db.Decimal(18, 4)
-  salesAccountId       String?
-  salesDescription     String?
-  costPrice            Decimal?              @db.Decimal(18, 4)
-  purchaseAccountId    String?
-  purchaseDescription  String?
-  preferredVendorId    String?
-  imageUrl             String?
-  images               String[]              @default([])
-  trackInventory       Boolean               @default(false)
-  inventoryAccountId   String?
-  openingStock         Decimal?              @db.Decimal(18, 4)
-  openingStockRate     Decimal?              @db.Decimal(18, 4)
-  reorderPoint         Decimal?              @db.Decimal(18, 4)
-  isActive             Boolean               @default(true)
-  createdAt            DateTime              @default(now())
-  updatedAt            DateTime              @updatedAt
-  deletedAt            DateTime?
-  organization         Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  preferredVendor      Contact?              @relation("PreferredVendor", fields: [preferredVendorId], references: [id])
-  invoiceLineItems     InvoiceLineItem[]
-  billLineItems        BillLineItem[]
+  id                    String                  @id @default(cuid())
+  organizationId        String
+  name                  String
+  sku                   String?
+  type                  ItemType                @default(GOODS)
+  unit                  String?
+  sellingPrice          Decimal?                @db.Decimal(18, 4)
+  salesAccountId        String?
+  salesDescription      String?
+  costPrice             Decimal?                @db.Decimal(18, 4)
+  purchaseAccountId     String?
+  purchaseDescription   String?
+  preferredVendorId     String?
+  imageUrl              String?
+  images                String[]                @default([])
+  trackInventory        Boolean                 @default(false)
+  inventoryAccountId    String?
+  openingStock          Decimal?                @db.Decimal(18, 4)
+  openingStockRate      Decimal?                @db.Decimal(18, 4)
+  reorderPoint          Decimal?                @db.Decimal(18, 4)
+  isActive              Boolean                 @default(true)
+  createdAt             DateTime                @default(now())
+  updatedAt             DateTime                @updatedAt
+  deletedAt             DateTime?
+  organization          Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  preferredVendor       Contact?                @relation("PreferredVendor", fields: [preferredVendorId], references: [id])
+  invoiceLineItems      InvoiceLineItem[]
+  billLineItems         BillLineItem[]
   inventoryAdjustments  InventoryAdjustment[]
   inventoryReservations InventoryReservation[]
+  PurchaseOrderLineItem PurchaseOrderLineItem[]
+  VendorCreditLineItem  VendorCreditLineItem[]
 
   @@index([organizationId, deletedAt])
   @@index([organizationId, name])
@@ -1029,29 +1061,55 @@ model PaymentReceivedAllocation {
 // ───────────────────────── PURCHASES ─────────────────────────
 
 model Bill {
-  id             String                  @id @default(cuid())
-  organizationId String
-  number         String
-  contactId      String
-  status         BillStatus              @default(DRAFT)
-  issueDate      DateTime
-  dueDate        DateTime
-  subtotal       Decimal                 @default(0) @db.Decimal(18, 4)
-  taxTotal       Decimal                 @default(0) @db.Decimal(18, 4)
-  total          Decimal                 @default(0) @db.Decimal(18, 4)
-  amountPaid     Decimal                 @default(0) @db.Decimal(18, 4)
-  currency       String?
-  exchangeRate   Decimal?                @db.Decimal(18, 6)
-  notes          String?
-  createdAt      DateTime                @default(now())
-  updatedAt      DateTime                @updatedAt
-  deletedAt      DateTime?
-  organization   Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  contact        Contact                 @relation(fields: [contactId], references: [id])
-  lineItems      BillLineItem[]
-  payments       PaymentMadeAllocation[]
+  id                 String                    @id @default(cuid())
+  organizationId     String
+  // `number` keeps its old name for back-compat — UI label is "Bill#".
+  // Spec: manually entered by user from the vendor's source doc.
+  number             String
+  referenceNumber    String? // shown as "Order Number" in the UI
+  contactId          String
+  status             BillStatus                @default(DRAFT)
+  issueDate          DateTime
+  dueDate            DateTime
+  paymentTermsId     String?
+  subject            String?
+  subtotal           Decimal                   @default(0) @db.Decimal(18, 4)
+  discountValue      Decimal                   @default(0) @db.Decimal(18, 4)
+  discountType       String                    @default("percentage")
+  taxId              String?
+  taxTotal           Decimal                   @default(0) @db.Decimal(18, 4)
+  adjustmentLabel    String?                   @default("Adjustment")
+  adjustmentValue    Decimal                   @default(0) @db.Decimal(18, 4)
+  total              Decimal                   @default(0) @db.Decimal(18, 4)
+  amountPaid         Decimal                   @default(0) @db.Decimal(18, 4)
+  currency           String?
+  exchangeRate       Decimal?                  @db.Decimal(18, 6)
+  notes              String?
+  termsAndConditions String?
+  placeOfSupply      String?
+  accountsPayableId  String?
+  purchaseOrderId    String?
+  recurringBillId    String?
+  pdfTemplateId      String?
+  portalAccessToken  String                    @unique @default(cuid())
+  voidedAt           DateTime?
+  writtenOffAt       DateTime?
+  createdAt          DateTime                  @default(now())
+  updatedAt          DateTime                  @updatedAt
+  deletedAt          DateTime?
+  organization       Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contact            Contact                   @relation(fields: [contactId], references: [id])
+  purchaseOrder      PurchaseOrder?            @relation(fields: [purchaseOrderId], references: [id])
+  recurringBill      RecurringBill?            @relation("RecurringBillGenerated", fields: [recurringBillId], references: [id])
+  lineItems          BillLineItem[]
+  payments           PaymentMadeAllocation[]
+  creditApplications VendorCreditApplication[]
+  attachments        BillAttachment[]
 
-  @@unique([organizationId, number])
+  // Per spec: bill numbers are unique per (org, vendor), not per org.
+  // Same vendor can't have two bills with the same number; different
+  // vendors can (their own numbering schemes never collide).
+  @@unique([organizationId, contactId, number])
   @@index([organizationId, status, deletedAt])
 }
 
@@ -1062,67 +1120,188 @@ enum BillStatus {
   PAID
   OVERDUE
   VOID
+  WRITTEN_OFF
 }
 
 model BillLineItem {
-  id          String  @id @default(cuid())
-  billId      String
-  itemId      String?
-  description String
-  quantity    Decimal @db.Decimal(18, 4)
-  rate        Decimal @db.Decimal(18, 4)
-  taxId       String?
-  amount      Decimal @db.Decimal(18, 4)
-  bill        Bill    @relation(fields: [billId], references: [id], onDelete: Cascade)
-  item        Item?   @relation(fields: [itemId], references: [id])
+  id                   String    @id @default(cuid())
+  billId               String
+  itemId               String?
+  position             Int       @default(0)
+  name                 String    @default("")
+  description          String
+  hsnSacCode           String?
+  accountId            String? // inline column on the Bill form
+  quantity             Decimal   @db.Decimal(18, 4)
+  rate                 Decimal   @db.Decimal(18, 4)
+  taxId                String?
+  amount               Decimal   @db.Decimal(18, 4)
+  // Billable-expense tracking: when set, this line is owed back from
+  // a specific customer and can be added to their next invoice.
+  billableToCustomerId String?
+  billableUsedAt       DateTime?
+  bill                 Bill      @relation(fields: [billId], references: [id], onDelete: Cascade)
+  item                 Item?     @relation(fields: [itemId], references: [id])
+
+  @@index([billableToCustomerId, billableUsedAt])
+}
+
+model BillAttachment {
+  id        String   @id @default(cuid())
+  billId    String
+  fileName  String
+  fileUrl   String
+  fileSize  Int
+  mimeType  String?
+  createdAt DateTime @default(now())
+  bill      Bill     @relation(fields: [billId], references: [id], onDelete: Cascade)
 }
 
 model PurchaseOrder {
-  id             String       @id @default(cuid())
-  organizationId String
-  number         String
-  contactId      String
-  status         String       @default("draft")
-  orderDate      DateTime
-  total          Decimal      @default(0) @db.Decimal(18, 4)
-  createdAt      DateTime     @default(now())
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  contact        Contact      @relation(fields: [contactId], references: [id])
+  id                   String                    @id @default(cuid())
+  organizationId       String
+  // Old column kept; UI labels it "Purchase Order#" / "PO#".
+  number               String
+  referenceNumber      String?
+  contactId            String
+  // Was String "draft" — kept as String to avoid a destructive enum
+  // conversion. UI normalizes to the new lifecycle values:
+  // DRAFT / ISSUED / PARTIALLY_BILLED / BILLED / CLOSED / CANCELLED.
+  status               String                    @default("DRAFT")
+  orderDate            DateTime
+  deliveryDate         DateTime?
+  paymentTermsId       String?
+  shipmentPreferenceId String?
+  deliveryAddressMode  String                    @default("ORGANIZATION") // ORGANIZATION | CUSTOMER
+  deliveryToCustomerId String?
+  deliveryAddressId    String?
+  currency             String?
+  subTotal             Decimal                   @default(0) @db.Decimal(18, 4)
+  discountValue        Decimal                   @default(0) @db.Decimal(18, 4)
+  discountType         String                    @default("percentage")
+  taxType              String? // "TDS" | "TCS"
+  taxId                String?
+  taxAmount            Decimal                   @default(0) @db.Decimal(18, 4)
+  adjustmentLabel      String?                   @default("Adjustment")
+  adjustmentValue      Decimal                   @default(0) @db.Decimal(18, 4)
+  total                Decimal                   @default(0) @db.Decimal(18, 4)
+  notes                String?
+  termsAndConditions   String?
+  pdfTemplateId        String?
+  placeOfSupply        String?
+  portalAccessToken    String                    @unique @default(cuid())
+  sentAt               DateTime?
+  closedAt             DateTime?
+  cancelledAt          DateTime?
+  createdAt            DateTime                  @default(now())
+  updatedAt            DateTime                  @default(now()) @updatedAt
+  deletedAt            DateTime?
+  organization         Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contact              Contact                   @relation(fields: [contactId], references: [id])
+  lineItems            PurchaseOrderLineItem[]
+  attachments          PurchaseOrderAttachment[]
+  bills                Bill[]
 
   @@unique([organizationId, number])
+  @@index([organizationId, status, deletedAt])
+}
+
+model PurchaseOrderLineItem {
+  id              String        @id @default(cuid())
+  purchaseOrderId String
+  itemId          String?
+  position        Int           @default(0)
+  name            String        @default("")
+  description     String?
+  hsnSacCode      String?
+  accountId       String?
+  quantity        Decimal       @db.Decimal(18, 4)
+  unit            String?
+  rate            Decimal       @db.Decimal(18, 4)
+  discount        Decimal       @default(0) @db.Decimal(18, 4)
+  discountType    String        @default("percentage")
+  taxId           String?
+  taxAmount       Decimal       @default(0) @db.Decimal(18, 4)
+  amount          Decimal       @db.Decimal(18, 4)
+  purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  item            Item?         @relation(fields: [itemId], references: [id])
+}
+
+model PurchaseOrderAttachment {
+  id              String        @id @default(cuid())
+  purchaseOrderId String
+  fileName        String
+  fileUrl         String
+  fileSize        Int
+  mimeType        String?
+  createdAt       DateTime      @default(now())
+  purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
 }
 
 model RecurringBill {
-  id             String       @id @default(cuid())
-  organizationId String
-  profileName    String
-  contactId      String?
-  frequency      String
-  nextRunAt      DateTime
-  amount         Decimal      @default(0) @db.Decimal(18, 4)
-  isActive       Boolean      @default(true)
-  createdAt      DateTime     @default(now())
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  contact        Contact?     @relation(fields: [contactId], references: [id])
+  id                 String       @id @default(cuid())
+  organizationId     String
+  profileName        String
+  contactId          String?
+  frequency          String
+  intervalN          Int          @default(1)
+  // Old column kept for back-compat; new code reads nextOccurrenceDate.
+  nextRunAt          DateTime
+  nextOccurrenceDate DateTime?
+  startDate          DateTime?
+  endDate            DateTime?
+  neverExpires       Boolean      @default(false)
+  status             String       @default("ACTIVE") // ACTIVE | PAUSED | STOPPED | EXPIRED
+  amount             Decimal      @default(0) @db.Decimal(18, 4)
+  isActive           Boolean      @default(true)
+  templateJson       Json?
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @default(now()) @updatedAt
+  deletedAt          DateTime?
+  organization       Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contact            Contact?     @relation(fields: [contactId], references: [id])
+  generatedBills     Bill[]       @relation("RecurringBillGenerated")
 }
 
 model PaymentMade {
-  id             String                  @id @default(cuid())
-  organizationId String
-  number         String
-  contactId      String
-  paymentDate    DateTime
-  amount         Decimal                 @db.Decimal(18, 4)
-  method         String?
-  reference      String?
-  bankAccountId  String?
-  notes          String?
-  createdAt      DateTime                @default(now())
-  organization   Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  contact        Contact                 @relation(fields: [contactId], references: [id])
-  allocations    PaymentMadeAllocation[]
+  id                   String                  @id @default(cuid())
+  organizationId       String
+  number               String
+  // BILL_PAYMENT (default) or VENDOR_ADVANCE. The Payments Made
+  // form has two tabs that write the same table with a different
+  // paymentType. Vendor advance balances are derived from
+  // VENDOR_ADVANCE rows minus draws against them.
+  paymentType          PaymentMadeType         @default(BILL_PAYMENT)
+  contactId            String
+  paymentDate          DateTime
+  amount               Decimal                 @db.Decimal(18, 4)
+  amountUsedForBills   Decimal                 @default(0) @db.Decimal(18, 4)
+  amountInExcess       Decimal                 @default(0) @db.Decimal(18, 4)
+  amountRefunded       Decimal                 @default(0) @db.Decimal(18, 4)
+  tdsId                String?
+  tdsAmount            Decimal?                @db.Decimal(18, 4)
+  method               String?
+  paymentMode          String? // alias used by new UI: cash, bank_transfer, cheque, etc
+  reference            String?
+  bankAccountId        String?
+  paidThroughAccountId String?
+  depositToAccountId   String? // Vendor Advance: where the advance sits
+  status               String                  @default("DRAFT")
+  notes                String?
+  createdAt            DateTime                @default(now())
+  updatedAt            DateTime                @default(now()) @updatedAt
+  deletedAt            DateTime?
+  organization         Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contact              Contact                 @relation(fields: [contactId], references: [id])
+  allocations          PaymentMadeAllocation[]
 
   @@unique([organizationId, number])
+  @@index([organizationId, paymentType, status])
+}
+
+enum PaymentMadeType {
+  BILL_PAYMENT
+  VENDOR_ADVANCE
 }
 
 model PaymentMadeAllocation {
@@ -1135,49 +1314,163 @@ model PaymentMadeAllocation {
 }
 
 model VendorCredit {
-  id             String       @id @default(cuid())
-  organizationId String
-  number         String
-  contactId      String
-  date           DateTime
-  total          Decimal      @default(0) @db.Decimal(18, 4)
-  reason         String?
-  createdAt      DateTime     @default(now())
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  contact        Contact      @relation(fields: [contactId], references: [id])
+  id              String                    @id @default(cuid())
+  organizationId  String
+  // Old `number` retained. UI label per spec: "Credit Note#".
+  number          String
+  referenceNumber String?
+  contactId       String
+  date            DateTime
+  subject         String?
+  status          String                    @default("OPEN") // DRAFT | OPEN | CLOSED | VOID
+  currency        String?
+  subTotal        Decimal                   @default(0) @db.Decimal(18, 4)
+  taxAmount       Decimal                   @default(0) @db.Decimal(18, 4)
+  total           Decimal                   @default(0) @db.Decimal(18, 4)
+  amountApplied   Decimal                   @default(0) @db.Decimal(18, 4)
+  amountRefunded  Decimal                   @default(0) @db.Decimal(18, 4)
+  placeOfSupply   String?
+  reason          String?
+  notes           String?
+  pdfTemplateId   String?
+  createdAt       DateTime                  @default(now())
+  updatedAt       DateTime                  @default(now()) @updatedAt
+  deletedAt       DateTime?
+  organization    Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contact         Contact                   @relation(fields: [contactId], references: [id])
+  lineItems       VendorCreditLineItem[]
+  applications    VendorCreditApplication[]
+  refunds         VendorCreditRefund[]
 
   @@unique([organizationId, number])
 }
 
-model Expense {
+model VendorCreditLineItem {
   id             String       @id @default(cuid())
-  organizationId String
-  date           DateTime
-  category       String
+  vendorCreditId String
+  itemId         String?
+  position       Int          @default(0)
+  name           String       @default("")
+  description    String?
+  hsnSacCode     String?
+  accountId      String?
+  quantity       Decimal      @db.Decimal(18, 4)
+  rate           Decimal      @db.Decimal(18, 4)
+  taxId          String?
   amount         Decimal      @db.Decimal(18, 4)
-  contactId      String?
+  vendorCredit   VendorCredit @relation(fields: [vendorCreditId], references: [id], onDelete: Cascade)
+  item           Item?        @relation(fields: [itemId], references: [id])
+}
+
+model VendorCreditApplication {
+  id             String       @id @default(cuid())
+  vendorCreditId String
+  billId         String
+  amountApplied  Decimal      @db.Decimal(18, 4)
+  appliedAt      DateTime     @default(now())
+  vendorCredit   VendorCredit @relation(fields: [vendorCreditId], references: [id], onDelete: Cascade)
+  bill           Bill         @relation(fields: [billId], references: [id])
+
+  @@index([billId])
+}
+
+model VendorCreditRefund {
+  id             String       @id @default(cuid())
+  vendorCreditId String
+  refundDate     DateTime
+  amount         Decimal      @db.Decimal(18, 4)
+  paymentMode    String?
   reference      String?
+  fromAccountId  String?
   notes          String?
   createdAt      DateTime     @default(now())
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  contact        Contact?     @relation(fields: [contactId], references: [id])
+  vendorCredit   VendorCredit @relation(fields: [vendorCreditId], references: [id], onDelete: Cascade)
+}
 
+model Expense {
+  id                   String            @id @default(cuid())
+  organizationId       String
+  // `number` for human-facing ID (EX-...); auto-generated.
+  number               String?
+  date                 DateTime
+  // Old `category` kept; new code uses expenseAccountId.
+  category             String
+  expenseAccountId     String?
+  amount               Decimal           @db.Decimal(18, 4)
+  paidThroughAccountId String?
+  contactId            String? // vendor
+  customerId           String?
+  isBillable           Boolean           @default(false)
+  isBilled             Boolean           @default(false)
+  invoiceId            String?
+  recurringExpenseId   String?
+  reference            String?
+  notes                String?
+  status               String            @default("RECORDED")
+  createdAt            DateTime          @default(now())
+  updatedAt            DateTime          @default(now()) @updatedAt
+  deletedAt            DateTime?
+  organization         Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contact              Contact?          @relation(fields: [contactId], references: [id])
+  recurringExpense     RecurringExpense? @relation("RecurringExpenseGenerated", fields: [recurringExpenseId], references: [id])
+
+  @@unique([organizationId, number])
   @@index([organizationId, date])
+  @@index([organizationId, isBillable, isBilled])
 }
 
 model RecurringExpense {
-  id             String       @id @default(cuid())
-  organizationId String
-  profileName    String
-  category       String?
-  contactId      String?
-  frequency      String
-  nextRunAt      DateTime
-  amount         Decimal      @default(0) @db.Decimal(18, 4)
-  isActive       Boolean      @default(true)
-  createdAt      DateTime     @default(now())
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  contact        Contact?     @relation(fields: [contactId], references: [id])
+  id                   String       @id @default(cuid())
+  organizationId       String
+  profileName          String
+  category             String?
+  contactId            String?
+  customerId           String?
+  isBillable           Boolean      @default(false)
+  expenseAccountId     String?
+  paidThroughAccountId String?
+  frequency            String
+  intervalN            Int          @default(1)
+  startDate            DateTime?
+  endDate              DateTime?
+  neverExpires         Boolean      @default(false)
+  status               String       @default("ACTIVE")
+  // Old column kept; new code reads nextOccurrenceDate.
+  nextRunAt            DateTime
+  nextOccurrenceDate   DateTime?
+  amount               Decimal      @default(0) @db.Decimal(18, 4)
+  isActive             Boolean      @default(true)
+  notes                String?
+  createdAt            DateTime     @default(now())
+  updatedAt            DateTime     @default(now()) @updatedAt
+  deletedAt            DateTime?
+  organization         Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contact              Contact?     @relation(fields: [contactId], references: [id])
+  generatedExpenses    Expense[]    @relation("RecurringExpenseGenerated")
+}
+
+model BillableExpenseUsage {
+  id                String   @id @default(cuid())
+  organizationId    String
+  sourceType        String // BILL_LINE_ITEM | EXPENSE
+  sourceId          String
+  customerId        String
+  invoiceLineItemId String?
+  amount            Decimal  @db.Decimal(18, 4)
+  usedAt            DateTime @default(now())
+
+  @@unique([sourceType, sourceId])
+  @@index([organizationId, customerId])
+}
+
+model BankIntegration {
+  id                String   @id @default(cuid())
+  organizationId    String   @unique
+  bankPartner       String?
+  isConfigured      Boolean  @default(false)
+  configurationJson Json?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @default(now()) @updatedAt
 }
 
 // ───────────────────────── BANKING ─────────────────────────
