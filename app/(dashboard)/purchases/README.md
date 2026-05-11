@@ -6,18 +6,18 @@ The Purchases master prompt (`Quikfinance_Purchases_Master_Prompt.docx`) defines
 
 ---
 
-## Status (May 2026, post-PR #89)
+## Status (May 2026, post-PR #95)
 
 | Sub-module | Routes | State |
 |---|---|---|
 | **Vendors** | `/purchases/vendors` + `/new` + `/[id]` + `/[id]/edit` + `/import` | ✅ Complete |
 | **Purchase Orders** | `/purchases/orders` + `/new` + `/[id]` + `/[id]/edit` + `/[id]/pdf` + `/[id]/send` | ✅ Complete |
-| **Bills** | `/purchases/bills` + `/new` + `/[id]` + `/[id]/edit` | 🔶 Scaffold from earlier; full lifecycle pending |
-| **Payments Made** | `/purchases/payments-made` + `/new` + `/[id]` | 🔶 Scaffold from earlier; vendor-advance tab pending |
-| **Vendor Credits** | `/purchases/vendor-credits` + `/new` | 🔶 Scaffold from earlier; apply-to-bill + refund pending |
-| **Recurring Bills** | `/purchases/recurring-bills` + `/new` | 🔶 Scaffold; cron engine pending |
-| **Recurring Expenses** | `/purchases/recurring-expenses` + `/new` | 🔶 Scaffold; cron engine pending |
-| **Expenses** | `/purchases/expenses` + `/new` + `/[id]/edit` | 🔶 Placeholder (per spec — no screenshots) |
+| **Bills** | `/purchases/bills` + `/new` + `/[id]` + `/[id]/edit` | ✅ Complete (list + form + detail + transitions + tests; `?fromPO=` seeding) |
+| **Payments Made** | `/purchases/payments-made` + `/new` + `/[id]` | 🟡 List parity-complete + bulk delete reverses bill balances; record-payment form still uses the legacy shape |
+| **Vendor Credits** | `/purchases/vendor-credits` + `/new` | 🟡 List parity-complete + bulk delete (block on applied/refunded); form still legacy |
+| **Recurring Bills** | `/purchases/recurring-bills` + `/new` | 🟡 List parity-complete + bulk Pause/Resume/Delete; cron engine handles generation |
+| **Recurring Expenses** | `/purchases/recurring-expenses` + `/new` | 🟡 List parity-complete + bulk Pause/Resume/Delete |
+| **Expenses** | `/purchases/expenses` + `/new` + `/[id]/edit` | 🟡 List parity-complete + bulk Delete (block on already-billed) |
 
 ---
 
@@ -95,45 +95,39 @@ These come from the master prompt's `<architectural_decisions_locked>` block and
 
 ## What's pending
 
-Roughly **~20 PRs across 6 phases** (P4–P9) to take the rest of the Purchases module to production:
+After the sprint (PRs #91–#95) every Purchases sub-module list is production-grade. Remaining work focuses on **forms + detail pages** for the modules that still use legacy shapes.
 
-### P4 — Bills (~6 PRs)
+### P5-B/C — Payments Made form upgrade (~2 PRs)
 
-- List rewrite with saved views (Unpaid default — OPEN+PARTIALLY_PAID+OVERDUE)
-- Full multi-line form with manual bill numbering + duplicate warning per (org × vendor)
-- Billable line items (`billableToCustomerId` per line via `customerColumnVisible=true`)
-- Lifecycle: Draft → Open → Partially Paid → Paid → Overdue → Void → WrittenOff
-- Detail page with Record Payment shortcut + linked POs
-- `fromPO=<id>` query-param handler that seeds Bill lines from a PO (the `convertPurchaseOrderToBillAction` already redirects here)
+The list is parity-complete; the form still uses the legacy single-screen shape. To match spec:
+- Two-tab form: **Bill Payment** | **Vendor Advance**
+- Auto-load open bills for the selected vendor; allocate inline
+- Excess-to-advance: when payment > sum-of-allocations, route the excess into a paired VENDOR_ADVANCE PaymentMade row
+- Detail page with allocation breakdown + Reverse Payment action
 
-### P5 — Payments Made (~4 PRs)
+### P6-B/C — Vendor Credits form + apply/refund (~2 PRs)
 
-- Two-tab form: Bill Payment | Vendor Advance
-- Allocation table (one Payment → many BillPaymentApplication rows)
-- Excess-to-advance handling
-- Detail page with allocation breakdown
-
-### P6 — Vendor Credits (~3 PRs)
-
-- Full form (mirrors CreditNote pattern but with `CN-` prefix, vendor-side)
+- Full multi-line form (mirrors CreditNote pattern, vendor-side)
 - Apply-to-Bill flow (one Credit → many VendorCreditApplication rows)
 - Record Refund flow (refund via Payment Made link or external bank)
 
-### P7 — Recurring Bills / Expenses (~3 PRs)
+### P7-B — Recurring profile forms (~1 PR)
 
-- Profile-based recurrence engine (start, frequency, end / never expires)
-- Cron extension: generate Bills + Expenses on the schedule
-- Detail page with "View generated bills/expenses" link
+- Lifecycle UI: edit profile, preview next 5 runs, view generated rows
+- "Stop after N occurrences" config
 
-### P8 — Expenses (~1 PR)
+### P8 — Expense form upgrade (~1 PR)
 
-- Placeholder scaffold per the master prompt's `<expenses_spec_placeholder>` — route, list page, minimal CRUD with deferred-feature banner. No invented fields.
+- Mark-as-billable workflow (already supported by schema via `isBillable` + `customerId`)
+- Bulk billable → invoice surfacing
 
 ### P9 — Polish (~3 PRs)
 
 - Billable-expense integration on the Invoice form (`<BillableExpensesBanner>` renders when the customer has unbilled lines)
 - Vendor Portal pages (token-based; surface PO / Bill / Payment timeline to the vendor)
 - Partner-bank settings stub at `/settings/integrations/bill-pay-banks`
+
+**Total remaining: ~9 PRs**, down from the ~20 estimated at sprint start.
 
 ---
 
