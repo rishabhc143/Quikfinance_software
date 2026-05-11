@@ -24,7 +24,16 @@ export type SavedViewModule =
   | "credit_notes"
   | "payments_received"
   | "recurring_invoices"
-  | "customers";
+  | "customers"
+  // Purchases
+  | "vendors"
+  | "purchase_orders"
+  | "bills"
+  | "payments_made"
+  | "vendor_credits"
+  | "recurring_bills"
+  | "recurring_expenses"
+  | "expenses";
 
 /**
  * filterJson schema.
@@ -148,6 +157,131 @@ const SYSTEM_VIEWS: Record<SavedViewModule, SystemView[]> = {
       slug: "portal_enabled",
       label: "Portal-enabled",
       filter: { kind: "boolean", field: "enablePortal", value: true },
+    },
+  ],
+  // ===== Purchases module saved views =====
+  vendors: [
+    { slug: "all", label: "All", filter: { kind: "all" } },
+    {
+      slug: "active",
+      label: "Active",
+      filter: { kind: "boolean", field: "isInactive", value: false },
+      isDefault: true,
+    },
+    {
+      slug: "inactive",
+      label: "Inactive",
+      filter: { kind: "boolean", field: "isInactive", value: true },
+    },
+    {
+      slug: "portal_enabled",
+      label: "Customer Portal Enabled",
+      filter: { kind: "boolean", field: "enableVendorPortal", value: true },
+    },
+  ],
+  purchase_orders: [
+    { slug: "all", label: "All", filter: { kind: "all" }, isDefault: true },
+    { slug: "draft", label: "Draft", filter: { kind: "status", value: "DRAFT" } },
+    { slug: "issued", label: "Issued", filter: { kind: "status", value: "ISSUED" } },
+    {
+      slug: "partially_billed",
+      label: "Partially Billed",
+      filter: { kind: "status", value: "PARTIALLY_BILLED" },
+    },
+    { slug: "billed", label: "Billed", filter: { kind: "status", value: "BILLED" } },
+    { slug: "closed", label: "Closed", filter: { kind: "status", value: "CLOSED" } },
+    {
+      slug: "cancelled",
+      label: "Cancelled",
+      filter: { kind: "status", value: "CANCELLED" },
+    },
+  ],
+  bills: [
+    { slug: "all", label: "All", filter: { kind: "all" } },
+    { slug: "draft", label: "Draft", filter: { kind: "status", value: "DRAFT" } },
+    {
+      slug: "unpaid",
+      label: "Unpaid",
+      filter: { kind: "status", value: ["OPEN", "PARTIALLY_PAID", "OVERDUE"] },
+      isDefault: true,
+    },
+    { slug: "open", label: "Open", filter: { kind: "status", value: "OPEN" } },
+    { slug: "overdue", label: "Overdue", filter: { kind: "status", value: "OVERDUE" } },
+    { slug: "paid", label: "Paid", filter: { kind: "status", value: "PAID" } },
+    { slug: "void", label: "Void", filter: { kind: "status", value: "VOID" } },
+  ],
+  payments_made: [
+    { slug: "all", label: "All", filter: { kind: "all" }, isDefault: true },
+  ],
+  vendor_credits: [
+    {
+      slug: "all",
+      label: "All Vendor Credits",
+      filter: { kind: "all" },
+      isDefault: true,
+    },
+    { slug: "open", label: "Open", filter: { kind: "status", value: "OPEN" } },
+    { slug: "closed", label: "Closed", filter: { kind: "status", value: "CLOSED" } },
+    { slug: "void", label: "Void", filter: { kind: "status", value: "VOID" } },
+  ],
+  recurring_bills: [
+    { slug: "all", label: "All", filter: { kind: "all" }, isDefault: true },
+    { slug: "active", label: "Active", filter: { kind: "status", value: "ACTIVE" } },
+    { slug: "paused", label: "Paused", filter: { kind: "status", value: "PAUSED" } },
+    {
+      slug: "expired",
+      label: "Expired",
+      filter: { kind: "status", value: "EXPIRED" },
+    },
+    {
+      slug: "stopped",
+      label: "Stopped",
+      filter: { kind: "status", value: "STOPPED" },
+    },
+  ],
+  recurring_expenses: [
+    {
+      slug: "all",
+      label: "All Profiles",
+      filter: { kind: "all" },
+      isDefault: true,
+    },
+    { slug: "active", label: "Active", filter: { kind: "status", value: "ACTIVE" } },
+    { slug: "paused", label: "Paused", filter: { kind: "status", value: "PAUSED" } },
+    {
+      slug: "expired",
+      label: "Expired",
+      filter: { kind: "status", value: "EXPIRED" },
+    },
+    {
+      slug: "stopped",
+      label: "Stopped",
+      filter: { kind: "status", value: "STOPPED" },
+    },
+  ],
+  expenses: [
+    { slug: "all", label: "All", filter: { kind: "all" } },
+    {
+      slug: "unbilled",
+      label: "Unbilled",
+      filter: {
+        kind: "and",
+        filters: [
+          { kind: "boolean", field: "isBillable", value: true },
+          { kind: "boolean", field: "isBilled", value: false },
+        ],
+      },
+      isDefault: true,
+    },
+    {
+      slug: "billed",
+      label: "Billed",
+      filter: { kind: "boolean", field: "isBilled", value: true },
+    },
+    {
+      slug: "non_billable",
+      label: "Non-Billable",
+      filter: { kind: "boolean", field: "isBillable", value: false },
     },
   ],
 };
