@@ -26,10 +26,21 @@ export type SavedViewModule =
   | "recurring_invoices"
   | "customers";
 
-type FilterJson =
+/**
+ * filterJson schema.
+ *
+ * v1 (M17a) only supported `all` / `status` / `boolean`. v2 adds
+ * date-range / amount-range / customer multi-select and a top-level
+ * `and` combinator so users can compose them.
+ */
+export type FilterJson =
   | { kind: "all" }
   | { kind: "status"; value: string | string[] }
-  | { kind: "boolean"; field: string; value: boolean };
+  | { kind: "boolean"; field: string; value: boolean }
+  | { kind: "dateRange"; field: string; from?: string; to?: string }
+  | { kind: "amountRange"; field: string; min?: number; max?: number }
+  | { kind: "customer"; ids: string[] }
+  | { kind: "and"; filters: FilterJson[] };
 
 type SystemView = {
   slug: string;
@@ -211,6 +222,10 @@ export async function getSavedViews(
  * Translate a SavedView's filterJson into a Prisma where-clause
  * fragment scoped to the given module's table. Returns an empty object
  * for "all" so callers can spread it into their existing where.
+ *
+ * Date-range expects ISO strings (YYYY-MM-DD or full ISO timestamp);
+ * we coerce to Date. Amount-range expects numbers. Customer expects
+ * Contact ids and filters on `contactId`.
  */
 export function whereForFilter(filter: FilterJson): Record<string, unknown> {
   switch (filter.kind) {
@@ -222,6 +237,42 @@ export function whereForFilter(filter: FilterJson): Record<string, unknown> {
         : { status: filter.value };
     case "boolean":
       return { [filter.field]: filter.value };
+    case "dateRange": {
+      const range: Record<string, Date> = {};
+      if (filter.from) range.gte = new Date(filter.from);
+      if (filter.to) {
+        // Inclusive: treat YYYY-MM-DD as end-of-day so a single-day
+        // range matches anything that day. Full ISO strings pass
+        // through unchanged.
+        const d = new Date(filter.to);
+        if (filter.to.length === 10) {
+          d.setUTCHours(23, 59, 59, 999);
+        }
+        range.lte = d;
+      }
+      return Object.keys(range).length > 0
+        ? { [filter.field]: range }
+        : {};
+    }
+    case "amountRange": {
+      const range: Record<string, number> = {};
+      if (typeof filter.min === "number") range.gte = filter.min;
+      if (typeof filter.max === "number") range.lte = filter.max;
+      return Object.keys(range).length > 0
+        ? { [filter.field]: range }
+        : {};
+    }
+    case "customer":
+      if (!filter.ids || filter.ids.length === 0) return {};
+      return { contactId: { in: filter.ids } };
+    case "and": {
+      const parts = filter.filters
+        .map((f) => whereForFilter(f))
+        .filter((p) => Object.keys(p).length > 0);
+      if (parts.length === 0) return {};
+      if (parts.length === 1) return parts[0];
+      return { AND: parts };
+    }
     default:
       return {};
   }

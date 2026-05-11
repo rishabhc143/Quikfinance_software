@@ -97,6 +97,8 @@ export default async function CreditNotesListPage({
         savedViewBuilder={
           <SavedViewBuilderDialog
             module="credit_notes"
+            dateField="creditNoteDate"
+            amountField="total"
             statusOptions={[
               { value: "OPEN", label: "Open" },
               { value: "CLOSED", label: "Closed" },
