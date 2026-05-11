@@ -92,6 +92,7 @@ model Organization {
   currency             String                   @default("INR")
   country              String                   @default("IN")
   fiscalYearStart      Int                      @default(4)
+  gstin                String? // Supplier GSTIN, used by GSTR-1 export
   logoUrl              String?
   planTier             String                   @default("trial")
   trialEndsAt          DateTime?
@@ -582,6 +583,7 @@ model InvoiceLineItem {
   itemId      String?
   accountId   String? // M17a — per-line override of item's default income account
   description String
+  hsnSacCode  String? // Per-line HSN/SAC; used by GSTR-1 export
   quantity    Decimal @db.Decimal(18, 4)
   rate        Decimal @db.Decimal(18, 4)
   taxId       String?

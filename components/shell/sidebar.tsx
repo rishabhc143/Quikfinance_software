@@ -111,6 +111,7 @@ const NAV: NavItem[] = [
       { label: "Tax Summary", href: "/reports/tax-summary" },
       { label: "AR Aging", href: "/reports/ar-aging" },
       { label: "AP Aging", href: "/reports/ap-aging" },
+      { label: "GSTR-1 Export", href: "/reports/gstr1" },
     ],
   },
   { label: "Documents", href: "/documents", icon: FolderOpen },
