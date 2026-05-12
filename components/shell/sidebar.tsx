@@ -58,6 +58,7 @@ const NAV: NavItem[] = [
     href: "/purchases",
     icon: ShoppingCart,
     children: [
+      { label: "Vendors", href: "/purchases/vendors" },
       { label: "Bills", href: "/purchases/bills" },
       { label: "Expenses", href: "/purchases/expenses" },
       { label: "Purchase Orders", href: "/purchases/orders" },
