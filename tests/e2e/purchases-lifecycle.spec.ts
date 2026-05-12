@@ -104,7 +104,32 @@ test.describe("Purchases lifecycle (acceptance #19)", () => {
     });
 
     // ───── 2. Mark Issued ──────────────────────────────────────────
-    await page.getByTestId("mark-po-issued-button").click();
+    // Wait for the detail page to fully hydrate — the Mark Issued
+    // button is in the action bar that renders after `requireOrganization`
+    // + DB fetch resolve. We give it a generous timeout and dump page
+    // diagnostics when it doesn't appear so CI failures are debuggable.
+    const markIssuedBtn = page.getByTestId("mark-po-issued-button");
+    try {
+      await expect(markIssuedBtn).toBeVisible({ timeout: 30_000 });
+    } catch (err) {
+      // Surface what's actually on the page so we can fix the spec or
+      // the SUT instead of staring at a screenshot.
+      const url = page.url();
+      const heading = await page.locator("h1").first().textContent().catch(() => null);
+      const statusBadge = await page
+        .locator("h1 ~ * .badge, h1 + div, [class*='Badge']")
+        .first()
+        .textContent()
+        .catch(() => null);
+      const visibleButtons = await page
+        .locator("button")
+        .allTextContents()
+        .catch(() => []);
+      throw new Error(
+        `Mark Issued button not visible. url=${url} h1=${heading} status=${statusBadge} buttons=${JSON.stringify(visibleButtons)}\nOriginal: ${err instanceof Error ? err.message : String(err)}`
+      );
+    }
+    await markIssuedBtn.click();
     await expect(page.getByText(/^ISSUED$/).first()).toBeVisible({
       timeout: 15_000,
     });
