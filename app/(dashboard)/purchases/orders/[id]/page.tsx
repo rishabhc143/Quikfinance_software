@@ -195,7 +195,6 @@ export default async function PurchaseOrderDetailPage({
                 <Link href={`/purchases/orders/${po.id}/edit`}>Edit</Link>
               </DropdownMenuItem>
               <DropdownMenuItem
-                onSelect={(e) => e.preventDefault()}
                 className="p-0"
                 asChild
               >
@@ -211,7 +210,6 @@ export default async function PurchaseOrderDetailPage({
               </DropdownMenuItem>
               {(isIssued || isPartiallyBilled || isBilled) ? (
                 <DropdownMenuItem
-                  onSelect={(e) => e.preventDefault()}
                   className="p-0"
                   asChild
                 >
@@ -228,7 +226,6 @@ export default async function PurchaseOrderDetailPage({
               ) : null}
               {!isCancelled ? (
                 <DropdownMenuItem
-                  onSelect={(e) => e.preventDefault()}
                   className="p-0"
                   asChild
                 >

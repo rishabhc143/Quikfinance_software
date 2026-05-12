@@ -256,7 +256,6 @@ export default async function BillDetailPage({
                 </DropdownMenuItem>
               ) : null}
               <DropdownMenuItem
-                onSelect={(e) => e.preventDefault()}
                 className="p-0"
                 asChild
               >
@@ -279,7 +278,6 @@ export default async function BillDetailPage({
               </DropdownMenuItem>
               {!isVoid && !isPaid && !isWrittenOff ? (
                 <DropdownMenuItem
-                  onSelect={(e) => e.preventDefault()}
                   className="p-0"
                   asChild
                 >
@@ -296,7 +294,6 @@ export default async function BillDetailPage({
               ) : null}
               {(isOpen || isOverdue) && balanceDue > 0 ? (
                 <DropdownMenuItem
-                  onSelect={(e) => e.preventDefault()}
                   className="p-0"
                   asChild
                 >
