@@ -60,7 +60,13 @@ export async function POST(req: Request) {
     async start(controller) {
       try {
         const live = anthropic.messages.stream({
-          model: "claude-sonnet-4-6",
+          // claude-sonnet-4-5 is the current Sonnet alias. The previous
+          // value ("claude-sonnet-4-6") was made-up — Anthropic has no
+          // such model, so even with a valid API key the call returned
+          // model_not_found_error and the chatbot stayed silent. Use a
+          // stable alias here so future Sonnet point-releases pick up
+          // automatically without a code bump.
+          model: "claude-sonnet-4-5",
           max_tokens: 1024,
           system: systemPrompt,
           messages: parsed.data.messages,

@@ -59,7 +59,33 @@ export function AiAssistant({ children }: { children?: React.ReactNode }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ messages: next }),
       });
-      if (!r.ok || !r.body) throw new Error(await r.text());
+      if (!r.ok || !r.body) {
+        // Friendlier error messages by status — the 503 case used to
+        // leak the raw JSON ({"error":"AI assistant is not configured…"})
+        // to end-users. Now they see a clean "temporarily unavailable"
+        // string while ops + the server logs still have the full
+        // detail for debugging.
+        const status = r.status;
+        let userMessage: string;
+        if (status === 503) {
+          userMessage =
+            "AI assistant is temporarily unavailable. Please contact support if this persists.";
+        } else if (status === 429) {
+          userMessage =
+            "You've reached today's AI assistant limit. Please try again tomorrow.";
+        } else if (status === 401 || status === 403) {
+          userMessage =
+            "You don't have access to the AI assistant on this account.";
+        } else {
+          // Unknown failure — surface whatever the server sent so
+          // support has something to grep for.
+          const body = await r.text().catch(() => "");
+          userMessage = `Sorry, the assistant hit an error${
+            body ? `: ${body.slice(0, 200)}` : "."
+          }`;
+        }
+        throw new Error(userMessage);
+      }
       const reader = r.body.getReader();
       const decoder = new TextDecoder();
       let acc = "";
@@ -77,7 +103,7 @@ export function AiAssistant({ children }: { children?: React.ReactNode }) {
       }
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Something went wrong.";
-      setMessages((m) => [...m, { role: "assistant", content: `Sorry, I hit an error: ${msg}` }]);
+      setMessages((m) => [...m, { role: "assistant", content: msg }]);
     } finally {
       setBusy(false);
     }
