@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Upload, Undo2, Wallet, CreditCard } from "lucide-react";
+import { ArrowLeft, Upload, Undo2, Wallet, CreditCard, GitMerge, Link2Off } from "lucide-react";
 import { format } from "date-fns";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
@@ -16,6 +16,15 @@ import {
 import { ActionFormButton } from "@/components/shared/action-form-button";
 import { formatMoney } from "@/lib/money";
 import { undoLastImportAction } from "./actions";
+import { unmatchByIdAction } from "./match/actions";
+
+const MATCH_TYPE_LABEL: Record<string, string> = {
+  INVOICE: "Invoice",
+  BILL: "Bill",
+  PAYMENT_RECEIVED: "Payment Received",
+  PAYMENT_MADE: "Payment Made",
+  EXPENSE: "Expense",
+};
 
 export const metadata = { title: "Bank Account" };
 
@@ -78,6 +87,11 @@ export default async function BankAccountDetailPage({
           <Badge variant="secondary">Primary</Badge>
         ) : null}
         <div className="ml-auto flex items-center gap-2">
+          <Button asChild variant="outline" className="gap-1">
+            <Link href={`/banking/accounts/${account.id}/match`}>
+              <GitMerge className="h-4 w-4" /> Match Transactions
+            </Link>
+          </Button>
           <Button asChild className="gap-1">
             <Link href={`/banking/accounts/${account.id}/import`}>
               <Upload className="h-4 w-4" /> Import Statement
@@ -165,13 +179,14 @@ export default async function BankAccountDetailPage({
                   <th className="p-3 text-right">Amount</th>
                   <th className="p-3">Type</th>
                   <th className="p-3">Status</th>
+                  <th className="p-3">Match</th>
                 </tr>
               </thead>
               <tbody className="divide-y">
                 {transactions.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={6}
+                      colSpan={7}
                       className="p-8 text-center text-muted-foreground"
                     >
                       No transactions yet. Click{" "}
@@ -221,6 +236,35 @@ export default async function BankAccountDetailPage({
                           </span>
                         ) : (
                           <span className="text-muted-foreground">—</span>
+                        )}
+                      </td>
+                      <td className="p-3 text-xs">
+                        {t.matchedRecordType ? (
+                          <div className="flex items-center gap-1">
+                            <span className="text-emerald-700 dark:text-emerald-400">
+                              {MATCH_TYPE_LABEL[t.matchedRecordType] ??
+                                t.matchedRecordType}
+                            </span>
+                            {!t.isReconciled ? (
+                              <ActionFormButton
+                                action={unmatchByIdAction.bind(null, t.id)}
+                                label=""
+                                icon={<Link2Off className="h-3 w-3" />}
+                                variant="ghost"
+                                size="sm"
+                                successToast="Unmatched"
+                              />
+                            ) : null}
+                          </div>
+                        ) : t.excluded ? (
+                          <span className="text-muted-foreground">—</span>
+                        ) : (
+                          <Link
+                            href={`/banking/accounts/${account.id}/match?txn=${t.id}`}
+                            className="text-primary hover:underline"
+                          >
+                            Match
+                          </Link>
                         )}
                       </td>
                     </tr>
