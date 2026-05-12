@@ -209,6 +209,7 @@ export function PurchaseOrderForm({
           value={contactId}
           onChange={setContactId}
           placeholder="Select vendor…"
+          testId="po-vendor-combobox"
         />
 
         <Label className="pt-2">Delivery address</Label>
@@ -384,6 +385,7 @@ export function PurchaseOrderForm({
           onClick={() => submit(false)}
           disabled={busy !== "idle"}
           className="gap-1"
+          data-testid="po-save-as-draft-button"
         >
           {busy === "draft" ? (
             <Loader2 className="h-4 w-4 animate-spin" />

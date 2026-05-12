@@ -240,6 +240,7 @@ export default async function VendorsListPage({
           />
         }
         preferencesHref="/settings/preferences/customers-and-vendors"
+        customFieldsHref="/settings/preferences/vendor/custom-fields"
         sortOptions={[
           { label: "Name (A→Z)", value: "displayName" },
           { label: "Company name", value: "companyName" },

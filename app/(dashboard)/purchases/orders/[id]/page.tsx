@@ -148,6 +148,7 @@ export default async function PurchaseOrderDetailPage({
               label="Mark as Issued"
               icon={<CheckCircle2 className="h-4 w-4" />}
               successToast="Marked as Issued"
+              testId="mark-po-issued-button"
             />
           ) : null}
           {(isIssued || isPartiallyBilled) ? (
@@ -161,6 +162,7 @@ export default async function PurchaseOrderDetailPage({
               icon={<ArrowRightCircle className="h-4 w-4" />}
               variant="default"
               redirects
+              testId="convert-po-to-bill-button"
             />
           ) : null}
 

@@ -162,6 +162,7 @@ export default async function ExpensesListPage({
           />
         }
         preferencesHref="/settings/preferences/customers-and-vendors"
+        customFieldsHref="/settings/preferences/expense/custom-fields"
         sortOptions={[
           { label: "Date", value: "date" },
           { label: "Category", value: "category" },

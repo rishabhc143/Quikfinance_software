@@ -189,6 +189,7 @@ export default async function VendorCreditsListPage({
           />
         }
         preferencesHref="/settings/preferences/customers-and-vendors"
+        customFieldsHref="/settings/preferences/vendor_credit/custom-fields"
         sortOptions={[
           { label: "Date", value: "date" },
           { label: "Credit Note #", value: "number" },

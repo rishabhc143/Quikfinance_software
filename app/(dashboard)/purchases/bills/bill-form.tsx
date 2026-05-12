@@ -259,6 +259,7 @@ export function BillForm({
           value={contactId}
           onChange={setContactId}
           placeholder="Select vendor…"
+          testId="bill-vendor-combobox"
         />
 
         <Label className="pt-2">Bill # *</Label>
@@ -273,6 +274,7 @@ export function BillForm({
             placeholder="Type the vendor's bill number (e.g. INV-12345)"
             className="font-mono"
             required
+            data-testid="bill-number-input"
           />
           {dupWarning ? (
             <p className="text-xs text-amber-700 dark:text-amber-400">
@@ -457,6 +459,7 @@ export function BillForm({
               onClick={() => submit(true)}
               disabled={busy !== "idle"}
               className="gap-1"
+              data-testid="bill-save-as-open-button"
             >
               {busy === "open" ? (
                 <Loader2 className="h-4 w-4 animate-spin" />

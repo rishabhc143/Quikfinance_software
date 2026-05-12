@@ -358,6 +358,7 @@ export function PaymentMadeForm({
           value={contactId}
           onChange={setContactId}
           placeholder="Select vendor…"
+          testId="payment-vendor-combobox"
         />
 
         <Label className="pt-2">
@@ -370,6 +371,7 @@ export function PaymentMadeForm({
               tab === "BILL_PAYMENT" ? setPaymentAmount : setAdvanceAmount
             }
             currencyCode={currency}
+            data-testid="payment-amount-input"
           />
           {tab === "BILL_PAYMENT" && advanceBalance.totalBalance > 0.001 ? (
             <span className="text-xs text-muted-foreground">
@@ -669,6 +671,7 @@ export function PaymentMadeForm({
           }
           disabled={busy !== "idle"}
           className="gap-1"
+          data-testid="payment-save-as-paid-button"
         >
           {busy === "paid" ? (
             <Loader2 className="h-4 w-4 animate-spin" />

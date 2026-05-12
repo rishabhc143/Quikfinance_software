@@ -100,6 +100,113 @@ export async function cleanupLifecycleFixtures(
   });
 }
 
+// ───── Purchases lifecycle fixtures (acceptance #19) ────────────────
+
+export type PurchasesLifecycleFixtures = {
+  orgId: string;
+  vendorId: string;
+  vendorName: string;
+  itemId: string;
+  itemName: string;
+  /** Accounts Payable account id — seeded by createOrganizationAction.
+   *  Used as the inline ACCOUNT column on PO + Bill lines. */
+  accountId: string;
+};
+
+/**
+ * Pre-seed a vendor + service item + resolve an expense-side account
+ * for the purchases lifecycle spec. Mirrors `seedLifecycleFixtures`
+ * shape but writes a Contact with `type: VENDOR` and an Item with
+ * `costPrice` populated (purchases-side default).
+ *
+ * The expense-side account is picked from the seeded chart-of-accounts
+ * (Office Expenses) — every org created via `createOrganizationAction`
+ * gets that account so this lookup is reliable for the demo org.
+ */
+export async function seedPurchasesLifecycleFixtures(
+  stamp: number
+): Promise<PurchasesLifecycleFixtures> {
+  const db = getDb();
+  const user = await db.user.findUnique({ where: { email: ADMIN_EMAIL } });
+  if (!user) {
+    throw new Error(
+      `E2E seed admin not found (${ADMIN_EMAIL}). Run \`pnpm db:seed\`.`
+    );
+  }
+  const membership = await db.organizationMembership.findFirst({
+    where: { userId: user.id, isDefault: true },
+    include: { organization: true },
+  });
+  if (!membership) {
+    throw new Error(
+      `Default org for ${ADMIN_EMAIL} not found. Run \`pnpm db:seed\`.`
+    );
+  }
+  const orgId = membership.organizationId;
+
+  const vendorName = `E2E Vendor ${stamp}`;
+  const itemName = `E2E Office Supplies ${stamp}`;
+
+  const vendor = await db.contact.create({
+    data: {
+      organizationId: orgId,
+      type: "VENDOR",
+      displayName: vendorName,
+      firstName: "E2E",
+      lastName: `Vendor ${stamp}`,
+    },
+  });
+  const item = await db.item.create({
+    data: {
+      organizationId: orgId,
+      name: itemName,
+      sku: `E2E-PO-${stamp}`,
+      costPrice: 500,
+      sellingPrice: 750,
+      isActive: true,
+      type: "SERVICE",
+    },
+  });
+  // The expense-side account used on bill lines. "Office Expenses" is
+  // seeded by createOrganizationAction; fall back to any EXPENSE-type
+  // account if the org's seed list shifts in the future.
+  const account =
+    (await db.chartOfAccount.findFirst({
+      where: { organizationId: orgId, name: "Office Expenses" },
+    })) ??
+    (await db.chartOfAccount.findFirst({
+      where: { organizationId: orgId, type: "EXPENSE" },
+    }));
+  if (!account) {
+    throw new Error(
+      `No expense-type account found for org ${orgId}. Reseed via \`pnpm db:seed\`.`
+    );
+  }
+
+  return {
+    orgId,
+    vendorId: vendor.id,
+    vendorName,
+    itemId: item.id,
+    itemName,
+    accountId: account.id,
+  };
+}
+
+export async function cleanupPurchasesLifecycleFixtures(
+  fixtures: PurchasesLifecycleFixtures
+): Promise<void> {
+  const db = getDb();
+  await db.contact.update({
+    where: { id: fixtures.vendorId },
+    data: { deletedAt: new Date() },
+  });
+  await db.item.update({
+    where: { id: fixtures.itemId },
+    data: { deletedAt: new Date(), isActive: false },
+  });
+}
+
 export async function disconnectDb(): Promise<void> {
   if (_prisma) {
     await _prisma.$disconnect();

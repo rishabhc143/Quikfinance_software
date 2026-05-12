@@ -175,6 +175,7 @@ export default async function RecurringBillsListPage({
           />
         }
         preferencesHref="/settings/preferences/customers-and-vendors"
+        customFieldsHref="/settings/preferences/recurring_bill/custom-fields"
         sortOptions={[
           { label: "Next run", value: "nextRunAt" },
           { label: "Profile name", value: "profileName" },
