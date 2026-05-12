@@ -7,43 +7,128 @@ import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
 import { writeAuditLog } from "@/lib/audit";
 
+/**
+ * BNK-A — refactored to the Zoho-parity Bank/Credit Card account shape.
+ *
+ * Field reference (Screenshots 3 + 4):
+ *   Both types  → name, accountCode, currency, bankName, description
+ *   Bank only   → accountNumber, ifsc, isPrimary
+ *   Credit card → (none of the bank-only fields)
+ *
+ * The legacy `accountType` String column stays in the DB for backward
+ * compat; we set it to a sensible value derived from `type` so older
+ * code paths that read it don't break.
+ */
 const schema = z.object({
-  name: z.string().min(1).max(120),
-  accountNumber: z.string().max(40).optional().nullable(),
-  accountType: z.enum(["checking", "savings", "credit_card", "cash", "wallet"]).default("checking"),
+  type: z.enum(["BANK", "CREDIT_CARD"]).default("BANK"),
+  name: z.string().min(1, "Account Name is required").max(120),
+  accountCode: z.string().max(40).nullable().optional(),
   currency: z.string().min(3).max(8),
-  openingBalance: z.coerce.number().default(0),
+  // Bank-only fields — schema allows them on Credit Card but the form
+  // hides them, so they arrive as empty/null in practice.
+  accountNumber: z.string().max(40).nullable().optional(),
+  bankName: z.string().max(120).nullable().optional(),
+  ifsc: z.string().max(20).nullable().optional(),
+  description: z.string().max(500).nullable().optional(),
+  isPrimary: z.coerce.boolean().default(false),
 });
 
 function parse(formData: FormData) {
   const raw = Object.fromEntries(formData.entries());
   return schema.parse({
-    name: raw.name, accountNumber: raw.accountNumber || null,
-    accountType: raw.accountType, currency: raw.currency,
-    openingBalance: raw.openingBalance || 0,
+    type: raw.type ?? "BANK",
+    name: raw.name,
+    accountCode: raw.accountCode || null,
+    currency: raw.currency,
+    accountNumber: raw.accountNumber || null,
+    bankName: raw.bankName || null,
+    ifsc: raw.ifsc ? String(raw.ifsc).toUpperCase() : null,
+    description: raw.description || null,
+    isPrimary: raw.isPrimary === "true",
   });
 }
 
 export async function createBankAccountAction(formData: FormData) {
   const { user, organization } = await requireOrganization();
   const data = parse(formData);
-  const created = await db.bankAccount.create({ data: { organizationId: organization.id, ...data } });
-  await writeAuditLog({ organizationId: organization.id, userId: user.id, action: "CREATE", entityType: "BankAccount", entityId: created.id, after: { name: data.name } });
+
+  // Credit-card type doesn't carry isPrimary; force it false even if
+  // someone managed to POST the checkbox state (e.g., toggled radio
+  // after ticking the box).
+  const isPrimary = data.type === "BANK" ? data.isPrimary : false;
+
+  // If marking primary, demote any existing primary for this org.
+  // Partial unique index would reject the insert otherwise.
+  if (isPrimary) {
+    await db.bankAccount.updateMany({
+      where: {
+        organizationId: organization.id,
+        isPrimary: true,
+        type: "BANK",
+      },
+      data: { isPrimary: false },
+    });
+  }
+
+  const created = await db.bankAccount.create({
+    data: {
+      organizationId: organization.id,
+      name: data.name,
+      type: data.type,
+      currency: data.currency,
+      accountNumber: data.accountNumber,
+      bankName: data.bankName,
+      ifsc: data.ifsc,
+      description: data.description,
+      isPrimary,
+      // Legacy free-text column kept in sync for any older code path that
+      // still reads it. Drop in a future cleanup PR once nothing reads it.
+      accountType: data.type === "CREDIT_CARD" ? "credit_card" : "checking",
+    },
+  });
+
+  await writeAuditLog({
+    organizationId: organization.id,
+    userId: user.id,
+    action: "CREATE",
+    entityType: "BankAccount",
+    entityId: created.id,
+    after: {
+      name: data.name,
+      type: data.type,
+      isPrimary,
+      currency: data.currency,
+    },
+  });
   revalidatePath("/banking");
-  redirect("/banking");
+  redirect(`/banking/accounts/${created.id}`);
 }
 
 export async function deleteBankAccountAction(id: string) {
   const { user, organization } = await requireOrganization();
-  const a = await db.bankAccount.findFirst({ where: { id, organizationId: organization.id } });
+  const a = await db.bankAccount.findFirst({
+    where: { id, organizationId: organization.id },
+  });
   if (!a) return { ok: false };
-  const txnCount = await db.bankTransaction.count({ where: { bankAccountId: id } });
+  const txnCount = await db.bankTransaction.count({
+    where: { bankAccountId: id },
+  });
   if (txnCount > 0) {
-    await db.bankAccount.update({ where: { id }, data: { isActive: false } });
+    await db.bankAccount.update({
+      where: { id },
+      data: { isActive: false },
+    });
   } else {
     await db.bankAccount.delete({ where: { id } });
   }
-  await writeAuditLog({ organizationId: organization.id, userId: user.id, action: "DELETE", entityType: "BankAccount", entityId: id, before: { name: a.name } });
+  await writeAuditLog({
+    organizationId: organization.id,
+    userId: user.id,
+    action: "DELETE",
+    entityType: "BankAccount",
+    entityId: id,
+    before: { name: a.name },
+  });
   revalidatePath("/banking");
   return { ok: true };
 }
