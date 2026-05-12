@@ -173,7 +173,6 @@ export default async function RecurringBillDetailPage({
             <DropdownMenuContent align="end">
               {!isStopped && !isExpired ? (
                 <DropdownMenuItem
-                  onSelect={(e) => e.preventDefault()}
                   className="p-0"
                   asChild
                 >

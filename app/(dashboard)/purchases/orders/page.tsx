@@ -204,6 +204,7 @@ export default async function PurchaseOrdersListPage({
           />
         }
         preferencesHref="/settings/preferences/customers-and-vendors"
+        customFieldsHref="/settings/preferences/purchase_order/custom-fields"
         sortOptions={[
           { label: "Date", value: "orderDate" },
           { label: "PO number", value: "number" },

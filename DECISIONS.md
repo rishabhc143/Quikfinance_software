@@ -352,3 +352,15 @@ Every interpretive call I made while implementing the master prompt, with the re
 ### D72. Expenses module is a placeholder per spec (P8 via PR #95 + #101).
 **Choice:** list page got the parity rewrite (saved views + bulk actions + smart `BILLABLE?` badge). New + Edit forms keep the legacy thin shape but now carry a yellow `<AlertTriangle>` deferred-feature banner pointing at Mileage / Itemize / OCR / Convert-to-Bill as follow-up patches.
 **Why:** the master prompt's `<expenses_spec_placeholder>` explicitly says "do not invent fields without screenshots." The banner makes the deferred state visible to users.
+
+### D73. `/organizations/new` lives outside the `(dashboard)` group (PR #107).
+**Choice:** the onboarding route at `/organizations/new` is rooted at `app/organizations/`, not `app/(dashboard)/organizations/`. Its layout uses `requireUser()` (auth-required) instead of `requireOrganization()` (org-required).
+**Why:** a fresh user from `/signup` has no `OrganizationMembership` row. The dashboard layout calls `requireOrganization()`, which redirects no-org users to `/organizations/new` — if that page were inside the same `(dashboard)` group, its layout would call the same gate and bounce back, producing `ERR_TOO_MANY_REDIRECTS`. Hoisting the route out of the group makes the onboarding screen reachable for exactly the users who need it.
+
+### D74. `QUIK_AUTO_MIGRATE` must be the literal string `"1"`, not just defined (production lesson).
+**Choice:** `instrumentation.ts`'s gate is `if (process.env.QUIK_AUTO_MIGRATE !== "1") return;`. The Vercel env var must hold the value `1` — not empty, not `"true"`, not `"yes"`.
+**Why:** discovered the hard way — an empty-valued `QUIK_AUTO_MIGRATE` on production silently disabled the auto-migration hook, so four pending migrations (`gstin_and_invoice_hsn` through `bill_number_soft_dup`) never applied. The DB was missing `Organization.gstin` and every authenticated request returned 500. Fix: set the var to literal `"1"` via the Vercel REST API (the CLI's `vercel env add` had stdin-handling issues that produced empty values from piped input). Manual fallback: `POST /api/admin/migrate` with `x-migration-key: $MIGRATION_KEY` applies any pending migrations on demand.
+
+### D75. Lifecycle E2E coverage on the canonical purchases flow (PR #108).
+**Choice:** `tests/e2e/purchases-lifecycle.spec.ts` exercises vendor → PO → Mark Issued → Convert to Bill → Mark Open → Record Payment → PAID end-to-end via Playwright, driven by `data-testid` selectors. Vendor + service item + AP account are pre-seeded via `seedPurchasesLifecycleFixtures()`.
+**Why:** every previous lifecycle PR only had smoke coverage of the surfaces (PR #89's `purchases-orders-pdf.spec.ts`). Without a true round-trip spec, status-flip bugs (like the PO→Bill auto-flip in acceptance #5) could regress silently. The lifecycle spec is the regression gate for every future Purchases PR.

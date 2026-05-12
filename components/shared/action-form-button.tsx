@@ -31,6 +31,10 @@ type Props = {
   /** When set, the action is presumed to redirect; we skip the
    *  router.refresh() in that case. */
   redirects?: boolean;
+  /** Optional data-testid for Playwright E2E selectors. Used by the
+   *  purchases-lifecycle spec to drive Mark-Issued / Convert-to-Bill /
+   *  Mark-Open transitions deterministically. */
+  testId?: string;
 };
 
 export function ActionFormButton({
@@ -41,6 +45,7 @@ export function ActionFormButton({
   size = "sm",
   successToast,
   redirects = false,
+  testId,
 }: Props) {
   const router = useRouter();
   const [busy, setBusy] = React.useState(false);
@@ -67,6 +72,7 @@ export function ActionFormButton({
       size={size}
       onClick={handle}
       disabled={busy}
+      data-testid={testId}
       className="gap-1"
     >
       {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : icon}

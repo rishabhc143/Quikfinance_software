@@ -148,6 +148,7 @@ export default async function PurchaseOrderDetailPage({
               label="Mark as Issued"
               icon={<CheckCircle2 className="h-4 w-4" />}
               successToast="Marked as Issued"
+              testId="mark-po-issued-button"
             />
           ) : null}
           {(isIssued || isPartiallyBilled) ? (
@@ -161,6 +162,7 @@ export default async function PurchaseOrderDetailPage({
               icon={<ArrowRightCircle className="h-4 w-4" />}
               variant="default"
               redirects
+              testId="convert-po-to-bill-button"
             />
           ) : null}
 
@@ -193,7 +195,6 @@ export default async function PurchaseOrderDetailPage({
                 <Link href={`/purchases/orders/${po.id}/edit`}>Edit</Link>
               </DropdownMenuItem>
               <DropdownMenuItem
-                onSelect={(e) => e.preventDefault()}
                 className="p-0"
                 asChild
               >
@@ -209,7 +210,6 @@ export default async function PurchaseOrderDetailPage({
               </DropdownMenuItem>
               {(isIssued || isPartiallyBilled || isBilled) ? (
                 <DropdownMenuItem
-                  onSelect={(e) => e.preventDefault()}
                   className="p-0"
                   asChild
                 >
@@ -226,7 +226,6 @@ export default async function PurchaseOrderDetailPage({
               ) : null}
               {!isCancelled ? (
                 <DropdownMenuItem
-                  onSelect={(e) => e.preventDefault()}
                   className="p-0"
                   asChild
                 >

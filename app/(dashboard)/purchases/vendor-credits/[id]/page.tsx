@@ -179,7 +179,6 @@ export default async function VendorCreditDetailPage({
             <DropdownMenuContent align="end">
               {!isVoid && applied <= 0.001 && refunded <= 0.001 ? (
                 <DropdownMenuItem
-                  onSelect={(e) => e.preventDefault()}
                   className="p-0"
                   asChild
                 >

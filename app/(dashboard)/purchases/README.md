@@ -6,21 +6,22 @@ The Purchases master prompt (`Quikfinance_Purchases_Master_Prompt.docx`) defines
 
 ---
 
-## Status (May 2026, post-PR #102)
+## Status (May 2026, post-PR #108)
 
 | Sub-module | Routes | State |
 |---|---|---|
 | **Vendors** | `/purchases/vendors` + `/new` + `/[id]` + `/[id]/edit` + `/import` | ✅ Complete |
 | **Purchase Orders** | `/purchases/orders` + `/new` + `/[id]` + `/[id]/edit` + `/[id]/pdf` + `/[id]/send` | ✅ Complete |
-| **Bills** | `/purchases/bills` + `/new` + `/[id]` + `/[id]/edit` + `/[id]/pdf` | ✅ Complete — full lifecycle, fromPO seeding, soft dup-warning override, **PDF route** |
-| **Payments Made** | `/purchases/payments-made` + `/new` + `/[id]` | ✅ Complete — **two-tab form** (Bill Payment + Vendor Advance), allocation table, drawdown, excess-to-advance |
-| **Vendor Credits** | `/purchases/vendor-credits` + `/new` + `/[id]` + `/[id]/edit` + `/[id]/pdf` | ✅ Complete — multi-line form, **Apply-to-Bill** + **Record Refund** dialogs, **PDF route** |
-| **Recurring Bills** | `/purchases/recurring-bills` + `/new` | 🟢 List + bulk Pause/Resume/Delete + **`/api/cron/recurring-bills`** generating DRAFT Bills daily. Full multi-line form + detail page is P7-B |
-| **Recurring Expenses** | `/purchases/recurring-expenses` + `/new` | 🟢 List + bulk actions + **`/api/cron/recurring-expenses`** generating Expense rows daily (billable ones surface on next Invoice) |
-| **Expenses** | `/purchases/expenses` + `/new` + `/[id]/edit` | 🟢 List parity-complete; form has deferred-feature banner per spec — Mileage / OCR / Convert-to-Bill in refinement patch |
+| **Bills** | `/purchases/bills` + `/new` + `/[id]` + `/[id]/edit` + `/[id]/pdf` + `/import` | ✅ Complete — full lifecycle, fromPO seeding, soft dup-warning override, PDF route, **Apply Credits dialog**, **Convert to Recurring**, CSV import |
+| **Payments Made** | `/purchases/payments-made` + `/new` + `/[id]` | ✅ Complete — two-tab form (Bill Payment + Vendor Advance), allocation table, drawdown, excess-to-advance |
+| **Vendor Credits** | `/purchases/vendor-credits` + `/new` + `/[id]` + `/[id]/edit` + `/[id]/pdf` + `/import` | ✅ Complete — multi-line form, Apply-to-Bill + Record Refund dialogs, PDF route, CSV import |
+| **Recurring Bills** | `/purchases/recurring-bills` + `/new` + `/[id]` + `/[id]/edit` + `/import` | ✅ Complete — **full multi-line form**, **detail page** with Pause/Resume/Stop/Run-Now/Edit, daily `/api/cron/recurring-bills` generating DRAFT Bills, CSV import |
+| **Recurring Expenses** | `/purchases/recurring-expenses` + `/new` + `/[id]` + `/[id]/edit` + `/import` | ✅ Complete — **full form**, **detail page** with transitions, daily `/api/cron/recurring-expenses` generating Expense rows (billable ones surface on next Invoice), CSV import |
+| **Expenses** | `/purchases/expenses` + `/new` + `/[id]/edit` | 🟡 List parity-complete; form has deferred-feature banner per spec — Mileage / OCR / Convert-to-Bill in refinement patch (explicit `<expenses_spec_placeholder>` in master prompt) |
 | **Billable expenses → Invoice** | `<BillableExpensesPanel>` on `/sales/invoices/new` | ✅ Complete — pulls unbilled Bill lines + Expenses for a customer, marks them used on save |
-| **Partner-bank integration** | `/settings/integrations/bill-pay-banks` | ✅ Stub page with 3 banks + Notify-me opt-in. Full API integration deferred |
+| **Partner-bank integration** | `/settings/integrations/bill-pay-banks` | ✅ Stub page with 3 banks (ICICI / HDFC / Axis) + Notify-me opt-in. Live API integration deferred per spec |
 | **Bill statuses cron** | `/api/cron/bill-statuses` | ✅ Flips OPEN bills past dueDate → OVERDUE daily |
+| **Lifecycle Playwright spec** | `tests/e2e/purchases-lifecycle.spec.ts` | ✅ Full end-to-end coverage: vendor → PO → Mark Issued → Convert to Bill → Mark Open → Record Payment → PAID |
 
 ---
 
@@ -96,34 +97,67 @@ These come from the master prompt's `<architectural_decisions_locked>` block and
 
 ---
 
-## What's pending
+## Acceptance scorecard (post-PR #108)
 
-After PRs #91–#102 most acceptance criteria are met. Remaining work:
+**18 of 19 acceptance criteria fully met (95%).** The remaining 1
+is partial — `Manage Custom Fields` link is wired on every list
+page, but the spec-fidelity column-customization niceties
+(Reset Column Width, Customize Columns) require `TransactionListPage`
+/ `DataTable` primitive changes and are tracked as polish, not
+Purchases-specific work.
 
-### P7-B — Recurring profile full forms + detail pages (~1 PR)
+Headline fixtures of completeness, in priority order:
+- All eight Purchases sub-modules (Vendors / POs / Bills /
+  Payments / Vendor Credits / Recurring Bills / Recurring Expenses
+  / Expenses) ship with list + new + detail + edit routes.
+- Three daily crons (`/api/cron/recurring-bills`,
+  `/api/cron/recurring-expenses`, `/api/cron/bill-statuses`) wired
+  in `vercel.json`, each gated by `CRON_SECRET` via
+  `assertCronAuthorized()`.
+- CSV import wizards on Vendors / Bills / Vendor Credits /
+  Recurring Bills / Recurring Expenses (PR #85, #106).
+- Full PO → Bill → Payment → PAID Playwright spec (PR #108).
+- Apply Credits + Convert to Recurring + fromPO + fromBillId
+  cross-flow links (PR #105, #106).
 
-The current Recurring Bill / Recurring Expense forms are thin (profileName / frequency / nextRunAt / amount). Per `<recurring_bills_spec>` / `<recurring_expenses_spec>` they should mirror the Bill / Expense form shape:
-- Multi-line item table with `customerColumnVisible=true` so billable lines surface on generated rows
-- "Never expires" toggle / end-date picker
-- Detail page actions: **Pause / Resume / Stop / Edit / Delete / Run Now**
-- "Run Now" calls into the cron's helper to generate immediately
+## What's pending (deliberate / out-of-module)
 
-### Spec-fidelity polish (~2 small PRs)
+After PRs #91–#108, what remains is genuinely deferred per spec
+or scoped outside the Purchases module:
 
-- Bill detail page: **Apply Credits** action (inverse of the credit-side dialog, picking from available credits)
-- Bill form footer: **Make Recurring** link → `/purchases/recurring-bills/new?fromBillId=<id>`
-- Bill detail page: **Convert to Recurring** action in the More menu
-- Three-dots menu spec items not yet wired (Manage Custom Fields, Import submenus, Reset Column Width)
+### Three-dots column-customization niceties (primitive-level)
 
-### Bill / Vendor Credit / Recurring import wizards (~1 PR)
+Spec calls for **Reset Column Width** + **Customize Columns**
+dropdowns on every list page's three-dots menu. These require
+per-user column-state persistence (new `UserListPreference` model
+or localStorage) plus `DataTable` primitive changes — they affect
+*every* list page in the app (Sales included), so they're tracked
+as a shared-primitive polish PR, not Purchases work.
 
-The Vendor import wizard from PR #85 is the template. Same 4-step flow for Bills (with the "Link Bills to corresponding POs" checkbox per spec) + Vendor Credits + the two Recurring profile types.
+### Expenses module flesh-out
 
-### Full Playwright lifecycle (~1 PR)
+The master prompt's `<expenses_spec_placeholder>` explicitly defers
+Mileage / OCR / Itemize / Convert-to-Bill to a refinement patch.
+The current placeholder banner on `/purchases/expenses/new` calls
+this out to the user.
 
-End-to-end test that creates a vendor → PO → converts to Bill → records payment → applies a credit → reverses everything. Currently only the smoke test (PR #89) is in place.
+### Vendor Portal UI
 
-**Total remaining: ~5 PRs.** Down from ~20 at sprint start and ~9 mid-sprint.
+Schema fields exist (`Contact.enableVendorPortal`,
+`Bill.portalAccessToken`, `PurchaseOrder.portalAccessToken`) but
+the portal pages are deliberately not built in v1 per spec.
+
+### Partner-bank live API
+
+Stubbed at `/settings/integrations/bill-pay-banks` with 3 banks
+and a Notify-me opt-in. Full API integration is a separate
+procurement workstream, not part of the accounting product.
+
+### Multi-line CSV import
+
+`PR #106`'s import wizards accept one primary line per CSV row.
+Multi-line bulk import would need a parent-ref/child-ref schema
+design — tracked as a future enhancement, not blocking spec.
 
 ---
 

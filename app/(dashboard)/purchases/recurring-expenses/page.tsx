@@ -153,6 +153,7 @@ export default async function RecurringExpensesListPage({
           />
         }
         preferencesHref="/settings/preferences/customers-and-vendors"
+        customFieldsHref="/settings/preferences/recurring_expense/custom-fields"
         sortOptions={[
           { label: "Next run", value: "nextRunAt" },
           { label: "Profile name", value: "profileName" },

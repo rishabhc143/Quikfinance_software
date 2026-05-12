@@ -190,6 +190,7 @@ export default async function PaymentsMadeListPage({
           />
         }
         preferencesHref="/settings/preferences/customers-and-vendors"
+        customFieldsHref="/settings/preferences/payment_made/custom-fields"
         sortOptions={[
           { label: "Payment date", value: "paymentDate" },
           { label: "Payment #", value: "number" },

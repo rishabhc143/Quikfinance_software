@@ -223,6 +223,7 @@ export default async function BillsListPage({
           />
         }
         preferencesHref="/settings/preferences/customers-and-vendors"
+        customFieldsHref="/settings/preferences/bill/custom-fields"
         sortOptions={[
           { label: "Issue date", value: "issueDate" },
           { label: "Bill #", value: "number" },

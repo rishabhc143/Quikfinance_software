@@ -200,10 +200,11 @@ export default async function BillDetailPage({
               label="Mark as Open"
               icon={<CheckCircle2 className="h-4 w-4" />}
               successToast="Bill marked open"
+              testId="mark-bill-open-button"
             />
           ) : null}
           {(isOpen || isOverdue) && balanceDue > 0 ? (
-            <Button asChild className="gap-1">
+            <Button asChild className="gap-1" data-testid="record-payment-link">
               <Link
                 href={`/purchases/payments-made/new?vendor=${b.contactId}&bill=${b.id}`}
               >
@@ -255,7 +256,6 @@ export default async function BillDetailPage({
                 </DropdownMenuItem>
               ) : null}
               <DropdownMenuItem
-                onSelect={(e) => e.preventDefault()}
                 className="p-0"
                 asChild
               >
@@ -278,7 +278,6 @@ export default async function BillDetailPage({
               </DropdownMenuItem>
               {!isVoid && !isPaid && !isWrittenOff ? (
                 <DropdownMenuItem
-                  onSelect={(e) => e.preventDefault()}
                   className="p-0"
                   asChild
                 >
@@ -295,7 +294,6 @@ export default async function BillDetailPage({
               ) : null}
               {(isOpen || isOverdue) && balanceDue > 0 ? (
                 <DropdownMenuItem
-                  onSelect={(e) => e.preventDefault()}
                   className="p-0"
                   asChild
                 >
