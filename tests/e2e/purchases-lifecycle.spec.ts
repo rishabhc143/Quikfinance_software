@@ -82,8 +82,20 @@ test.describe("Purchases lifecycle (acceptance #19)", () => {
     await page.getByTestId("line-item-name-0").fill("Office supplies");
     await page.getByTestId("line-item-rate-0").fill("1500");
 
+    // Wait for the totals card to reflect the rate — this confirms the
+    // TransactionLineItemsTable's onChange has propagated up to the
+    // parent form's `lines` state before we trigger submit. Without
+    // this, a fast Playwright click can fire before React's useEffect
+    // has run and the parent submits with an empty `lines` array.
+    await expect(page.getByText(/1,500\.00/).first()).toBeVisible({
+      timeout: 10_000,
+    });
+
     await page.getByTestId("po-save-as-draft-button").click();
-    await expect(page).toHaveURL(/\/purchases\/orders\/[^/]+$/, {
+    // Match a CUID-style ID specifically so a failed save (which would
+    // leave the URL at `/purchases/orders/new`) is caught here rather
+    // than masking as a missing testid further down.
+    await expect(page).toHaveURL(/\/purchases\/orders\/c[a-z0-9]{20,}$/, {
       timeout: 30_000,
     });
 
@@ -103,7 +115,8 @@ test.describe("Purchases lifecycle (acceptance #19)", () => {
     // ───── 4. Fill manual bill # + Save as Open ────────────────────
     await page.getByTestId("bill-number-input").fill(billNumber);
     await page.getByTestId("bill-save-as-open-button").click();
-    await expect(page).toHaveURL(/\/purchases\/bills\/[^/]+$/, {
+    // Same CUID-strictness rationale as the PO save step.
+    await expect(page).toHaveURL(/\/purchases\/bills\/c[a-z0-9]{20,}$/, {
       timeout: 30_000,
     });
     // Capture the bill id so we can return here after the payment redirect.
@@ -133,8 +146,9 @@ test.describe("Purchases lifecycle (acceptance #19)", () => {
 
     await page.getByTestId("payment-save-as-paid-button").click();
     // The createBillPaymentAction redirects to
-    // `/purchases/payments-made/<id>` on success.
-    await expect(page).toHaveURL(/\/purchases\/payments-made\/[^/]+$/, {
+    // `/purchases/payments-made/<id>` on success — match CUID
+    // specifically so a stuck-on-/new state can't pass silently.
+    await expect(page).toHaveURL(/\/purchases\/payments-made\/c[a-z0-9]{20,}$/, {
       timeout: 30_000,
     });
 
