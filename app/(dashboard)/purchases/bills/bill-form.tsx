@@ -59,6 +59,20 @@ export type BillFormProps = {
     values: BillInput,
     opts?: { open?: boolean }
   ) => Promise<unknown>;
+  /** P-acc#6: optional server action called on Bill# blur to surface a
+   *  warning when (vendor, number) already exists. The save action no
+   *  longer throws on dupe — this is the soft-warning surface. */
+  checkDuplicateAction?: (input: {
+    vendorId: string;
+    number: string;
+    excludeBillId?: string;
+  }) => Promise<{
+    duplicate: boolean;
+    existing?: { id: string; number: string; issueDate: Date; status: string };
+  }>;
+  /** Edit form passes the current bill id so the duplicate-check skips
+   *  the row itself. */
+  excludeBillId?: string;
   submitLabel?: string;
   cancelHref?: string;
   isCreate?: boolean;
@@ -79,6 +93,8 @@ export function BillForm({
   pdfTemplateOptions = [],
   defaultCurrency,
   onSubmitAction,
+  checkDuplicateAction,
+  excludeBillId,
   submitLabel = "Save as Draft",
   cancelHref = "/purchases/bills",
   isCreate = true,
@@ -92,6 +108,41 @@ export function BillForm({
     initial?.contactId ?? null
   );
   const [billNumber, setBillNumber] = React.useState(initial?.number ?? "");
+  const [dupWarning, setDupWarning] = React.useState<{
+    number: string;
+    issueDate: Date;
+  } | null>(null);
+
+  /**
+   * On Bill# blur, if both vendor + number are set, call the server to
+   * check (vendor × number) for a prior bill. Surface the result as a
+   * soft warning under the input — does NOT block save. Cleared on
+   * change so users don't see stale warnings while typing.
+   */
+  async function onBillNumberBlur() {
+    if (!checkDuplicateAction) return;
+    if (!contactId || !billNumber.trim()) {
+      setDupWarning(null);
+      return;
+    }
+    try {
+      const r = await checkDuplicateAction({
+        vendorId: contactId,
+        number: billNumber.trim(),
+        excludeBillId,
+      });
+      if (r.duplicate && r.existing) {
+        setDupWarning({
+          number: r.existing.number,
+          issueDate: new Date(r.existing.issueDate),
+        });
+      } else {
+        setDupWarning(null);
+      }
+    } catch {
+      // Silent — duplicate check is informational only.
+    }
+  }
   const [referenceNumber, setReferenceNumber] = React.useState(
     initial?.referenceNumber ?? ""
   );
@@ -214,15 +265,28 @@ export function BillForm({
         <div className="space-y-1">
           <Input
             value={billNumber}
-            onChange={(e) => setBillNumber(e.target.value)}
+            onChange={(e) => {
+              setBillNumber(e.target.value);
+              if (dupWarning) setDupWarning(null);
+            }}
+            onBlur={onBillNumberBlur}
             placeholder="Type the vendor's bill number (e.g. INV-12345)"
             className="font-mono"
             required
           />
-          <p className="text-xs text-muted-foreground">
-            Bill numbers come from your vendor&apos;s source document and are
-            unique per vendor. A warning shows on duplicates.
-          </p>
+          {dupWarning ? (
+            <p className="text-xs text-amber-700 dark:text-amber-400">
+              ⚠ This vendor has a bill with number{" "}
+              <span className="font-mono">{dupWarning.number}</span> on{" "}
+              {dupWarning.issueDate.toLocaleDateString()}. Save anyway to
+              override.
+            </p>
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              Bill numbers come from your vendor&apos;s source document.
+              Duplicates per vendor are flagged but allowed.
+            </p>
+          )}
         </div>
 
         <Label className="pt-2">Order # / Reference</Label>

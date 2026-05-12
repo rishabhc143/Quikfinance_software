@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { format } from "date-fns";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, AlertTriangle } from "lucide-react";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
 import { Button } from "@/components/ui/button";
@@ -23,6 +23,16 @@ export default async function EditExpensePage({ params }: { params: { id: string
           <h1 className="text-xl font-semibold">Edit Expense</h1>
         </div>
         <DeleteButton action={deleteExpenseAction.bind(null, e.id)} redirectTo="/purchases/expenses" />
+      </div>
+      {/* TODO: Expenses refinement patch — full UI per
+          <expenses_spec_placeholder>. */}
+      <div className="rounded-md border-l-4 border-amber-400 bg-amber-50 dark:bg-amber-950/30 p-3 text-sm flex items-start gap-2">
+        <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+        <div>
+          <strong>Expenses module is pending detailed spec.</strong>{" "}
+          Mileage, Itemize, Receipt Upload, and Convert to Bill ship
+          in a follow-up patch.
+        </div>
       </div>
       <ExpenseForm
         action={update}

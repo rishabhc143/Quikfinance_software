@@ -8,6 +8,7 @@ import {
   CheckCircle2,
   Banknote,
   ListPlus,
+  FileText,
 } from "lucide-react";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
@@ -161,6 +162,14 @@ export default async function VendorCreditDetailPage({
               </Link>
             </Button>
           ) : null}
+          <Button asChild variant="outline" size="sm" className="gap-1">
+            <Link
+              href={`/purchases/vendor-credits/${vc.id}/pdf`}
+              target="_blank"
+            >
+              <FileText className="h-4 w-4" /> PDF
+            </Link>
+          </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" size="icon" aria-label="More actions">

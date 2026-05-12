@@ -15,15 +15,59 @@ export type { BillInput };
  *
  * Spec (master prompt + audit):
  *   - Bill numbers are MANUAL. No NumberSeries lookup. The user
- *     types the vendor's source-doc number; we enforce uniqueness
- *     per (orgId, contactId, number) at the unique index — the
- *     action surfaces a clear error on collision.
+ *     types the vendor's source-doc number. Per <bills_spec>,
+ *     duplicates per (orgId, contactId, number) are FLAGGED with a
+ *     warning but ALLOWED — vendors sometimes restate. The unique
+ *     constraint dropped in migration 20260513000000_bill_number_soft_dup.
  *   - Totals math is the shared Decimal-safe `computeDocument`.
  *   - Edit on a non-Draft bill is allowed for header fields, but
  *     PAID bills block edit (payments would orphan).
  *   - Each save persists `billableToCustomerId` per line so the
  *     <BillableExpensesBanner> on the Invoice form can pick them up.
+ *   - When a Bill is created with `purchaseOrderId` set, the source
+ *     PO's status flips ISSUED/PARTIALLY_BILLED → BILLED in the same
+ *     action (acceptance #5).
  */
+
+/**
+ * Check whether a (vendor, billNumber) pair already exists. The form
+ * calls this on Bill# blur; if a match is found we surface a yellow
+ * warning toast but the user can save anyway. Idempotent + fast
+ * (covered by the non-unique index from the soft-dup migration).
+ *
+ * `excludeBillId` lets the edit form skip "matches itself".
+ */
+export async function checkBillNumberDuplicateAction(input: {
+  vendorId: string;
+  number: string;
+  excludeBillId?: string;
+}): Promise<{
+  duplicate: boolean;
+  existing?: {
+    id: string;
+    number: string;
+    issueDate: Date;
+    status: string;
+  };
+}> {
+  const { organization } = await requireOrganization();
+  if (!input.vendorId || !input.number?.trim()) {
+    return { duplicate: false };
+  }
+  const existing = await db.bill.findFirst({
+    where: {
+      organizationId: organization.id,
+      contactId: input.vendorId,
+      number: input.number.trim(),
+      deletedAt: null,
+      ...(input.excludeBillId ? { NOT: { id: input.excludeBillId } } : {}),
+    },
+    select: { id: true, number: true, issueDate: true, status: true },
+    orderBy: { issueDate: "desc" },
+  });
+  if (!existing) return { duplicate: false };
+  return { duplicate: true, existing };
+}
 
 async function totalsFor(orgId: string, input: BillInput) {
   const taxes = await db.tax.findMany({
@@ -61,9 +105,11 @@ export async function createBillAction(
   const { user, organization } = await requireOrganization();
   const data = billSchema.parse(input);
 
-  // Duplicate-number check per (org × vendor). The unique index in
-  // the DB will catch this too, but we throw with a friendlier
-  // message before the insert fires.
+  // Bill number duplicates are SOFT per <bills_spec>: the UI shows a
+  // warning on blur (via `checkBillNumberDuplicateAction`) but the
+  // user can save anyway. The DB no longer carries a unique constraint
+  // (migration 20260513000000_bill_number_soft_dup dropped it). We
+  // log a marker in AuditLog so duplicates are auditable.
   const dup = await db.bill.findFirst({
     where: {
       organizationId: organization.id,
@@ -71,13 +117,8 @@ export async function createBillAction(
       number: data.number,
       deletedAt: null,
     },
-    select: { id: true },
+    select: { id: true, issueDate: true },
   });
-  if (dup) {
-    throw new Error(
-      `Vendor already has a bill with number "${data.number}". Use a different number or edit the existing bill.`
-    );
-  }
 
   const totals = await totalsFor(organization.id, data);
   // "Save as Open" promotes the saved status from DRAFT → OPEN even
@@ -139,6 +180,22 @@ export async function createBillAction(
     },
   });
 
+  // P9-A acceptance #5: when this Bill is created from a PO via
+  // ?fromPO=<id>, flip the source PO's status to BILLED so the PO
+  // detail page reflects that it's been billed end-to-end.
+  if (data.purchaseOrderId) {
+    await db.purchaseOrder.updateMany({
+      where: {
+        id: data.purchaseOrderId,
+        organizationId: organization.id,
+        deletedAt: null,
+        // Don't downgrade Closed/Cancelled.
+        status: { in: ["ISSUED", "PARTIALLY_BILLED"] },
+      },
+      data: { status: "BILLED" },
+    });
+  }
+
   await writeAuditLog({
     organizationId: organization.id,
     userId: user.id,
@@ -147,6 +204,7 @@ export async function createBillAction(
     entityId: created.id,
     after: {
       number: created.number,
+      duplicateNumber: !!dup,
       total: totals.total,
       status: created.status,
     },
