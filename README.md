@@ -42,10 +42,22 @@ Postgres: Neon, Supabase, or local Docker (`docker run --name qf-postgres -e POS
 ## Deploy
 
 1. Push to GitHub → import on Vercel.
-2. Add `DATABASE_URL`, `DIRECT_URL`, `AUTH_SECRET`, `NEXTAUTH_URL`. Optional: `AUTH_GOOGLE_ID/SECRET`, `ANTHROPIC_API_KEY`, `RESEND_API_KEY`, `MIGRATION_KEY`.
+2. Add `DATABASE_URL`, `DIRECT_URL`, `AUTH_SECRET`, `NEXTAUTH_URL`. Optional: `AUTH_GOOGLE_ID/SECRET`, `RESEND_API_KEY`, `MIGRATION_KEY`.
 3. Set **`QUIK_AUTO_MIGRATE=1`** so every cold start applies pending Prisma migrations (the build script can't because Vercel marks DB env vars as Sensitive).
 
 The hook lives in [`instrumentation.ts`](instrumentation.ts) and calls [`lib/admin/run-migrations.ts`](lib/admin/run-migrations.ts), which is also exposed manually at `POST /api/admin/migrate` (auth-gated by `MIGRATION_KEY`).
+
+### AI Assistant ("Need Assistance?" button)
+
+The floating Claude-powered assistant at the bottom-right of every dashboard page needs an Anthropic API key to answer questions.
+
+1. Grab a key from <https://console.anthropic.com> → **Settings** → **API Keys** → **Create Key**. You'll also need to add a payment method — Anthropic charges per token (Sonnet 4.5 is roughly $3 per million input tokens, $15 per million output as of 2026; typical chat exchanges cost fractions of a cent).
+2. On Vercel: **Project Settings** → **Environment Variables** → add `ANTHROPIC_API_KEY` = `sk-ant-...` for the Production target.
+3. Trigger a redeploy (Deployments → ⋯ → Redeploy on the latest commit) so the running serverless functions pick up the new value.
+
+Without the key, the button still renders but the chat returns a friendly "AI assistant is temporarily unavailable" message. The model used is `claude-sonnet-4-5` (a stable alias) — change it in [`app/api/ai/chat/route.ts`](app/api/ai/chat/route.ts) if you want to swap to Haiku or Opus.
+
+Org admins can override the default system prompt + daily rate limit at `/settings/ai`. Default limit is 50 messages/user/day.
 
 ## Architecture cheatsheet
 
