@@ -9,6 +9,8 @@ import {
   AlertTriangle,
   CheckCircle2,
   FileText,
+  CreditCard,
+  Repeat,
 } from "lucide-react";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
@@ -25,12 +27,15 @@ import {
 import { DeleteButton } from "@/components/shared/delete-button";
 import { ActionFormButton } from "@/components/shared/action-form-button";
 import { formatMoney } from "@/lib/money";
+import { ApplyCreditsDialog } from "./apply-credits-dialog";
 import {
   markBillOpenAction,
   voidBillAction,
   writeOffBillAction,
   cloneBillAction,
   softDeleteBillAction,
+  getOpenCreditsForBillAction,
+  applyCreditsToBillAction,
 } from "../actions";
 
 export const metadata = { title: "Bill" };
@@ -215,6 +220,22 @@ export default async function BillDetailPage({
             </Button>
           ) : null}
 
+          {/* Apply Credits — only when there's outstanding balance + bill is in an applicable state. */}
+          {(isOpen || isOverdue) && balanceDue > 0 ? (
+            <ApplyCreditsDialog
+              billId={b.id}
+              outstanding={balanceDue}
+              currency={cur}
+              loadAction={getOpenCreditsForBillAction}
+              applyAction={applyCreditsToBillAction}
+              trigger={
+                <Button variant="outline" size="sm" className="gap-1">
+                  <CreditCard className="h-4 w-4" /> Apply Credits
+                </Button>
+              }
+            />
+          ) : null}
+
           <Button asChild variant="outline" size="sm" className="gap-1">
             <Link href={`/purchases/bills/${b.id}/pdf`} target="_blank">
               <FileText className="h-4 w-4" /> PDF
@@ -247,6 +268,13 @@ export default async function BillDetailPage({
                     redirects
                   />
                 </div>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link
+                  href={`/purchases/recurring-bills/new?fromBillId=${b.id}`}
+                >
+                  <Repeat className="h-4 w-4 mr-2" /> Convert to Recurring
+                </Link>
               </DropdownMenuItem>
               {!isVoid && !isPaid && !isWrittenOff ? (
                 <DropdownMenuItem

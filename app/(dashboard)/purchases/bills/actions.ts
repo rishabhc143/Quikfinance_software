@@ -10,6 +10,192 @@ import { billSchema, type BillInput } from "@/lib/validations/bill";
 
 export type { BillInput };
 
+// ───── Bill-side: Apply Credits ──────────────────────────────────
+
+/**
+ * Load Vendor Credits for the bill's vendor that have unused balance
+ * — used by the bill detail page's "Apply Credits" dialog. Returns
+ * credits with `remaining = total - applied - refunded`; OPEN status
+ * required (Draft credits aren't applicable yet).
+ */
+export async function getOpenCreditsForBillAction(input: {
+  billId: string;
+}): Promise<
+  Array<{
+    id: string;
+    number: string;
+    date: Date;
+    total: number;
+    remaining: number;
+  }>
+> {
+  const { organization } = await requireOrganization();
+  const bill = await db.bill.findFirst({
+    where: {
+      id: input.billId,
+      organizationId: organization.id,
+      deletedAt: null,
+    },
+    select: { contactId: true },
+  });
+  if (!bill) return [];
+  const credits = await db.vendorCredit.findMany({
+    where: {
+      organizationId: organization.id,
+      contactId: bill.contactId,
+      status: "OPEN",
+      deletedAt: null,
+    },
+    select: {
+      id: true,
+      number: true,
+      date: true,
+      total: true,
+      amountApplied: true,
+      amountRefunded: true,
+    },
+    orderBy: { date: "desc" },
+  });
+  return credits
+    .map((c) => {
+      const remaining =
+        Number(c.total) -
+        Number(c.amountApplied) -
+        Number(c.amountRefunded);
+      return {
+        id: c.id,
+        number: c.number,
+        date: c.date,
+        total: Number(c.total),
+        remaining,
+      };
+    })
+    .filter((c) => c.remaining > 0.001);
+}
+
+/**
+ * Apply one or more vendor credits to a single bill. The inverse of
+ * the VC-side dialog (PR #100): instead of picking bills for a
+ * credit, the user picks credits for a bill.
+ *
+ * Per-credit application: creates a `VendorCreditApplication` row,
+ * decrements the credit's remaining balance (closes the credit when
+ * fully consumed), and increments the bill's `amountPaid` + flips
+ * status to PARTIALLY_PAID / PAID accordingly.
+ */
+export async function applyCreditsToBillAction(input: {
+  billId: string;
+  applications: Array<{ vendorCreditId: string; amount: number }>;
+}): Promise<void> {
+  const { user, organization } = await requireOrganization();
+  if (!input.applications?.length) {
+    throw new Error("Select at least one credit");
+  }
+
+  await db.$transaction(async (tx) => {
+    const bill = await tx.bill.findFirst({
+      where: {
+        id: input.billId,
+        organizationId: organization.id,
+        deletedAt: null,
+      },
+    });
+    if (!bill) throw new Error("Bill not found");
+    if (
+      bill.status === "PAID" ||
+      bill.status === "VOID" ||
+      bill.status === "WRITTEN_OFF"
+    ) {
+      throw new Error(
+        `Cannot apply credits to a ${bill.status.toLowerCase()} bill.`
+      );
+    }
+    const outstanding = Number(bill.total) - Number(bill.amountPaid);
+    const wantSum = input.applications.reduce((s, a) => s + a.amount, 0);
+    if (wantSum > outstanding + 0.001) {
+      throw new Error(
+        `Credit total ${wantSum.toFixed(2)} exceeds outstanding ${outstanding.toFixed(2)}.`
+      );
+    }
+
+    // Per-credit: validate remaining balance + apply.
+    for (const app of input.applications) {
+      const vc = await tx.vendorCredit.findFirst({
+        where: {
+          id: app.vendorCreditId,
+          organizationId: organization.id,
+          contactId: bill.contactId,
+          status: "OPEN",
+          deletedAt: null,
+        },
+      });
+      if (!vc) {
+        throw new Error(
+          `Vendor credit not found or already closed/void.`
+        );
+      }
+      const credRemaining =
+        Number(vc.total) -
+        Number(vc.amountApplied) -
+        Number(vc.amountRefunded);
+      if (app.amount > credRemaining + 0.001) {
+        throw new Error(
+          `Credit ${vc.number} has only ${credRemaining.toFixed(2)} remaining.`
+        );
+      }
+      await tx.vendorCreditApplication.create({
+        data: {
+          vendorCreditId: vc.id,
+          billId: bill.id,
+          amountApplied: app.amount,
+          appliedAt: new Date(),
+        },
+      });
+      const newApplied = Number(vc.amountApplied) + app.amount;
+      const credClosed =
+        newApplied + Number(vc.amountRefunded) >=
+        Number(vc.total) - 0.001;
+      await tx.vendorCredit.update({
+        where: { id: vc.id },
+        data: {
+          amountApplied: newApplied,
+          status: credClosed ? "CLOSED" : vc.status,
+        },
+      });
+    }
+
+    // Update the bill's amountPaid + status.
+    const newPaid = Number(bill.amountPaid) + wantSum;
+    const total = Number(bill.total);
+    const newStatus =
+      newPaid >= total - 0.001
+        ? "PAID"
+        : newPaid > 0.001
+        ? "PARTIALLY_PAID"
+        : "OPEN";
+    await tx.bill.update({
+      where: { id: bill.id },
+      data: { amountPaid: newPaid, status: newStatus },
+    });
+  });
+
+  await writeAuditLog({
+    organizationId: organization.id,
+    userId: user.id,
+    action: "UPDATE",
+    entityType: "Bill",
+    entityId: input.billId,
+    after: {
+      creditsApplied: input.applications.length,
+      total: input.applications.reduce((s, a) => s + a.amount, 0),
+    },
+  });
+
+  revalidatePath("/purchases/bills");
+  revalidatePath(`/purchases/bills/${input.billId}`);
+  revalidatePath("/purchases/vendor-credits");
+}
+
 /**
  * Bill server actions.
  *
