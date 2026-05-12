@@ -4,7 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  LayoutDashboard, Package, Users, FileText, ShoppingCart, Wallet,
+  LayoutDashboard, Package, FileText, ShoppingCart, Wallet,
   Clock, BookOpen, BarChart3, FolderOpen, CreditCard, BadgeIndianRupee,
   Settings, ChevronDown,
 } from "lucide-react";
@@ -124,7 +124,10 @@ const NAV: NavItem[] = [
   { label: "Documents", href: "/documents", icon: FolderOpen },
   { label: "Payroll", href: "/payroll", icon: BadgeIndianRupee },
   { label: "Payments", href: "/payments", icon: CreditCard },
-  { label: "Contacts", href: "/contacts", icon: Users },
+  // Contacts intentionally removed from the sidebar — customers live under
+  // /sales/customers and vendors live under /purchases/vendors. The legacy
+  // /contacts route still exists for deep links + quick-create flows, but
+  // it's no longer a default nav entry.
 ];
 
 /** True when `pathname` is the same as `href` or a descendant of it. */
