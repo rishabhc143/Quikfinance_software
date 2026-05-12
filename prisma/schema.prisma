@@ -31,6 +31,7 @@ model User {
   verificationTokens  EmailVerificationToken[]
   referralsMade       Referral[]               @relation("Referrer")
   aiConversations     AiConversation[]
+  bankImportBatches   BankImportBatch[]
 }
 
 model Account {
@@ -117,6 +118,8 @@ model Organization {
   recurringExpenses     RecurringExpense[]
   bankAccounts          BankAccount[]
   bankTransactions      BankTransaction[]
+  bankImportBatches     BankImportBatch[]
+  bankImportPresets     BankImportPreset[]
   journalEntries        JournalEntry[]
   manualJournals        ManualJournal[]
   chartOfAccounts       ChartOfAccount[]
@@ -1477,34 +1480,103 @@ model BankIntegration {
 // ───────────────────────── BANKING ─────────────────────────
 
 model BankAccount {
-  id             String            @id @default(cuid())
+  id             String             @id @default(cuid())
   organizationId String
   name           String
   accountNumber  String?
-  accountType    String            @default("checking")
-  currency       String            @default("INR")
-  openingBalance Decimal           @default(0) @db.Decimal(18, 4)
-  isActive       Boolean           @default(true)
-  createdAt      DateTime          @default(now())
-  organization   Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  /// Legacy free-text type ("checking" / "savings" / "credit_card" / "cash" /
+  /// "wallet"). New code reads `type` (the BankAccountType enum below) instead.
+  /// Kept for backward compat — drop in a future cleanup PR.
+  accountType    String             @default("checking")
+  /// BNK-A — Zoho-parity account kind. Maps to the radio in the Add Bank or
+  /// Credit Card form. Existing rows were back-filled from `accountType`:
+  /// credit_card → CREDIT_CARD, wallet → PAYPAL, everything else → BANK.
+  type           BankAccountType    @default(BANK)
+  /// Only one BANK can be primary per org (partial unique index enforced
+  /// at the DB level).
+  isPrimary      Boolean            @default(false)
+  bankName       String?
+  ifsc           String?
+  description    String?
+  currency       String             @default("INR")
+  openingBalance Decimal            @default(0) @db.Decimal(18, 4)
+  isActive       Boolean            @default(true)
+  createdAt      DateTime           @default(now())
+  organization   Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   transactions   BankTransaction[]
+  importBatches  BankImportBatch[]
+  importPresets  BankImportPreset[]
+}
+
+enum BankAccountType {
+  BANK
+  CREDIT_CARD
+  PAYPAL
 }
 
 model BankTransaction {
-  id             String       @id @default(cuid())
+  id             String           @id @default(cuid())
   organizationId String
   bankAccountId  String
   date           DateTime
   description    String?
   reference      String?
-  amount         Decimal      @db.Decimal(18, 4)
+  amount         Decimal          @db.Decimal(18, 4)
   type           String
-  isReconciled   Boolean      @default(false)
-  createdAt      DateTime     @default(now())
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  bankAccount    BankAccount  @relation(fields: [bankAccountId], references: [id])
+  isReconciled   Boolean          @default(false)
+  /// BNK-A — set to true when the CSV import detected this row as a duplicate
+  /// of an existing transaction. The row is still persisted (so undo works)
+  /// but is hidden from default views.
+  excluded       Boolean          @default(false)
+  excludedReason String?
+  /// Links the row to the import batch that created it. Null for manually-
+  /// entered transactions. Used by the "Undo Last Import" action.
+  importBatchId  String?
+  createdAt      DateTime         @default(now())
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  bankAccount    BankAccount      @relation(fields: [bankAccountId], references: [id])
+  importBatch    BankImportBatch? @relation(fields: [importBatchId], references: [id], onDelete: SetNull)
 
   @@index([organizationId, date])
+  @@index([bankAccountId, date, amount, reference], name: "BankTransaction_dedup_idx")
+}
+
+/// BNK-A — one row per CSV upload. Lets "Undo Last Import" find every row
+/// the batch created. Cascade-deletes its transactions when the user undoes.
+model BankImportBatch {
+  id              String            @id @default(cuid())
+  organizationId  String
+  bankAccountId   String
+  uploadedById    String
+  fileName        String
+  rowCount        Int
+  duplicateCount  Int               @default(0)
+  createdAt       DateTime          @default(now())
+  organization    Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  bankAccount     BankAccount       @relation(fields: [bankAccountId], references: [id], onDelete: Cascade)
+  uploadedBy      User              @relation(fields: [uploadedById], references: [id], onDelete: Restrict)
+  transactions    BankTransaction[]
+
+  @@index([bankAccountId, createdAt(sort: Desc)], name: "BankImportBatch_account_created_idx")
+}
+
+/// BNK-A — saved column-mapping presets. After a successful import, the user
+/// can save the mapping under a name (e.g. "ICICI monthly statement") and
+/// reuse it for next month's import without re-mapping every column.
+model BankImportPreset {
+  id               String       @id @default(cuid())
+  organizationId   String
+  bankAccountId    String
+  name             String
+  amountColumnType String       // 'DOUBLE' | 'SINGLE_WITH_TYPE' | 'SINGLE_NEGATIVE'
+  encoding         String       @default("utf-8")
+  delimiter        String       @default(",")
+  columnMapJson    Json
+  createdAt        DateTime     @default(now())
+  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  bankAccount      BankAccount  @relation(fields: [bankAccountId], references: [id], onDelete: Cascade)
+
+  @@unique([bankAccountId, name], name: "BankImportPreset_account_name_unique")
 }
 
 // ───────────────────────── ACCOUNTANT ─────────────────────────
