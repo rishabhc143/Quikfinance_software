@@ -148,6 +148,7 @@ export default async function RecurringBillsListPage({
         activeView={view}
         newHref="/purchases/recurring-bills/new"
         newLabel="New"
+        importHref="/purchases/recurring-bills/import"
         savedViewBuilder={
           <SavedViewBuilderDialog
             module="recurring_bills"

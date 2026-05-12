@@ -130,6 +130,7 @@ export default async function RecurringExpensesListPage({
         activeView={view}
         newHref="/purchases/recurring-expenses/new"
         newLabel="New"
+        importHref="/purchases/recurring-expenses/import"
         savedViewBuilder={
           <SavedViewBuilderDialog
             module="recurring_expenses"

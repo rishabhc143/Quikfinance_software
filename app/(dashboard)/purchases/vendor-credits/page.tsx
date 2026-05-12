@@ -163,6 +163,7 @@ export default async function VendorCreditsListPage({
         activeView={view}
         newHref="/purchases/vendor-credits/new"
         newLabel="New"
+        importHref="/purchases/vendor-credits/import"
         savedViewBuilder={
           <SavedViewBuilderDialog
             module="vendor_credits"

@@ -193,6 +193,7 @@ export default async function BillsListPage({
         activeView={view}
         newHref="/purchases/bills/new"
         newLabel="New"
+        importHref="/purchases/bills/import"
         savedViewBuilder={
           <SavedViewBuilderDialog
             module="bills"
