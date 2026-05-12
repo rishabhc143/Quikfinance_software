@@ -135,33 +135,91 @@ export async function generateBillFromProfile(
   const dueDate = new Date(today);
   dueDate.setDate(dueDate.getDate() + 30);
 
-  const amount = Number(profile.amount) || 0;
+  // Parse templateJson (written by createRecurringBillAction). If
+  // absent (legacy profile created before the multi-line form), fall
+  // back to a single-line bill using profile.amount.
+  type TemplateLine = {
+    itemId?: string | null;
+    name: string;
+    description?: string | null;
+    hsnSacCode?: string | null;
+    accountId?: string | null;
+    billableToCustomerId?: string | null;
+    quantity: number;
+    rate: number;
+    taxId?: string | null;
+    amount: number;
+  };
+  type Template = {
+    referenceNumber?: string | null;
+    paymentTermsId?: string | null;
+    placeOfSupply?: string | null;
+    currency?: string;
+    subtotal?: number;
+    discountValue?: number;
+    discountType?: string;
+    taxId?: string | null;
+    taxTotal?: number;
+    adjustmentLabel?: string | null;
+    adjustmentValue?: number;
+    total?: number;
+    termsAndConditions?: string | null;
+    lines?: TemplateLine[];
+  };
+  const tmpl = (profile.templateJson ?? null) as Template | null;
+  const totalAmount =
+    Number(tmpl?.total ?? profile.amount) || Number(profile.amount) || 0;
+
+  const lines: TemplateLine[] =
+    tmpl?.lines && tmpl.lines.length > 0
+      ? tmpl.lines
+      : [
+          {
+            name: profile.profileName,
+            description: profile.profileName,
+            quantity: 1,
+            rate: totalAmount,
+            amount: totalAmount,
+          },
+        ];
 
   const bill = await db.bill.create({
     data: {
       organizationId: profile.organizationId,
       number: billNumber,
+      referenceNumber: tmpl?.referenceNumber ?? null,
       contactId: profile.contactId,
       recurringBillId: profile.id,
       status: "DRAFT", // per spec, never auto-Open
       issueDate: today,
       dueDate,
-      currency: "INR",
-      subtotal: amount,
-      taxTotal: 0,
-      total: amount,
+      paymentTermsId: tmpl?.paymentTermsId ?? null,
+      placeOfSupply: tmpl?.placeOfSupply ?? null,
+      currency: tmpl?.currency ?? "INR",
+      subtotal: tmpl?.subtotal ?? totalAmount,
+      discountValue: tmpl?.discountValue ?? 0,
+      discountType: tmpl?.discountType ?? "percentage",
+      taxId: tmpl?.taxId ?? null,
+      taxTotal: tmpl?.taxTotal ?? 0,
+      adjustmentLabel: tmpl?.adjustmentLabel ?? "Adjustment",
+      adjustmentValue: tmpl?.adjustmentValue ?? 0,
+      total: totalAmount,
+      termsAndConditions: tmpl?.termsAndConditions ?? null,
       notes: `Generated from recurring profile "${profile.profileName}"`,
       lineItems: {
-        create: [
-          {
-            position: 0,
-            name: profile.profileName,
-            description: profile.profileName,
-            quantity: 1,
-            rate: amount,
-            amount,
-          },
-        ],
+        create: lines.map((l, i) => ({
+          itemId: l.itemId ?? null,
+          position: i,
+          name: l.name,
+          description: l.description ?? l.name,
+          hsnSacCode: l.hsnSacCode ?? null,
+          accountId: l.accountId ?? null,
+          billableToCustomerId: l.billableToCustomerId ?? null,
+          quantity: l.quantity,
+          rate: l.rate,
+          taxId: l.taxId ?? null,
+          amount: l.amount,
+        })),
       },
     },
   });
