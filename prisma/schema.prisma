@@ -32,6 +32,7 @@ model User {
   referralsMade       Referral[]               @relation("Referrer")
   aiConversations     AiConversation[]
   bankImportBatches   BankImportBatch[]
+  bankTxnsMatched     BankTransaction[]        @relation("BankTransactionMatchedBy")
 }
 
 model Account {
@@ -1532,10 +1533,19 @@ model BankTransaction {
   /// Links the row to the import batch that created it. Null for manually-
   /// entered transactions. Used by the "Undo Last Import" action.
   importBatchId  String?
+  /// BNK-C — single-record match. When the user matches this bank line to an
+  /// existing Invoice / Bill / PaymentReceived / PaymentMade / Expense, we
+  /// store the (type, id) pair here. Cleared via Unmatch action. BNK-D will
+  /// introduce a join table for multi-match scenarios.
+  matchedRecordType String?
+  matchedRecordId   String?
+  matchedAt         DateTime?
+  matchedById       String?
   createdAt      DateTime         @default(now())
   organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   bankAccount    BankAccount      @relation(fields: [bankAccountId], references: [id])
   importBatch    BankImportBatch? @relation(fields: [importBatchId], references: [id], onDelete: SetNull)
+  matchedBy      User?            @relation("BankTransactionMatchedBy", fields: [matchedById], references: [id], onDelete: SetNull)
 
   @@index([organizationId, date])
   @@index([bankAccountId, date, amount, reference], name: "BankTransaction_dedup_idx")
