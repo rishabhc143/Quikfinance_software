@@ -81,14 +81,18 @@ test.describe("Purchases lifecycle (acceptance #19)", () => {
     // Line items table uses canonical testids from the shared primitive.
     await page.getByTestId("line-item-name-0").fill("Office supplies");
     await page.getByTestId("line-item-rate-0").fill("1500");
-
-    // Wait for the totals card to reflect the rate — this confirms the
-    // TransactionLineItemsTable's onChange has propagated up to the
-    // parent form's `lines` state before we trigger submit. Without
-    // this, a fast Playwright click can fire before React's useEffect
-    // has run and the parent submits with an empty `lines` array.
-    await expect(page.getByText(/1,500\.00/).first()).toBeVisible({
-      timeout: 10_000,
+    // Tab out of the rate field so React commits the controlled-input
+    // change and the TransactionLineItemsTable's onChange useEffect
+    // flushes the new `lines` state up to the parent form. Without an
+    // explicit blur, a fast Playwright click can fire before the
+    // effect runs and the parent submits with an empty `lines` array
+    // (validator toasts "Add at least one line item" + page stays
+    // on /new).
+    await page.getByTestId("line-item-rate-0").blur();
+    // Assert the input is committed to the typed value as a positive
+    // signal that React state has settled before we submit.
+    await expect(page.getByTestId("line-item-rate-0")).toHaveValue("1500", {
+      timeout: 5_000,
     });
 
     await page.getByTestId("po-save-as-draft-button").click();
