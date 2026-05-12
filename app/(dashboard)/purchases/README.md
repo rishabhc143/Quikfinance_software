@@ -6,18 +6,21 @@ The Purchases master prompt (`Quikfinance_Purchases_Master_Prompt.docx`) defines
 
 ---
 
-## Status (May 2026, post-PR #95)
+## Status (May 2026, post-PR #102)
 
 | Sub-module | Routes | State |
 |---|---|---|
 | **Vendors** | `/purchases/vendors` + `/new` + `/[id]` + `/[id]/edit` + `/import` | ✅ Complete |
 | **Purchase Orders** | `/purchases/orders` + `/new` + `/[id]` + `/[id]/edit` + `/[id]/pdf` + `/[id]/send` | ✅ Complete |
-| **Bills** | `/purchases/bills` + `/new` + `/[id]` + `/[id]/edit` | ✅ Complete (list + form + detail + transitions + tests; `?fromPO=` seeding) |
-| **Payments Made** | `/purchases/payments-made` + `/new` + `/[id]` | 🟡 List parity-complete + bulk delete reverses bill balances; record-payment form still uses the legacy shape |
-| **Vendor Credits** | `/purchases/vendor-credits` + `/new` | 🟡 List parity-complete + bulk delete (block on applied/refunded); form still legacy |
-| **Recurring Bills** | `/purchases/recurring-bills` + `/new` | 🟡 List parity-complete + bulk Pause/Resume/Delete; cron engine handles generation |
-| **Recurring Expenses** | `/purchases/recurring-expenses` + `/new` | 🟡 List parity-complete + bulk Pause/Resume/Delete |
-| **Expenses** | `/purchases/expenses` + `/new` + `/[id]/edit` | 🟡 List parity-complete + bulk Delete (block on already-billed) |
+| **Bills** | `/purchases/bills` + `/new` + `/[id]` + `/[id]/edit` + `/[id]/pdf` | ✅ Complete — full lifecycle, fromPO seeding, soft dup-warning override, **PDF route** |
+| **Payments Made** | `/purchases/payments-made` + `/new` + `/[id]` | ✅ Complete — **two-tab form** (Bill Payment + Vendor Advance), allocation table, drawdown, excess-to-advance |
+| **Vendor Credits** | `/purchases/vendor-credits` + `/new` + `/[id]` + `/[id]/edit` + `/[id]/pdf` | ✅ Complete — multi-line form, **Apply-to-Bill** + **Record Refund** dialogs, **PDF route** |
+| **Recurring Bills** | `/purchases/recurring-bills` + `/new` | 🟢 List + bulk Pause/Resume/Delete + **`/api/cron/recurring-bills`** generating DRAFT Bills daily. Full multi-line form + detail page is P7-B |
+| **Recurring Expenses** | `/purchases/recurring-expenses` + `/new` | 🟢 List + bulk actions + **`/api/cron/recurring-expenses`** generating Expense rows daily (billable ones surface on next Invoice) |
+| **Expenses** | `/purchases/expenses` + `/new` + `/[id]/edit` | 🟢 List parity-complete; form has deferred-feature banner per spec — Mileage / OCR / Convert-to-Bill in refinement patch |
+| **Billable expenses → Invoice** | `<BillableExpensesPanel>` on `/sales/invoices/new` | ✅ Complete — pulls unbilled Bill lines + Expenses for a customer, marks them used on save |
+| **Partner-bank integration** | `/settings/integrations/bill-pay-banks` | ✅ Stub page with 3 banks + Notify-me opt-in. Full API integration deferred |
+| **Bill statuses cron** | `/api/cron/bill-statuses` | ✅ Flips OPEN bills past dueDate → OVERDUE daily |
 
 ---
 
@@ -95,39 +98,32 @@ These come from the master prompt's `<architectural_decisions_locked>` block and
 
 ## What's pending
 
-After the sprint (PRs #91–#95) every Purchases sub-module list is production-grade. Remaining work focuses on **forms + detail pages** for the modules that still use legacy shapes.
+After PRs #91–#102 most acceptance criteria are met. Remaining work:
 
-### P5-B/C — Payments Made form upgrade (~2 PRs)
+### P7-B — Recurring profile full forms + detail pages (~1 PR)
 
-The list is parity-complete; the form still uses the legacy single-screen shape. To match spec:
-- Two-tab form: **Bill Payment** | **Vendor Advance**
-- Auto-load open bills for the selected vendor; allocate inline
-- Excess-to-advance: when payment > sum-of-allocations, route the excess into a paired VENDOR_ADVANCE PaymentMade row
-- Detail page with allocation breakdown + Reverse Payment action
+The current Recurring Bill / Recurring Expense forms are thin (profileName / frequency / nextRunAt / amount). Per `<recurring_bills_spec>` / `<recurring_expenses_spec>` they should mirror the Bill / Expense form shape:
+- Multi-line item table with `customerColumnVisible=true` so billable lines surface on generated rows
+- "Never expires" toggle / end-date picker
+- Detail page actions: **Pause / Resume / Stop / Edit / Delete / Run Now**
+- "Run Now" calls into the cron's helper to generate immediately
 
-### P6-B/C — Vendor Credits form + apply/refund (~2 PRs)
+### Spec-fidelity polish (~2 small PRs)
 
-- Full multi-line form (mirrors CreditNote pattern, vendor-side)
-- Apply-to-Bill flow (one Credit → many VendorCreditApplication rows)
-- Record Refund flow (refund via Payment Made link or external bank)
+- Bill detail page: **Apply Credits** action (inverse of the credit-side dialog, picking from available credits)
+- Bill form footer: **Make Recurring** link → `/purchases/recurring-bills/new?fromBillId=<id>`
+- Bill detail page: **Convert to Recurring** action in the More menu
+- Three-dots menu spec items not yet wired (Manage Custom Fields, Import submenus, Reset Column Width)
 
-### P7-B — Recurring profile forms (~1 PR)
+### Bill / Vendor Credit / Recurring import wizards (~1 PR)
 
-- Lifecycle UI: edit profile, preview next 5 runs, view generated rows
-- "Stop after N occurrences" config
+The Vendor import wizard from PR #85 is the template. Same 4-step flow for Bills (with the "Link Bills to corresponding POs" checkbox per spec) + Vendor Credits + the two Recurring profile types.
 
-### P8 — Expense form upgrade (~1 PR)
+### Full Playwright lifecycle (~1 PR)
 
-- Mark-as-billable workflow (already supported by schema via `isBillable` + `customerId`)
-- Bulk billable → invoice surfacing
+End-to-end test that creates a vendor → PO → converts to Bill → records payment → applies a credit → reverses everything. Currently only the smoke test (PR #89) is in place.
 
-### P9 — Polish (~3 PRs)
-
-- Billable-expense integration on the Invoice form (`<BillableExpensesBanner>` renders when the customer has unbilled lines)
-- Vendor Portal pages (token-based; surface PO / Bill / Payment timeline to the vendor)
-- Partner-bank settings stub at `/settings/integrations/bill-pay-banks`
-
-**Total remaining: ~9 PRs**, down from the ~20 estimated at sprint start.
+**Total remaining: ~5 PRs.** Down from ~20 at sprint start and ~9 mid-sprint.
 
 ---
 
