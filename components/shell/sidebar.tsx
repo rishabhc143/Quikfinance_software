@@ -55,7 +55,11 @@ const NAV: NavItem[] = [
   },
   {
     label: "Purchases",
-    href: "/purchases",
+    // Land directly on the Vendors list (the most common entry point)
+    // instead of the bare /purchases redirect — avoids the meta-refresh
+    // flash that a Server Component `redirect()` produces when invoked
+    // after the dashboard layout has already started streaming.
+    href: "/purchases/vendors",
     icon: ShoppingCart,
     children: [
       { label: "Vendors", href: "/purchases/vendors" },
