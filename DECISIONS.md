@@ -292,3 +292,63 @@ Every interpretive call I made while implementing the master prompt, with the re
 
 
 
+
+---
+
+## Purchases module decisions (D59–D72, sprint 2026-05-12 → 2026-05-13)
+
+### D59. One Contact table, no separate Vendor model (P1-A, PR #81).
+**Choice:** vendors are Contact rows with `type=VENDOR` (or `BOTH`). All MSME / TDS / vendor-portal fields are additive columns on Contact. `/purchases/vendors` filters by type.
+**Why:** matches the master prompt's `<architectural_decisions_locked>` and prevents duplicate addressbook maintenance. The cost is a slightly wider Contact table; the win is that Customer↔Vendor entities (type=BOTH) share notes, addresses, custom fields automatically.
+
+### D60. Bill numbers are MANUAL, duplicates allowed with warning (P1-A; soft-dup migration PR #101).
+**Choice:** `Bill.number` is required user input from the vendor's source doc; no NumberSeries lookup. The original schema had `@@unique([organizationId, contactId, number])` but migration `20260513000000_bill_number_soft_dup` dropped it to a non-unique `@@index`. Form calls `checkBillNumberDuplicateAction` on Bill# blur and shows a soft warning, but save proceeds.
+**Why:** the master prompt's `<bills_spec>` and `<anti_patterns>` both explicitly call for soft duplicates ("flagged with warning but allowed"). Vendors restate. The hard constraint shipped in PR #81 was too strict; the soft index keeps the warning query fast without blocking legitimate restatements.
+
+### D61. Vendor Credit prefix is `CN-`, distinct slug from sales (P1-A).
+**Choice:** the VendorCredit's `getNextDocumentNumber` slug is `vendorCredit`; the user-facing label is "Credit Note#" matching Zoho's UI. Distinct from sales `CreditNote` which uses slug `creditNote` and prefix `CR-`.
+**Why:** the slugs prevent NumberSeries collisions across modules; the user-facing labels match the established Indian-accounting convention where "credit note" means either side depending on direction.
+
+### D62. POs are emailed, Bills are NOT (P3-D, P4-B).
+**Choice:** Purchase Orders have a Send-to-Vendor flow with email composer and PDF attachment (PR #89). Bills have only Save-as-Draft / Save-as-Open and a Print/PDF button — no "Send" button anywhere on the Bill surface. Notes on a Bill carry a banner reminding the user it's internal-only and won't appear on the PDF.
+**Why:** per master prompt — bills are an internal A/P record, not a vendor-facing document. Sending a Bill PDF back to the vendor who originated it is meaningless and confusing.
+
+### D63. PO status auto-flips to BILLED when child Bill is saved (PR #101).
+**Choice:** `createBillAction` updates the source `PurchaseOrder.status` from `ISSUED`/`PARTIALLY_BILLED` → `BILLED` in the same transaction when `data.purchaseOrderId` is set. CLOSED/CANCELLED POs are left alone.
+**Why:** keeps the PO detail page's status accurate without requiring a separate "Mark Billed" click. Per acceptance criterion #5.
+
+### D64. `<TransactionLineItemsTable>` config props instead of forking the primitive (P1-C).
+**Choice:** added two props: `accountColumnVisible: 'inline' | 'expandable' | 'hidden'` and `customerColumnVisible: boolean`. PO + Bill set `accountColumnVisible='inline'`; Bill + Recurring Bill + Expense set `customerColumnVisible=true` (exposes `billableToCustomerId`).
+**Why:** seven different forms use the line-items table. Forking would mean N copies to maintain. Config flags scale cleanly.
+
+### D65. Billable expenses flow uses BillLineItem.billableUsedAt + Expense.isBilled (PR #97).
+**Choice:** when an Invoice form pulls a billable Bill-line or Expense onto the new invoice, the save action marks the source row used (sets `billableUsedAt` / `isBilled+invoiceId`) and writes a `BillableExpenseUsage` audit row. Unique index on `(sourceType, sourceId)` prevents double-billing.
+**Why:** simpler than maintaining a separate "available" view. The source-row flag is the canonical "consumed" state; the audit row is for tracing.
+
+### D66. Vendor Advance is a tab on Payments Made, not a separate document (P5-B, PR #99).
+**Choice:** `PaymentMade.paymentType: BILL_PAYMENT | VENDOR_ADVANCE` enum. Same table, different fields surface (Deposit-To + TDS appear on the Advance tab; allocation table on the Bill Payment tab). Vendor advance balance = sum of VENDOR_ADVANCE rows minus their PaymentMadeAllocation rows. Drawdown is just an allocation against an existing VENDOR_ADVANCE row.
+**Why:** matches the master prompt's `<architectural_decisions_locked>` — and a separate AdvancePayment model would duplicate 80% of PaymentMade's columns.
+
+### D67. Excess on Bill Payment auto-spawns a paired Vendor Advance row (PR #99).
+**Choice:** when `amountPaid > sum-of-allocations` on the Bill Payment tab, `createBillPaymentAction` creates a second PaymentMade row in the same transaction with `paymentType=VENDOR_ADVANCE` for the excess amount.
+**Why:** the alternative (storing excess as a phantom field on the bill payment row) breaks the "vendor advance balance = sum of advances minus allocations" computation. Spawning a real row keeps the model consistent.
+
+### D68. MSME compliance banner is country-gated (P2-A).
+**Choice:** `/purchases/vendors` renders the "Update MSME Details" amber banner only when `organization.country === 'IN'` AND any active vendor has `msmeRegistered=null`.
+**Why:** MSME is an India-specific compliance regime (MSMED Act). Showing the banner globally would be noise for non-India orgs. The country check is on the org row, not per-user.
+
+### D69. Partner-bank integration shipped as a stub (PR #101).
+**Choice:** `/settings/integrations/bill-pay-banks` renders three cards (ICICI / HDFC / Axis) with "Coming Soon" badges, disabled "Set Up" button, and a "Notify me" toggle that writes a `UserPreference` row. No actual API integration. Mini-logos are hand-rolled (NOT real bank trademarks).
+**Why:** full integration requires partnership agreements with each bank — separate procurement workstream. The stub lets `<PartnerBankPromo>` route somewhere meaningful and lets us measure demand via the Notify-me opt-ins.
+
+### D70. Recurring profiles generate DRAFT bills, not OPEN (PR #102).
+**Choice:** the `/api/cron/recurring-bills` daily run creates Bills with `status='DRAFT'`. The user reviews and marks Open manually.
+**Why:** per master prompt's `<anti_patterns>` — "Do NOT mark a Recurring Bill's generated child as OPEN automatically." This protects against accidentally booking expenses without review.
+
+### D71. Recurring cron idempotency via `(profileId, today)` lookup, not a separate Occurrence log (PR #102).
+**Choice:** `hasBillForProfileToday(recurringBillId, today)` / `hasExpenseForProfileToday` query the existing Bill/Expense table filtered by `recurringBillId`/`recurringExpenseId` + same-calendar-day. No `RecurringBillOccurrence` model.
+**Why:** the master prompt mentioned a `RecurringBillOccurrence` log, but adding it requires a migration. The same-day lookup on the actual generated row is functionally equivalent and simpler. If a profile's `nextRunAt` advances normally, the next run lands a day later and the check passes.
+
+### D72. Expenses module is a placeholder per spec (P8 via PR #95 + #101).
+**Choice:** list page got the parity rewrite (saved views + bulk actions + smart `BILLABLE?` badge). New + Edit forms keep the legacy thin shape but now carry a yellow `<AlertTriangle>` deferred-feature banner pointing at Mileage / Itemize / OCR / Convert-to-Bill as follow-up patches.
+**Why:** the master prompt's `<expenses_spec_placeholder>` explicitly says "do not invent fields without screenshots." The banner makes the deferred state visible to users.

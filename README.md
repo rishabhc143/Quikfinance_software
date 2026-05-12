@@ -17,9 +17,13 @@ Production-grade accounting SaaS — Next.js 14 (App Router) + Prisma + PostgreS
 | **Customer portal** | Public invoice page + Razorpay Pay Now + payment-history page (per-customer receipts) |
 | **Purchases — Vendors** | Complete — list page with MSME banner + bulk actions, full 7-tab form, import wizard, 3-option export (vendors / contact persons / addresses) |
 | **Purchases — Purchase Orders** | Complete — list with saved views + bulk close/cancel/delete, full multi-line form with inline ACCOUNT column + place-of-supply + TDS/TCS, detail page with status transitions (Mark Issued / Convert to Bill / Cancel / Close / Clone), PDF render, email send via queue |
-| **Purchases — Bills** | Complete — list with saved views + bulk Mark Open/Void/Delete, full multi-line form with manual numbering + duplicate detection + billable-to-customer per line + fromPO seeding, detail page with payments/credits applied + MSME-aware overdue banner + Draft→Open→Void/Write-off transitions |
-| **Purchases — Payments Made** | List rewrite with saved views + bulk delete (reverses bill balances safely); existing record-payment form with allocation table |
-| **Purchases — Vendor Credits / Recurring Bills / Recurring Expenses / Expenses** | List pages rewritten to Sales-grade parity (saved views, bulk actions: delete/pause/resume); forms still use the legacy thin shape |
+| **Purchases — Bills** | Complete — list, full multi-line form with manual numbering + soft duplicate warning, billable-to-customer per line, fromPO seeding, detail page (payments/credits applied + MSME-aware overdue banner + Draft→Open→Void/Write-off transitions), **PDF route** |
+| **Purchases — Payments Made** | Complete — list, **two-tab form (Bill Payment | Vendor Advance)** with allocation table, vendor-advance drawdown, excess-to-advance auto-spawn |
+| **Purchases — Vendor Credits** | Complete — list, full multi-line form (`CN-` prefix), detail page with **Apply-to-Bill** + **Record Refund** dialogs, **PDF route** |
+| **Purchases — Recurring Bills / Expenses** | Lists Sales-grade; **3 daily crons** generate DRAFT Bills + Expenses + flip OVERDUE on schedule (vercel.json wired). Full forms + detail pages are P7-B follow-up |
+| **Purchases — Expenses** | Placeholder per spec — list parity-complete + deferred-feature banner on form; Mileage / OCR / Convert-to-Bill ship in refinement patch |
+| **Purchases — Billable expenses integration** | Complete — Bill lines + Expenses marked `billableToCustomerId` surface on customer's next Invoice via `<BillableExpensesPanel>`; save action marks source rows used |
+| **Purchases — Partner-bank integration** | Stub page at `/settings/integrations/bill-pay-banks` with 3 banks (ICICI/HDFC/Axis), "Notify me" opt-in. Full API integration deferred — separate procurement workstream |
 | **Banking / Accountant / Time / Documents / Payroll / Payments** | Schema + landing pages; CRUD UI is sparse |
 | **AI Assistant** | Streaming Claude chat in the bottom-right rail |
 
