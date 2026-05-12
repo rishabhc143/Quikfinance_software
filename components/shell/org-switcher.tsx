@@ -10,7 +10,7 @@ import {
   DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
-import { switchOrganization } from "@/app/(dashboard)/organizations/switch/actions";
+import { switchOrganization } from "@/app/organizations/switch/actions";
 
 type Props = {
   activeOrgId: string;
