@@ -1106,10 +1106,11 @@ model Bill {
   creditApplications VendorCreditApplication[]
   attachments        BillAttachment[]
 
-  // Per spec: bill numbers are unique per (org, vendor), not per org.
-  // Same vendor can't have two bills with the same number; different
-  // vendors can (their own numbering schemes never collide).
-  @@unique([organizationId, contactId, number])
+  // Per spec: bill numbers are MANUAL from the vendor's source doc.
+  // Duplicates per (org, vendor, number) are FLAGGED WITH WARNING but
+  // ALLOWED — vendors sometimes reuse their own numbers across
+  // restatements. The non-unique index keeps the warning query fast.
+  @@index([organizationId, contactId, number])
   @@index([organizationId, status, deletedAt])
 }
 

@@ -8,6 +8,7 @@ import {
   Wallet,
   AlertTriangle,
   CheckCircle2,
+  FileText,
 } from "lucide-react";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
@@ -213,6 +214,12 @@ export default async function BillDetailPage({
               </Link>
             </Button>
           ) : null}
+
+          <Button asChild variant="outline" size="sm" className="gap-1">
+            <Link href={`/purchases/bills/${b.id}/pdf`} target="_blank">
+              <FileText className="h-4 w-4" /> PDF
+            </Link>
+          </Button>
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>

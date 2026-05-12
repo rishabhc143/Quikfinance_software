@@ -5,7 +5,10 @@ import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
 import { Button } from "@/components/ui/button";
 import { BillForm } from "../../bill-form";
-import { updateBillAction } from "../../actions";
+import {
+  updateBillAction,
+  checkBillNumberDuplicateAction,
+} from "../../actions";
 import type { BillInput } from "@/lib/validations/bill";
 import type { LineItem } from "@/components/shared/transaction-line-items-table";
 
@@ -197,6 +200,8 @@ export default async function EditBillPage({
         }))}
         defaultCurrency={b.currency ?? organization.currency}
         onSubmitAction={action}
+        checkDuplicateAction={checkBillNumberDuplicateAction}
+        excludeBillId={b.id}
         submitLabel="Update bill"
       />
     </div>

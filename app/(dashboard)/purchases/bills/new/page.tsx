@@ -4,7 +4,10 @@ import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
 import { Button } from "@/components/ui/button";
 import { BillForm } from "../bill-form";
-import { createBillAction } from "../actions";
+import {
+  createBillAction,
+  checkBillNumberDuplicateAction,
+} from "../actions";
 
 export const metadata = { title: "New Bill" };
 
@@ -162,6 +165,7 @@ export default async function NewBillPage({
         }))}
         defaultCurrency={organization.currency}
         onSubmitAction={createBillAction}
+        checkDuplicateAction={checkBillNumberDuplicateAction}
         submitLabel="Save as Draft"
       />
     </div>
