@@ -35,9 +35,15 @@ ALTER TABLE "BankAccount" ALTER COLUMN "type" SET DEFAULT 'BANK';
 -- but not destructive — drops in a future cleanup PR once we're confident
 -- nothing reads it).
 
--- ───────────────────────── 2. isPrimary flag ─────────────────────────
+-- ───────────────────────── 2. isPrimary + new optional fields ─────────────────────────
 
 ALTER TABLE "BankAccount" ADD COLUMN IF NOT EXISTS "isPrimary" BOOLEAN NOT NULL DEFAULT false;
+
+-- Optional bank-identification fields from the Zoho Add Bank or Credit Card
+-- form (Screenshots 3 + 4). All nullable so existing rows stay valid.
+ALTER TABLE "BankAccount" ADD COLUMN IF NOT EXISTS "bankName"    TEXT;
+ALTER TABLE "BankAccount" ADD COLUMN IF NOT EXISTS "ifsc"        TEXT;
+ALTER TABLE "BankAccount" ADD COLUMN IF NOT EXISTS "description" TEXT;
 
 -- Partial unique index: at most one primary BANK per org.
 DROP INDEX IF EXISTS "BankAccount_org_primary_unique";
