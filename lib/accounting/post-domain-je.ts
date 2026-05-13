@@ -375,6 +375,193 @@ export async function postBillWriteOffJe(
   });
 }
 
+// ───────────────────────── RPT-B Phase 3 posts ─────────────────────────
+
+/**
+ * Customer credit note refund — we pay the customer back the credit
+ * balance in cash. Counterbalances the original CN-OPEN entry's
+ * CR-AR leg by debiting AR back, while cash leaves the bank.
+ *
+ *   DR Accounts Receivable: <refundAmount>
+ *   CR Bank:                <refundAmount>
+ */
+export async function postCreditNoteRefundJe(
+  tx: Tx,
+  organizationId: string,
+  creditNoteId: string,
+  refundId: string,
+  creditNoteNumber: string,
+  amount: number,
+  refundDate: Date,
+  bankCoaId: string
+): Promise<void> {
+  if (amount <= 0) return;
+  // Reference key includes the parent CN id so `reverseCreditNoteJes`
+  // can find every refund under one startsWith query.
+  const reference = `CN-REFUND:${creditNoteId}:${refundId}`;
+  const existing = await tx.journalEntry.findFirst({
+    where: { organizationId, reference },
+    select: { id: true },
+  });
+  if (existing) return;
+
+  const ar = await getOrCreateSystemAccount(organizationId, "AR", tx);
+
+  await tx.journalEntry.create({
+    data: {
+      organizationId,
+      date: refundDate,
+      reference,
+      notes: `Refund of ${creditNoteNumber}`,
+      lines: {
+        create: [
+          { accountId: ar.id, debit: amount, credit: 0, description: `AR refund · ${creditNoteNumber}` },
+          { accountId: bankCoaId, debit: 0, credit: amount, description: `Cash out · ${creditNoteNumber}` },
+        ],
+      },
+    },
+  });
+}
+
+/**
+ * Vendor credit refund — the vendor pays us back. Counterbalances
+ * the original VC-OPEN's DR-AP leg.
+ *
+ *   DR Bank:                <refundAmount>
+ *   CR Accounts Payable:    <refundAmount>
+ */
+export async function postVendorCreditRefundJe(
+  tx: Tx,
+  organizationId: string,
+  vendorCreditId: string,
+  refundId: string,
+  vendorCreditNumber: string,
+  amount: number,
+  refundDate: Date,
+  bankCoaId: string
+): Promise<void> {
+  if (amount <= 0) return;
+  const reference = `VC-REFUND:${vendorCreditId}:${refundId}`;
+  const existing = await tx.journalEntry.findFirst({
+    where: { organizationId, reference },
+    select: { id: true },
+  });
+  if (existing) return;
+
+  const ap = await getOrCreateSystemAccount(organizationId, "AP", tx);
+
+  await tx.journalEntry.create({
+    data: {
+      organizationId,
+      date: refundDate,
+      reference,
+      notes: `Refund received for ${vendorCreditNumber}`,
+      lines: {
+        create: [
+          { accountId: bankCoaId, debit: amount, credit: 0, description: `Cash in · ${vendorCreditNumber}` },
+          { accountId: ap.id, debit: 0, credit: amount, description: `AP refund · ${vendorCreditNumber}` },
+        ],
+      },
+    },
+  });
+}
+
+/**
+ * Vendor advance creation — cash leaves now to prepay a vendor; the
+ * advance sits as an asset until drawn against a future bill.
+ *
+ *   DR Vendor Advances:     <amount>
+ *   CR Bank:                <amount>
+ */
+export async function postVendorAdvanceCreateJe(
+  tx: Tx,
+  organizationId: string,
+  paymentMade: {
+    id: string;
+    number: string;
+    paymentDate: Date;
+    amount: number | Prisma.Decimal;
+  },
+  bankCoaId: string
+): Promise<void> {
+  const reference = `VA-CREATE:${paymentMade.id}`;
+  const existing = await tx.journalEntry.findFirst({
+    where: { organizationId, reference },
+    select: { id: true },
+  });
+  if (existing) return;
+
+  const amount = asNumber(paymentMade.amount);
+  if (amount === 0) return;
+
+  const va = await getOrCreateSystemAccount(organizationId, "VENDOR_ADVANCES", tx);
+
+  await tx.journalEntry.create({
+    data: {
+      organizationId,
+      date: paymentMade.paymentDate,
+      reference,
+      notes: `Vendor advance ${paymentMade.number}`,
+      lines: {
+        create: [
+          { accountId: va.id, debit: amount, credit: 0, description: `Advance · ${paymentMade.number}` },
+          { accountId: bankCoaId, debit: 0, credit: amount, description: `Cash out · ${paymentMade.number}` },
+        ],
+      },
+    },
+  });
+}
+
+/**
+ * Vendor advance draw-down — apply prepaid money to settle a bill.
+ * Bank balance is NOT touched (cash already left at advance time);
+ * the asset is consumed to clear AP.
+ *
+ *   DR Accounts Payable:    <allocAmount>
+ *   CR Vendor Advances:     <allocAmount>
+ *
+ * Distinct reference prefix `BILL-PMT-ADV` keeps these JEs separate
+ * from the cash-side `BILL-PMT` posts so reversal queries don't
+ * cross-match.
+ */
+export async function postVendorAdvanceApplicationJe(
+  tx: Tx,
+  organizationId: string,
+  paymentMadeId: string,
+  billId: string,
+  billNumber: string,
+  amount: number,
+  paymentDate: Date
+): Promise<void> {
+  if (amount <= 0) return;
+  const reference = `BILL-PMT-ADV:${paymentMadeId}:${billId}`;
+  const existing = await tx.journalEntry.findFirst({
+    where: { organizationId, reference },
+    select: { id: true },
+  });
+  if (existing) return;
+
+  const [ap, va] = await Promise.all([
+    getOrCreateSystemAccount(organizationId, "AP", tx),
+    getOrCreateSystemAccount(organizationId, "VENDOR_ADVANCES", tx),
+  ]);
+
+  await tx.journalEntry.create({
+    data: {
+      organizationId,
+      date: paymentDate,
+      reference,
+      notes: `Advance applied to ${billNumber}`,
+      lines: {
+        create: [
+          { accountId: ap.id, debit: amount, credit: 0, description: `AP cleared · ${billNumber}` },
+          { accountId: va.id, debit: 0, credit: amount, description: `Advance drawn · ${billNumber}` },
+        ],
+      },
+    },
+  });
+}
+
 // ───────────────────────── reversals ─────────────────────────
 
 /** Delete the INV-SENT JE for this invoice (does not touch payment JEs). */
@@ -446,7 +633,11 @@ export async function reversePaymentReceivedJes(
   });
 }
 
-/** Delete every JE this PaymentMade created. */
+/**
+ * Delete every JE this PaymentMade created — cash-side bill payments
+ * (`BILL-PMT:`), advance-source draws (`BILL-PMT-ADV:`), and the
+ * advance-creation row (`VA-CREATE:`).
+ */
 export async function reversePaymentMadeJes(
   tx: Tx,
   organizationId: string,
@@ -455,32 +646,54 @@ export async function reversePaymentMadeJes(
   await tx.journalEntry.deleteMany({
     where: {
       organizationId,
-      reference: { startsWith: `BILL-PMT:${paymentMadeId}:` },
+      OR: [
+        { reference: { startsWith: `BILL-PMT:${paymentMadeId}:` } },
+        { reference: { startsWith: `BILL-PMT-ADV:${paymentMadeId}:` } },
+        { reference: `VA-CREATE:${paymentMadeId}` },
+      ],
     },
   });
 }
 
 // ───────────────────────── RPT-B Phase 2 reversals ─────────────────────────
 
-/** Delete the CN-OPEN JE for a sales credit note. */
+/**
+ * Delete every JE tied to a sales credit note — the OPEN posting and
+ * every refund tagged under it (`CN-REFUND:<cnId>:*`).
+ */
 export async function reverseCreditNoteJes(
   tx: Tx,
   organizationId: string,
   creditNoteId: string
 ): Promise<void> {
   await tx.journalEntry.deleteMany({
-    where: { organizationId, reference: `CN-OPEN:${creditNoteId}` },
+    where: {
+      organizationId,
+      OR: [
+        { reference: `CN-OPEN:${creditNoteId}` },
+        { reference: { startsWith: `CN-REFUND:${creditNoteId}:` } },
+      ],
+    },
   });
 }
 
-/** Delete the VC-OPEN JE for a vendor credit. */
+/**
+ * Delete every JE tied to a vendor credit — the OPEN posting and
+ * every refund tagged under it (`VC-REFUND:<vcId>:*`).
+ */
 export async function reverseVendorCreditJes(
   tx: Tx,
   organizationId: string,
   vendorCreditId: string
 ): Promise<void> {
   await tx.journalEntry.deleteMany({
-    where: { organizationId, reference: `VC-OPEN:${vendorCreditId}` },
+    where: {
+      organizationId,
+      OR: [
+        { reference: `VC-OPEN:${vendorCreditId}` },
+        { reference: { startsWith: `VC-REFUND:${vendorCreditId}:` } },
+      ],
+    },
   });
 }
 

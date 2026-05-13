@@ -7,6 +7,8 @@ import { requireOrganization } from "@/lib/auth-helpers";
 import { writeAuditLog } from "@/lib/audit";
 import {
   postBillPaymentJe,
+  postVendorAdvanceCreateJe,
+  postVendorAdvanceApplicationJe,
   reversePaymentMadeJes,
   resolveBankCoaForPayment,
 } from "@/lib/accounting/post-domain-je";
@@ -324,6 +326,23 @@ export async function createBillPaymentAction(input: BillPaymentInput) {
           amount: a.amount,
         },
       });
+      // RPT-B.3 — DR AP / CR Vendor Advances per advance allocation.
+      // Bank is NOT touched (cash already left at advance creation time).
+      // Reference is keyed by the BILL_PAYMENT row id so the user's
+      // delete-payment-made path catches it via the BILL-PMT-ADV
+      // prefix.
+      const bill = bills.find((b) => b.id === a.billId);
+      if (bill) {
+        await postVendorAdvanceApplicationJe(
+          tx,
+          organization.id,
+          payment.id,
+          bill.id,
+          bill.number,
+          a.amount,
+          data.paymentDate
+        );
+      }
     }
 
     // Update each touched Bill's amountPaid + status.
@@ -402,26 +421,37 @@ export async function createVendorAdvanceAction(input: VendorAdvanceInput) {
   const data = vendorAdvanceSchema.parse(input);
   const number = await nextDocumentNumber(organization.id, "paymentMade");
 
-  const created = await db.paymentMade.create({
-    data: {
-      organizationId: organization.id,
-      number,
-      contactId: data.contactId,
-      paymentType: "VENDOR_ADVANCE",
-      paymentDate: data.paymentDate,
-      amount: data.amountPaid,
-      amountUsedForBills: 0,
-      amountInExcess: 0,
-      tdsId: data.tdsId ?? null,
-      tdsAmount: data.tdsAmount ?? null,
-      paymentMode: data.paymentMode,
-      method: data.paymentMode,
-      paidThroughAccountId: data.paidThroughAccountId ?? null,
-      depositToAccountId: data.depositToAccountId ?? null,
-      reference: data.reference ?? null,
-      notes: data.notes ?? null,
-      status: data.status,
-    },
+  // RPT-B.3 — create the advance row + post DR Vendor Advances / CR Bank
+  // atomically. Bank-side CoA resolves through depositTo/paidThrough,
+  // falling back to SYS-CASH.
+  const created = await db.$transaction(async (tx) => {
+    const pmt = await tx.paymentMade.create({
+      data: {
+        organizationId: organization.id,
+        number,
+        contactId: data.contactId,
+        paymentType: "VENDOR_ADVANCE",
+        paymentDate: data.paymentDate,
+        amount: data.amountPaid,
+        amountUsedForBills: 0,
+        amountInExcess: 0,
+        tdsId: data.tdsId ?? null,
+        tdsAmount: data.tdsAmount ?? null,
+        paymentMode: data.paymentMode,
+        method: data.paymentMode,
+        paidThroughAccountId: data.paidThroughAccountId ?? null,
+        depositToAccountId: data.depositToAccountId ?? null,
+        reference: data.reference ?? null,
+        notes: data.notes ?? null,
+        status: data.status,
+      },
+    });
+    const bankCoaId = await resolveBankCoaForPayment(tx, organization.id, {
+      paidThroughAccountId: pmt.paidThroughAccountId,
+      depositToAccountId: pmt.depositToAccountId,
+    });
+    await postVendorAdvanceCreateJe(tx, organization.id, pmt, bankCoaId);
+    return pmt;
   });
 
   await writeAuditLog({
