@@ -15,8 +15,10 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { ActionFormButton } from "@/components/shared/action-form-button";
 import { formatMoney } from "@/lib/money";
+import { getBankAccountStats } from "@/lib/banking/account-stats";
 import { undoLastImportAction } from "./actions";
 import { unmatchByIdAction } from "./match/actions";
+import { StatTiles } from "./stat-tiles";
 
 const MATCH_TYPE_LABEL: Record<string, string> = {
   INVOICE: "Invoice",
@@ -53,23 +55,23 @@ export default async function BankAccountDetailPage({
   });
   if (!account) notFound();
 
-  const [transactions, total, lastBatch] = await Promise.all([
+  const [transactions, lastBatch, stats] = await Promise.all([
     db.bankTransaction.findMany({
       where: { bankAccountId: account.id },
       orderBy: { date: "desc" },
       skip: (page - 1) * PAGE_SIZE,
       take: PAGE_SIZE,
     }),
-    db.bankTransaction.count({
-      where: { bankAccountId: account.id },
-    }),
     db.bankImportBatch.findFirst({
       where: { bankAccountId: account.id },
       orderBy: { createdAt: "desc" },
     }),
+    getBankAccountStats(account.id, organization.id),
   ]);
 
   const Icon = account.type === "CREDIT_CARD" ? CreditCard : Wallet;
+  // Reuse the stats total for pagination — saves one round-trip.
+  const total = stats.total;
   const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   return (
@@ -131,43 +133,11 @@ export default async function BankAccountDetailPage({
         </div>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-3">
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-xs text-muted-foreground">
-              Opening balance
-            </div>
-            <div className="text-2xl font-semibold tabular-nums">
-              {formatMoney(Number(account.openingBalance), account.currency)}
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-xs text-muted-foreground">Transactions</div>
-            <div className="text-2xl font-semibold tabular-nums">{total}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-xs text-muted-foreground">Last import</div>
-            <div className="text-sm font-medium">
-              {lastBatch
-                ? `${lastBatch.fileName} · ${format(
-                    lastBatch.createdAt,
-                    "dd MMM yyyy"
-                  )}`
-                : "—"}
-            </div>
-            {lastBatch && lastBatch.duplicateCount > 0 ? (
-              <div className="text-xs text-amber-600 mt-1">
-                {lastBatch.duplicateCount} duplicate
-                {lastBatch.duplicateCount === 1 ? "" : "s"} flagged
-              </div>
-            ) : null}
-          </CardContent>
-        </Card>
-      </div>
+      <StatTiles
+        stats={stats}
+        openingBalance={Number(account.openingBalance)}
+        currency={account.currency}
+      />
 
       <Card>
         <CardContent className="p-0">
