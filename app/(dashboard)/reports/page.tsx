@@ -1,12 +1,13 @@
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { TrendingUp, FileBarChart, ArrowRight, Wallet, Receipt } from "lucide-react";
+import { TrendingUp, FileBarChart, ArrowRight, Wallet, Receipt, Scale } from "lucide-react";
 
 export const metadata = { title: "Reports" };
 
 const REPORTS = [
   { href: "/reports/profit-loss", label: "Profit & Loss", icon: TrendingUp, complete: true, hint: "Revenue minus expenses across a period." },
+  { href: "/reports/trial-balance", label: "Trial Balance", icon: Scale, complete: true, hint: "Every Chart-of-Accounts entry with its debit / credit balance." },
   { href: "/reports/ar-aging", label: "Receivables Aging", icon: Wallet, complete: true, hint: "Outstanding customer invoices bucketed by days overdue." },
   { href: "/reports/ap-aging", label: "Payables Aging", icon: Receipt, complete: true, hint: "Outstanding vendor bills bucketed by days overdue." },
   { href: "/reports/balance-sheet", label: "Balance Sheet", icon: FileBarChart, complete: true, hint: "Assets, liabilities, and equity (cash-basis approximation)." },

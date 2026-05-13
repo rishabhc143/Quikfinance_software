@@ -112,6 +112,7 @@ const NAV: NavItem[] = [
     icon: BarChart3,
     children: [
       { label: "Profit & Loss", href: "/reports/profit-loss" },
+      { label: "Trial Balance", href: "/reports/trial-balance" },
       { label: "Balance Sheet", href: "/reports/balance-sheet" },
       { label: "Cash Flow", href: "/reports/cash-flow" },
       { label: "Sales Summary", href: "/reports/sales-summary" },
