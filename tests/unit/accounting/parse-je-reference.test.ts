@@ -51,6 +51,14 @@ describe("parseJeReference — single-id keys", () => {
     expect(r?.label).toBe("Manual journal");
     expect(r?.sourceHref).toBe("/accountant/manual-journals/cm-mj1");
   });
+
+  it("MJ-REV:<id> resolves to the reverse-MJ kind, not the broader MJ: (ACCT-A.2)", () => {
+    const r = parseJeReference("MJ-REV:cm-mj2");
+    expect(r?.kind).toBe("MANUAL_JOURNAL_REVERSE");
+    expect(r?.label).toBe("Reverse manual journal");
+    // Reverse JE still links to the parent MJ detail.
+    expect(r?.sourceHref).toBe("/accountant/manual-journals/cm-mj2");
+  });
 });
 
 describe("parseJeReference — two-id keys link to the parent record", () => {

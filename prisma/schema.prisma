@@ -1729,10 +1729,29 @@ model ManualJournal {
   number         String
   date           DateTime
   notes          String?
+  /// ACCT-A.2 — Zoho-parity header fields.
+  /// Free-text external reference (e.g. an attached doc id).
+  referenceNumber          String?
+  /// DRAFT | PUBLISHED. Existing rows default to PUBLISHED (they
+  /// posted JEs pre-PR).
+  status                   String   @default("PUBLISHED")
+  /// ACCRUAL_AND_CASH | ACCRUAL_ONLY | CASH_ONLY. For v1 stored only;
+  /// reports continue to read accrual data from the ledger.
+  reportingMethod          String   @default("ACCRUAL_AND_CASH")
+  /// Three-letter ISO code; defaults to org currency on the client.
+  currency                 String?
+  /// When set, a reversing JE is auto-posted on this date with
+  /// reference MJ-REV:<id> and DR/CR flipped.
+  reverseJournalDate       DateTime? @db.Date
+  /// Zoho-parity flag — stored for round-trip fidelity. For v1 the
+  /// reverse JE is always date-stamped to reverseJournalDate; the
+  /// checkbox is a no-op functionally.
+  publishReverseOnlyOnDate Boolean  @default(false)
   createdAt      DateTime     @default(now())
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@unique([organizationId, number])
+  @@index([organizationId, status], name: "ManualJournal_org_status_idx")
 }
 
 // ───────────────────────── TAX ─────────────────────────
