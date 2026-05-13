@@ -191,6 +191,190 @@ export async function postBillPaymentJe(
   });
 }
 
+// ───────────────────────── RPT-B Phase 2 posts ─────────────────────────
+
+/**
+ * Sales Credit Note creation (OPEN). Reduces AR by the credit-note
+ * total — i.e. "we owe the customer this much" — and posts the
+ * reduction to a contra-revenue Sales Returns expense account.
+ *
+ *   DR Sales Returns:       <total>
+ *   CR Accounts Receivable: <total>
+ */
+export async function postCreditNoteOpenJe(
+  tx: Tx,
+  organizationId: string,
+  creditNote: {
+    id: string;
+    number: string;
+    date: Date;
+    total: number | Prisma.Decimal;
+  }
+): Promise<void> {
+  const reference = `CN-OPEN:${creditNote.id}`;
+  const existing = await tx.journalEntry.findFirst({
+    where: { organizationId, reference },
+    select: { id: true },
+  });
+  if (existing) return;
+
+  const total = asNumber(creditNote.total);
+  if (total === 0) return;
+
+  const [sr, ar] = await Promise.all([
+    getOrCreateSystemAccount(organizationId, "SALES_RETURNS", tx),
+    getOrCreateSystemAccount(organizationId, "AR", tx),
+  ]);
+
+  await tx.journalEntry.create({
+    data: {
+      organizationId,
+      date: creditNote.date,
+      reference,
+      notes: `Credit note ${creditNote.number} opened`,
+      lines: {
+        create: [
+          { accountId: sr.id, debit: total, credit: 0, description: `Sales returns · ${creditNote.number}` },
+          { accountId: ar.id, debit: 0, credit: total, description: `AR offset · ${creditNote.number}` },
+        ],
+      },
+    },
+  });
+}
+
+/**
+ * Vendor Credit creation (OPEN). Mirror of credit notes for the
+ * purchases side.
+ *
+ *   DR Accounts Payable:    <total>
+ *   CR Purchase Returns:    <total>
+ */
+export async function postVendorCreditOpenJe(
+  tx: Tx,
+  organizationId: string,
+  vendorCredit: {
+    id: string;
+    number: string;
+    date: Date;
+    total: number | Prisma.Decimal;
+  }
+): Promise<void> {
+  const reference = `VC-OPEN:${vendorCredit.id}`;
+  const existing = await tx.journalEntry.findFirst({
+    where: { organizationId, reference },
+    select: { id: true },
+  });
+  if (existing) return;
+
+  const total = asNumber(vendorCredit.total);
+  if (total === 0) return;
+
+  const [ap, pr] = await Promise.all([
+    getOrCreateSystemAccount(organizationId, "AP", tx),
+    getOrCreateSystemAccount(organizationId, "PURCHASE_RETURNS", tx),
+  ]);
+
+  await tx.journalEntry.create({
+    data: {
+      organizationId,
+      date: vendorCredit.date,
+      reference,
+      notes: `Vendor credit ${vendorCredit.number} opened`,
+      lines: {
+        create: [
+          { accountId: ap.id, debit: total, credit: 0, description: `AP offset · ${vendorCredit.number}` },
+          { accountId: pr.id, debit: 0, credit: total, description: `Purchase returns · ${vendorCredit.number}` },
+        ],
+      },
+    },
+  });
+}
+
+/**
+ * Invoice write-off. The user has decided this AR isn't collectible —
+ * post a Bad Debt Expense for the unpaid portion and clear the AR.
+ *
+ *   DR Bad Debt Expense:     <writeOffAmount>
+ *   CR Accounts Receivable:  <writeOffAmount>
+ */
+export async function postInvoiceWriteOffJe(
+  tx: Tx,
+  organizationId: string,
+  invoice: { id: string; number: string; issueDate: Date },
+  writeOffAmount: number
+): Promise<void> {
+  if (writeOffAmount <= 0) return;
+  const reference = `INV-WRITEOFF:${invoice.id}`;
+  const existing = await tx.journalEntry.findFirst({
+    where: { organizationId, reference },
+    select: { id: true },
+  });
+  if (existing) return;
+
+  const [bad, ar] = await Promise.all([
+    getOrCreateSystemAccount(organizationId, "BAD_DEBT_EXPENSE", tx),
+    getOrCreateSystemAccount(organizationId, "AR", tx),
+  ]);
+
+  await tx.journalEntry.create({
+    data: {
+      organizationId,
+      date: invoice.issueDate,
+      reference,
+      notes: `Wrote off ${invoice.number}`,
+      lines: {
+        create: [
+          { accountId: bad.id, debit: writeOffAmount, credit: 0, description: `Bad debt · ${invoice.number}` },
+          { accountId: ar.id, debit: 0, credit: writeOffAmount, description: `AR cleared · ${invoice.number}` },
+        ],
+      },
+    },
+  });
+}
+
+/**
+ * Bill write-off. The vendor effectively forgave us the remaining
+ * balance — book the unpaid portion as Bad Debt Recovery income and
+ * clear the AP.
+ *
+ *   DR Accounts Payable:     <writeOffAmount>
+ *   CR Bad Debt Recovery:    <writeOffAmount>
+ */
+export async function postBillWriteOffJe(
+  tx: Tx,
+  organizationId: string,
+  bill: { id: string; number: string; issueDate: Date },
+  writeOffAmount: number
+): Promise<void> {
+  if (writeOffAmount <= 0) return;
+  const reference = `BILL-WRITEOFF:${bill.id}`;
+  const existing = await tx.journalEntry.findFirst({
+    where: { organizationId, reference },
+    select: { id: true },
+  });
+  if (existing) return;
+
+  const [ap, recov] = await Promise.all([
+    getOrCreateSystemAccount(organizationId, "AP", tx),
+    getOrCreateSystemAccount(organizationId, "BAD_DEBT_RECOVERY", tx),
+  ]);
+
+  await tx.journalEntry.create({
+    data: {
+      organizationId,
+      date: bill.issueDate,
+      reference,
+      notes: `Wrote off ${bill.number}`,
+      lines: {
+        create: [
+          { accountId: ap.id, debit: writeOffAmount, credit: 0, description: `AP cleared · ${bill.number}` },
+          { accountId: recov.id, debit: 0, credit: writeOffAmount, description: `Recovery · ${bill.number}` },
+        ],
+      },
+    },
+  });
+}
+
 // ───────────────────────── reversals ─────────────────────────
 
 /** Delete the INV-SENT JE for this invoice (does not touch payment JEs). */
@@ -273,6 +457,52 @@ export async function reversePaymentMadeJes(
       organizationId,
       reference: { startsWith: `BILL-PMT:${paymentMadeId}:` },
     },
+  });
+}
+
+// ───────────────────────── RPT-B Phase 2 reversals ─────────────────────────
+
+/** Delete the CN-OPEN JE for a sales credit note. */
+export async function reverseCreditNoteJes(
+  tx: Tx,
+  organizationId: string,
+  creditNoteId: string
+): Promise<void> {
+  await tx.journalEntry.deleteMany({
+    where: { organizationId, reference: `CN-OPEN:${creditNoteId}` },
+  });
+}
+
+/** Delete the VC-OPEN JE for a vendor credit. */
+export async function reverseVendorCreditJes(
+  tx: Tx,
+  organizationId: string,
+  vendorCreditId: string
+): Promise<void> {
+  await tx.journalEntry.deleteMany({
+    where: { organizationId, reference: `VC-OPEN:${vendorCreditId}` },
+  });
+}
+
+/** Delete the INV-WRITEOFF JE for an invoice. */
+export async function reverseInvoiceWriteOffJe(
+  tx: Tx,
+  organizationId: string,
+  invoiceId: string
+): Promise<void> {
+  await tx.journalEntry.deleteMany({
+    where: { organizationId, reference: `INV-WRITEOFF:${invoiceId}` },
+  });
+}
+
+/** Delete the BILL-WRITEOFF JE for a bill. */
+export async function reverseBillWriteOffJe(
+  tx: Tx,
+  organizationId: string,
+  billId: string
+): Promise<void> {
+  await tx.journalEntry.deleteMany({
+    where: { organizationId, reference: `BILL-WRITEOFF:${billId}` },
   });
 }
 

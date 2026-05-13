@@ -15,6 +15,10 @@ import {
   type ApplyVendorCreditInput,
   type RecordVendorCreditRefundInput,
 } from "@/lib/validations/vendor-credit";
+import {
+  postVendorCreditOpenJe,
+  reverseVendorCreditJes,
+} from "@/lib/accounting/post-domain-je";
 
 export type {
   VendorCreditInput,
@@ -76,38 +80,46 @@ export async function createVendorCreditAction(
   const totals = await totalsFor(organization.id, data);
   const status = opts?.open ? "OPEN" : data.status;
 
-  const created = await db.vendorCredit.create({
-    data: {
-      organizationId: organization.id,
-      number,
-      referenceNumber: data.referenceNumber ?? null,
-      contactId: data.contactId,
-      date: data.date,
-      subject: data.subject ?? null,
-      status,
-      currency: data.currency,
-      subTotal: totals.subTotal,
-      taxAmount: totals.documentTaxAmount,
-      total: totals.total,
-      placeOfSupply: data.placeOfSupply ?? null,
-      reason: data.reason ?? null,
-      notes: data.notes ?? null,
-      pdfTemplateId: data.pdfTemplateId ?? null,
-      lineItems: {
-        create: data.lines.map((l, i) => ({
-          itemId: l.itemId || null,
-          position: l.position ?? i,
-          name: l.name,
-          description: l.description ?? null,
-          hsnSacCode: l.hsnSacCode ?? null,
-          accountId: l.accountId ?? null,
-          quantity: l.quantity,
-          rate: l.rate,
-          taxId: l.taxId ?? null,
-          amount: totals.lines[i]?.amount ?? 0,
-        })),
+  // RPT-B.2 — wrap the create + (optional OPEN-state JE post) so either
+  // both land or both roll back.
+  const created = await db.$transaction(async (tx) => {
+    const vc = await tx.vendorCredit.create({
+      data: {
+        organizationId: organization.id,
+        number,
+        referenceNumber: data.referenceNumber ?? null,
+        contactId: data.contactId,
+        date: data.date,
+        subject: data.subject ?? null,
+        status,
+        currency: data.currency,
+        subTotal: totals.subTotal,
+        taxAmount: totals.documentTaxAmount,
+        total: totals.total,
+        placeOfSupply: data.placeOfSupply ?? null,
+        reason: data.reason ?? null,
+        notes: data.notes ?? null,
+        pdfTemplateId: data.pdfTemplateId ?? null,
+        lineItems: {
+          create: data.lines.map((l, i) => ({
+            itemId: l.itemId || null,
+            position: l.position ?? i,
+            name: l.name,
+            description: l.description ?? null,
+            hsnSacCode: l.hsnSacCode ?? null,
+            accountId: l.accountId ?? null,
+            quantity: l.quantity,
+            rate: l.rate,
+            taxId: l.taxId ?? null,
+            amount: totals.lines[i]?.amount ?? 0,
+          })),
+        },
       },
-    },
+    });
+    if (status === "OPEN") {
+      await postVendorCreditOpenJe(tx, organization.id, vc);
+    }
+    return vc;
   });
 
   await writeAuditLog({
@@ -226,9 +238,14 @@ export async function markVendorCreditOpenAction(id: string): Promise<void> {
       `Cannot mark as Open — current status is ${c.status}.`
     );
   }
-  await db.vendorCredit.update({
-    where: { id },
-    data: { status: "OPEN" },
+  // RPT-B.2 — flip + post atomically.
+  await db.$transaction(async (tx) => {
+    const updated = await tx.vendorCredit.update({
+      where: { id },
+      data: { status: "OPEN" },
+      select: { id: true, number: true, date: true, total: true },
+    });
+    await postVendorCreditOpenJe(tx, organization.id, updated);
   });
   await writeAuditLog({
     organizationId: organization.id,
@@ -261,9 +278,13 @@ export async function voidVendorCreditAction(id: string): Promise<void> {
       "Cannot void a credit that has applications or refunds. Reverse them first."
     );
   }
-  await db.vendorCredit.update({
-    where: { id },
-    data: { status: "VOID" },
+  // RPT-B.2 — void + reverse the OPEN JE (if any).
+  await db.$transaction(async (tx) => {
+    await tx.vendorCredit.update({
+      where: { id },
+      data: { status: "VOID" },
+    });
+    await reverseVendorCreditJes(tx, organization.id, id);
   });
   await writeAuditLog({
     organizationId: organization.id,
@@ -573,9 +594,13 @@ export async function deleteVendorCreditAction(id: string) {
       error: "Already applied or refunded — reverse those first.",
     };
   }
-  await db.vendorCredit.update({
-    where: { id },
-    data: { deletedAt: new Date() },
+  await db.$transaction(async (tx) => {
+    await tx.vendorCredit.update({
+      where: { id },
+      data: { deletedAt: new Date() },
+    });
+    // RPT-B.2 — pull the VC-OPEN JE if one was posted (DRAFT-only credits have none).
+    await reverseVendorCreditJes(tx, organization.id, id);
   });
   await writeAuditLog({
     organizationId: organization.id,

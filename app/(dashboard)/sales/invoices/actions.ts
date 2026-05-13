@@ -29,6 +29,7 @@ import {
 import {
   postInvoiceSentJe,
   postInvoicePaymentJe,
+  postInvoiceWriteOffJe,
   reverseInvoiceSentJe,
   reverseAllInvoiceJes,
   resolveBankCoaForPayment,
@@ -376,13 +377,23 @@ export async function writeOffInvoiceAction(
     where: { id, organizationId: organization.id, deletedAt: null },
   });
   if (!inv) throw new Error("Invoice not found");
-  await db.invoice.update({
-    where: { id },
-    data: {
-      status: "WRITTEN_OFF",
-      writtenOffAt: new Date(),
-      writtenOffAmount: input.amount,
-    },
+  // RPT-B.2 — flip status + post DR Bad Debt Expense / CR AR for the
+  // write-off amount, atomically.
+  await db.$transaction(async (tx) => {
+    await tx.invoice.update({
+      where: { id },
+      data: {
+        status: "WRITTEN_OFF",
+        writtenOffAt: new Date(),
+        writtenOffAmount: input.amount,
+      },
+    });
+    await postInvoiceWriteOffJe(
+      tx,
+      organization.id,
+      { id: inv.id, number: inv.number, issueDate: inv.issueDate },
+      input.amount
+    );
   });
   await writeAuditLog({
     organizationId: organization.id,

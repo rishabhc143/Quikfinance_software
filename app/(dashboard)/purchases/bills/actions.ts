@@ -9,6 +9,7 @@ import { computeDocument } from "@/lib/sales/totals";
 import { billSchema, type BillInput } from "@/lib/validations/bill";
 import {
   postBillOpenJe,
+  postBillWriteOffJe,
   reverseBillOpenJe,
   reverseAllBillJes,
 } from "@/lib/accounting/post-domain-je";
@@ -606,9 +607,20 @@ export async function writeOffBillAction(id: string): Promise<void> {
       "Cannot write off a paid bill — there's nothing left owed."
     );
   }
-  await db.bill.update({
-    where: { id },
-    data: { status: "WRITTEN_OFF", writtenOffAt: new Date() },
+  const unpaid = Number(b.total) - Number(b.amountPaid);
+  // RPT-B.2 — flip status + post DR AP / CR Bad Debt Recovery for
+  // the unpaid portion, atomically.
+  await db.$transaction(async (tx) => {
+    await tx.bill.update({
+      where: { id },
+      data: { status: "WRITTEN_OFF", writtenOffAt: new Date() },
+    });
+    await postBillWriteOffJe(
+      tx,
+      organization.id,
+      { id: b.id, number: b.number, issueDate: b.issueDate },
+      unpaid
+    );
   });
   await writeAuditLog({
     organizationId: organization.id,
@@ -617,7 +629,7 @@ export async function writeOffBillAction(id: string): Promise<void> {
     entityType: "Bill",
     entityId: id,
     before: { status: b.status },
-    after: { status: "WRITTEN_OFF" },
+    after: { status: "WRITTEN_OFF", writeOffAmount: unpaid },
   });
   revalidatePath("/purchases/bills");
   revalidatePath(`/purchases/bills/${id}`);
