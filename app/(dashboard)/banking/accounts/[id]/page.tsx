@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Upload, Undo2, Wallet, CreditCard, GitMerge, Link2Off } from "lucide-react";
+import { ArrowLeft, Upload, Undo2, Wallet, CreditCard, GitMerge, Link2Off, CheckCircle2 } from "lucide-react";
 import { format } from "date-fns";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
@@ -108,6 +108,22 @@ export default async function BankAccountDetailPage({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
+              <DropdownMenuItem asChild>
+                <Link
+                  href={`/banking/accounts/${account.id}/reconcile/new`}
+                  className="inline-flex items-center gap-2 w-full"
+                >
+                  <CheckCircle2 className="h-4 w-4" /> Reconcile Account
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link
+                  href={`/banking/accounts/${account.id}/reconcile`}
+                  className="inline-flex items-center gap-2 w-full"
+                >
+                  <CheckCircle2 className="h-4 w-4" /> Past Reconciliations
+                </Link>
+              </DropdownMenuItem>
               <DropdownMenuItem
                 className="p-0"
                 asChild

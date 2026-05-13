@@ -49,6 +49,7 @@ export async function getBankAccountStats(
     duplicates,
     latestBatch,
     activeRulesCount,
+    lastFinalisedReconciliation,
   ] = await Promise.all([
     db.bankTransaction.count({ where: { bankAccountId } }),
     db.bankTransaction.count({
@@ -83,6 +84,13 @@ export async function getBankAccountStats(
         OR: [{ bankAccountId }, { bankAccountId: null }],
       },
     }),
+    // BNK-F — most recently finalised reconciliation, by its end date
+    // (not finalisedAt, since the user might finalise out of order).
+    db.reconciliation.findFirst({
+      where: { bankAccountId, organizationId, status: "FINALISED" },
+      orderBy: { endDate: "desc" },
+      select: { endDate: true },
+    }),
   ]);
 
   return {
@@ -93,7 +101,7 @@ export async function getBankAccountStats(
     uncategorised,
     duplicates,
     latestStatementAt: latestBatch?.createdAt ?? null,
-    lastReconciledAt: null, // BNK-F
+    lastReconciledAt: lastFinalisedReconciliation?.endDate ?? null,
     activeRulesCount,
   };
 }
