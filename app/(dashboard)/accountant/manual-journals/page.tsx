@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Download } from "lucide-react";
 import { format } from "date-fns";
 import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
@@ -10,6 +11,7 @@ import {
   type ColumnDef,
 } from "@/components/shared/data-table";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { formatMoney } from "@/lib/money";
 
 export const metadata = { title: "Manual Journals" };
@@ -169,7 +171,18 @@ export default async function ManualJournalsPage({
         title="Manual Journals"
         ctaHref="/accountant/manual-journals/new"
         ctaLabel="+ New Journal"
-      />
+      >
+        {/* ACCT-A.4.a — Export carries the current search query so
+            what you see in the table is what you get in the CSV.
+            Defaults to the last 90 days, all statuses. */}
+        <Button asChild variant="outline" size="sm" className="gap-1">
+          <a
+            href={`/accountant/manual-journals/export${q ? `?q=${encodeURIComponent(q)}` : ""}`}
+          >
+            <Download className="h-4 w-4" /> Export
+          </a>
+        </Button>
+      </PageHeader>
       {total === 0 && !q ? (
         <EmptyState
           title="Adjustments and reclassifications"
