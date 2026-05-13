@@ -262,6 +262,8 @@ model ChartOfAccount {
   ruleActions    BankRule[]       @relation("BankRuleActionGL")
   /// RPT-A back-relation: JE lines posting to this account.
   journalEntryLines JournalEntryLine[]
+  /// ACCT-A.3 back-relation: Manual Journal lines (DRAFT + PUBLISHED).
+  manualJournalLines ManualJournalLine[]
 
   @@unique([organizationId, code])
   @@index([organizationId, type])
@@ -1749,9 +1751,28 @@ model ManualJournal {
   publishReverseOnlyOnDate Boolean  @default(false)
   createdAt      DateTime     @default(now())
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  /// ACCT-A.3 — line storage. Source of truth for DRAFT lines and
+  /// the edit form. PUBLISHED journals also have a copy in
+  /// JournalEntryLine (under reference MJ:<id>) for the canonical
+  /// ledger query path.
+  lines          ManualJournalLine[]
 
   @@unique([organizationId, number])
   @@index([organizationId, status], name: "ManualJournal_org_status_idx")
+}
+
+model ManualJournalLine {
+  id              String         @id @default(cuid())
+  manualJournalId String
+  position        Int            @default(0)
+  accountId       String
+  debit           Decimal        @default(0) @db.Decimal(18, 4)
+  credit          Decimal        @default(0) @db.Decimal(18, 4)
+  description     String?
+  manualJournal   ManualJournal  @relation(fields: [manualJournalId], references: [id], onDelete: Cascade)
+  account         ChartOfAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
+
+  @@index([manualJournalId])
 }
 
 // ───────────────────────── TAX ─────────────────────────

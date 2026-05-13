@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { format } from "date-fns";
-import { ArrowLeft, FileText, Trash2, RotateCcw } from "lucide-react";
+import { ArrowLeft, FileText, Trash2, RotateCcw, Pencil, Send } from "lucide-react";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
 import { Button } from "@/components/ui/button";
@@ -9,7 +9,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ActionFormButton } from "@/components/shared/action-form-button";
 import { formatMoney } from "@/lib/money";
-import { deleteManualJournalByIdAction } from "../actions";
+import {
+  deleteManualJournalByIdAction,
+  publishManualJournalByIdAction,
+} from "../actions";
 
 export const metadata = { title: "Manual Journal" };
 
@@ -35,10 +38,21 @@ const STATUS_LABEL: Record<string, string> = {
   PUBLISHED: "Published",
 };
 
+type AccountSummary = { id: string; name: string; code: string | null; type: string };
+type RenderLine = {
+  id: string;
+  account: AccountSummary;
+  debit: number;
+  credit: number;
+  description: string | null;
+};
+
 /**
- * ACCT-A.2 — Detail page. Shows header (with all new Zoho-parity
- * fields) + the primary JE lines + (when present) a "Reverse posting"
- * panel showing the auto-reverse JE's lines.
+ * ACCT-A.3 — Detail page. DRAFT journals render their stored
+ * `ManualJournalLine` rows and expose Edit + Publish buttons.
+ * PUBLISHED journals continue to render from the canonical
+ * `JournalEntryLine` rows under `MJ:<id>` (and `MJ-REV:<id>` for the
+ * reverse posting). Delete works in both states.
  */
 export default async function ManualJournalDetailPage({
   params,
@@ -49,42 +63,74 @@ export default async function ManualJournalDetailPage({
 
   const header = await db.manualJournal.findFirst({
     where: { id: params.id, organizationId: organization.id },
+    include: {
+      lines: {
+        orderBy: { position: "asc" },
+        include: {
+          account: { select: { id: true, name: true, code: true, type: true } },
+        },
+      },
+    },
   });
   if (!header) notFound();
 
-  const [primaryJe, reverseJe] = await Promise.all([
-    db.journalEntry.findFirst({
-      where: {
-        organizationId: organization.id,
-        reference: `MJ:${header.id}`,
-      },
-      include: {
-        lines: {
-          include: {
-            account: { select: { id: true, name: true, code: true, type: true } },
-          },
-        },
-      },
-    }),
-    db.journalEntry.findFirst({
-      where: {
-        organizationId: organization.id,
-        reference: `MJ-REV:${header.id}`,
-      },
-      include: {
-        lines: {
-          include: {
-            account: { select: { id: true, name: true, code: true, type: true } },
-          },
-        },
-      },
-    }),
-  ]);
+  const isDraft = header.status === "DRAFT";
 
-  const totalDebit =
-    primaryJe?.lines.reduce((s, l) => s + Number(l.debit), 0) ?? 0;
-  const totalCredit =
-    primaryJe?.lines.reduce((s, l) => s + Number(l.credit), 0) ?? 0;
+  // PUBLISHED: pull from the JE so reports and the detail page agree.
+  const [primaryJe, reverseJe] = isDraft
+    ? [null, null]
+    : await Promise.all([
+        db.journalEntry.findFirst({
+          where: {
+            organizationId: organization.id,
+            reference: `MJ:${header.id}`,
+          },
+          include: {
+            lines: {
+              include: {
+                account: {
+                  select: { id: true, name: true, code: true, type: true },
+                },
+              },
+            },
+          },
+        }),
+        db.journalEntry.findFirst({
+          where: {
+            organizationId: organization.id,
+            reference: `MJ-REV:${header.id}`,
+          },
+          include: {
+            lines: {
+              include: {
+                account: {
+                  select: { id: true, name: true, code: true, type: true },
+                },
+              },
+            },
+          },
+        }),
+      ]);
+
+  // Normalize the two sources into a single render shape.
+  const lines: RenderLine[] = isDraft
+    ? header.lines.map((l) => ({
+        id: l.id,
+        account: l.account,
+        debit: Number(l.debit),
+        credit: Number(l.credit),
+        description: l.description,
+      }))
+    : (primaryJe?.lines ?? []).map((l) => ({
+        id: l.id,
+        account: l.account,
+        debit: Number(l.debit),
+        credit: Number(l.credit),
+        description: l.description,
+      }));
+
+  const totalDebit = lines.reduce((s, l) => s + l.debit, 0);
+  const totalCredit = lines.reduce((s, l) => s + l.credit, 0);
 
   const displayCurrency = header.currency ?? organization.currency;
 
@@ -103,7 +149,25 @@ export default async function ManualJournalDetailPage({
             {header.number}
           </span>
         </h1>
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-2">
+          {isDraft && (
+            <>
+              <Button asChild variant="outline" size="sm" className="gap-1">
+                <Link href={`/accountant/manual-journals/${header.id}/edit`}>
+                  <Pencil className="h-4 w-4" /> Edit
+                </Link>
+              </Button>
+              <ActionFormButton
+                action={publishManualJournalByIdAction.bind(null, header.id)}
+                label="Publish"
+                icon={<Send className="h-4 w-4" />}
+                variant="default"
+                size="sm"
+                successToast="Manual journal published"
+                redirects
+              />
+            </>
+          )}
           <ActionFormButton
             action={deleteManualJournalByIdAction.bind(null, header.id)}
             label="Delete"
@@ -184,15 +248,24 @@ export default async function ManualJournalDetailPage({
               <div className="text-sm whitespace-pre-wrap">{header.notes}</div>
             </div>
           ) : null}
+          {isDraft ? (
+            <div className="border-t pt-3 text-xs text-muted-foreground">
+              This journal hasn&apos;t been posted to the ledger yet. Click{" "}
+              <b>Publish</b> to post it (and its reverse JE, if a reverse
+              date is set) — or <b>Edit</b> to keep refining it.
+            </div>
+          ) : null}
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Posted lines</CardTitle>
+          <CardTitle className="text-base">
+            {isDraft ? "Draft lines" : "Posted lines"}
+          </CardTitle>
         </CardHeader>
         <CardContent className="p-0">
-          {primaryJe && primaryJe.lines.length > 0 ? (
+          {lines.length > 0 ? (
             <table className="w-full text-sm">
               <thead className="bg-muted/30 text-xs uppercase tracking-wider text-muted-foreground">
                 <tr>
@@ -205,7 +278,7 @@ export default async function ManualJournalDetailPage({
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {primaryJe.lines.map((l) => (
+                {lines.map((l) => (
                   <tr key={l.id}>
                     <td className="p-3 font-mono text-xs">
                       {l.account.code ?? "—"}
@@ -216,13 +289,11 @@ export default async function ManualJournalDetailPage({
                     </td>
                     <td className="p-3 text-xs">{l.description ?? "—"}</td>
                     <td className="p-3 text-right tabular-nums">
-                      {Number(l.debit) > 0
-                        ? formatMoney(Number(l.debit), displayCurrency)
-                        : ""}
+                      {l.debit > 0 ? formatMoney(l.debit, displayCurrency) : ""}
                     </td>
                     <td className="p-3 text-right tabular-nums">
-                      {Number(l.credit) > 0
-                        ? formatMoney(Number(l.credit), displayCurrency)
+                      {l.credit > 0
+                        ? formatMoney(l.credit, displayCurrency)
                         : ""}
                     </td>
                   </tr>
@@ -244,10 +315,11 @@ export default async function ManualJournalDetailPage({
             </table>
           ) : (
             <div className="p-6 text-sm text-muted-foreground text-center">
-              No JE lines linked.{" "}
-              {header.createdAt < new Date("2026-05-13T00:00:00Z")
-                ? "Pre-ACCT-A legacy header — delete + recreate to attach proper double-entry lines."
-                : "Something went wrong on create — please report."}
+              {isDraft
+                ? "No lines yet — click Edit to add some."
+                : header.createdAt < new Date("2026-05-13T00:00:00Z")
+                  ? "Pre-ACCT-A legacy header — delete + recreate to attach proper double-entry lines."
+                  : "No JE lines linked — something went wrong on create, please report."}
             </div>
           )}
         </CardContent>
