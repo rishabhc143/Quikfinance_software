@@ -85,6 +85,37 @@ describe("flipDrCrLines", () => {
     });
   });
 
+  it("preserves ACCT-A.3.b per-line dimensions (contactId, projectId) through the flip", () => {
+    // The reverse JE has to carry the same contact / project tags
+    // so reports group rent expense + its auto-reverse under the
+    // same vendor and project.
+    const flipped = flipDrCrLines([
+      {
+        accountId: "acc-1",
+        contactId: "contact-vendor",
+        projectId: "project-q1",
+        description: "Rent",
+        debit: 1000,
+        credit: 0,
+      },
+      {
+        accountId: "acc-2",
+        contactId: null,
+        projectId: null,
+        description: "Cash",
+        debit: 0,
+        credit: 1000,
+      },
+    ]);
+    expect(flipped[0].contactId).toBe("contact-vendor");
+    expect(flipped[0].projectId).toBe("project-q1");
+    expect(flipped[1].contactId).toBeNull();
+    expect(flipped[1].projectId).toBeNull();
+    // And the DR/CR did flip as expected.
+    expect(flipped[0].debit).toBe(0);
+    expect(flipped[0].credit).toBe(1000);
+  });
+
   it("does not mutate the input array or its objects", () => {
     const input = [
       { debit: 10, credit: 0 },

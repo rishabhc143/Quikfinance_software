@@ -41,11 +41,27 @@ export default async function EditManualJournalPage({
     redirect(`/accountant/manual-journals/${header.id}`);
   }
 
-  const accounts = await db.chartOfAccount.findMany({
-    where: { organizationId: organization.id, isActive: true },
-    select: { id: true, name: true, code: true, type: true },
-    orderBy: [{ type: "asc" }, { code: "asc" }, { name: "asc" }],
-  });
+  const [accounts, contacts, projects] = await Promise.all([
+    db.chartOfAccount.findMany({
+      where: { organizationId: organization.id, isActive: true },
+      select: { id: true, name: true, code: true, type: true },
+      orderBy: [{ type: "asc" }, { code: "asc" }, { name: "asc" }],
+    }),
+    db.contact.findMany({
+      where: {
+        organizationId: organization.id,
+        isInactive: false,
+        deletedAt: null,
+      },
+      select: { id: true, displayName: true, type: true },
+      orderBy: { displayName: "asc" },
+    }),
+    db.project.findMany({
+      where: { organizationId: organization.id, status: "active" },
+      select: { id: true, name: true },
+      orderBy: { name: "asc" },
+    }),
+  ]);
 
   const initialValues: ManualJournalFormInitialValues = {
     date: format(header.date, "yyyy-MM-dd"),
@@ -64,14 +80,30 @@ export default async function EditManualJournalPage({
       header.lines.length > 0
         ? header.lines.map((l) => ({
             accountId: l.accountId,
+            contactId: l.contactId ?? "",
+            projectId: l.projectId ?? "",
             debit: Number(l.debit),
             credit: Number(l.credit),
             description: l.description ?? "",
           }))
         : [
             // Pre-A.3 DRAFTs (none in prod, but defensively): empty form.
-            { accountId: "", debit: 0, credit: 0, description: "" },
-            { accountId: "", debit: 0, credit: 0, description: "" },
+            {
+              accountId: "",
+              contactId: "",
+              projectId: "",
+              debit: 0,
+              credit: 0,
+              description: "",
+            },
+            {
+              accountId: "",
+              contactId: "",
+              projectId: "",
+              debit: 0,
+              credit: 0,
+              description: "",
+            },
           ],
   };
 
@@ -105,6 +137,8 @@ export default async function EditManualJournalPage({
       ) : (
         <ManualJournalForm
           accounts={accounts}
+          contacts={contacts}
+          projects={projects}
           currency={organization.currency}
           defaultDate={format(new Date(), "yyyy-MM-dd")}
           initialValues={initialValues}

@@ -39,9 +39,13 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 type AccountSummary = { id: string; name: string; code: string | null; type: string };
+type ContactSummary = { id: string; displayName: string; type: string } | null;
+type ProjectSummary = { id: string; name: string } | null;
 type RenderLine = {
   id: string;
   account: AccountSummary;
+  contact: ContactSummary;
+  project: ProjectSummary;
   debit: number;
   credit: number;
   description: string | null;
@@ -68,6 +72,8 @@ export default async function ManualJournalDetailPage({
         orderBy: { position: "asc" },
         include: {
           account: { select: { id: true, name: true, code: true, type: true } },
+          contact: { select: { id: true, displayName: true, type: true } },
+          project: { select: { id: true, name: true } },
         },
       },
     },
@@ -91,6 +97,10 @@ export default async function ManualJournalDetailPage({
                 account: {
                   select: { id: true, name: true, code: true, type: true },
                 },
+                contact: {
+                  select: { id: true, displayName: true, type: true },
+                },
+                project: { select: { id: true, name: true } },
               },
             },
           },
@@ -106,6 +116,10 @@ export default async function ManualJournalDetailPage({
                 account: {
                   select: { id: true, name: true, code: true, type: true },
                 },
+                contact: {
+                  select: { id: true, displayName: true, type: true },
+                },
+                project: { select: { id: true, name: true } },
               },
             },
           },
@@ -117,6 +131,8 @@ export default async function ManualJournalDetailPage({
     ? header.lines.map((l) => ({
         id: l.id,
         account: l.account,
+        contact: l.contact,
+        project: l.project,
         debit: Number(l.debit),
         credit: Number(l.credit),
         description: l.description,
@@ -124,10 +140,13 @@ export default async function ManualJournalDetailPage({
     : (primaryJe?.lines ?? []).map((l) => ({
         id: l.id,
         account: l.account,
+        contact: l.contact,
+        project: l.project,
         debit: Number(l.debit),
         credit: Number(l.credit),
         description: l.description,
       }));
+  const anyDims = lines.some((l) => l.contact || l.project);
 
   const totalDebit = lines.reduce((s, l) => s + l.debit, 0);
   const totalCredit = lines.reduce((s, l) => s + l.credit, 0);
@@ -273,6 +292,8 @@ export default async function ManualJournalDetailPage({
                   <th className="text-left p-3">Account</th>
                   <th className="text-left p-3">Type</th>
                   <th className="text-left p-3">Description</th>
+                  {anyDims && <th className="text-left p-3">Contact</th>}
+                  {anyDims && <th className="text-left p-3">Project</th>}
                   <th className="text-right p-3">Debit</th>
                   <th className="text-right p-3">Credit</th>
                 </tr>
@@ -288,6 +309,29 @@ export default async function ManualJournalDetailPage({
                       {TYPE_LABEL[l.account.type] ?? l.account.type}
                     </td>
                     <td className="p-3 text-xs">{l.description ?? "—"}</td>
+                    {anyDims && (
+                      <td className="p-3 text-xs">
+                        {l.contact ? (
+                          <span>
+                            {l.contact.displayName}{" "}
+                            <span className="text-muted-foreground">
+                              ({l.contact.type.toLowerCase()})
+                            </span>
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </td>
+                    )}
+                    {anyDims && (
+                      <td className="p-3 text-xs">
+                        {l.project ? (
+                          l.project.name
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </td>
+                    )}
                     <td className="p-3 text-right tabular-nums">
                       {l.debit > 0 ? formatMoney(l.debit, displayCurrency) : ""}
                     </td>
@@ -301,7 +345,10 @@ export default async function ManualJournalDetailPage({
               </tbody>
               <tfoot className="bg-muted/20">
                 <tr>
-                  <td colSpan={4} className="p-3 text-right font-medium">
+                  <td
+                    colSpan={4 + (anyDims ? 2 : 0)}
+                    className="p-3 text-right font-medium"
+                  >
                     Totals
                   </td>
                   <td className="p-3 text-right tabular-nums font-semibold">
