@@ -104,6 +104,7 @@ const NAV: NavItem[] = [
       { label: "Chart of Accounts", href: "/accountant/chart-of-accounts" },
       { label: "Journal Entries", href: "/accountant/journal-entries" },
       { label: "Manual Journals", href: "/accountant/manual-journals" },
+      { label: "Bulk Update", href: "/accountant/bulk-update" },
     ],
   },
   {

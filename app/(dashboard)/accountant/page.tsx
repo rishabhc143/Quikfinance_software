@@ -3,7 +3,7 @@ import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Book, BookCheck, FileText, ArrowRight } from "lucide-react";
+import { Book, BookCheck, FileText, ArrowRight, Layers } from "lucide-react";
 
 export const metadata = { title: "Accountant" };
 
@@ -11,6 +11,7 @@ const TILES = [
   { href: "/accountant/chart-of-accounts", label: "Chart of Accounts", icon: Book, complete: true },
   { href: "/accountant/manual-journals", label: "Manual Journals", icon: FileText, complete: true },
   { href: "/accountant/journal-entries", label: "Journal Entries", icon: BookCheck, complete: true },
+  { href: "/accountant/bulk-update", label: "Bulk Update", icon: Layers, complete: true },
 ];
 
 export default async function AccountantPage() {
