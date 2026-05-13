@@ -4,7 +4,7 @@ import { ArrowLeft, GitMerge } from "lucide-react";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
 import { Button } from "@/components/ui/button";
-import { MatchPane, type UnmatchedLine } from "./match-pane";
+import { MatchPane, type UnmatchedLine, type GLAccountOption } from "./match-pane";
 
 export const metadata = { title: "Match Transactions" };
 
@@ -33,23 +33,39 @@ export default async function MatchTransactionsPage({
   });
   if (!account) notFound();
 
-  const txns = await db.bankTransaction.findMany({
-    where: {
-      bankAccountId: account.id,
-      matchedRecordType: null,
-      excluded: false,
-    },
-    orderBy: { date: "desc" },
-    select: {
-      id: true,
-      date: true,
-      amount: true,
-      type: true,
-      description: true,
-      reference: true,
-    },
-    take: 200,
-  });
+  const [txns, glAccounts] = await Promise.all([
+    db.bankTransaction.findMany({
+      where: {
+        bankAccountId: account.id,
+        matchedRecordType: null,
+        excluded: false,
+      },
+      orderBy: { date: "desc" },
+      select: {
+        id: true,
+        date: true,
+        amount: true,
+        type: true,
+        description: true,
+        reference: true,
+      },
+      take: 200,
+    }),
+    // BNK-D — both directions' valid GL types up front so the client
+    // doesn't need a round-trip when the user opens the Categorise
+    // sub-view. Active accounts only.
+    db.chartOfAccount.findMany({
+      where: {
+        organizationId: organization.id,
+        isActive: true,
+        type: {
+          in: ["EXPENSE", "COST_OF_GOODS_SOLD", "INCOME", "OTHER_INCOME"],
+        },
+      },
+      select: { id: true, name: true, code: true, type: true },
+      orderBy: [{ type: "asc" }, { name: "asc" }],
+    }),
+  ]);
 
   const unmatched: UnmatchedLine[] = txns.map((t) => ({
     id: t.id,
@@ -88,6 +104,7 @@ export default async function MatchTransactionsPage({
         currency={account.currency}
         unmatched={unmatched}
         initialTxnId={initialTxnId}
+        glAccounts={glAccounts as GLAccountOption[]}
       />
     </div>
   );
