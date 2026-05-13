@@ -34,7 +34,8 @@ export type JeSourceKind =
   | "CREDIT_NOTE_REFUND"
   | "VENDOR_CREDIT_OPEN"
   | "VENDOR_CREDIT_REFUND"
-  | "VENDOR_ADVANCE";
+  | "VENDOR_ADVANCE"
+  | "MANUAL_JOURNAL";
 
 export type JeReferenceParsed = {
   kind: JeSourceKind;
@@ -142,6 +143,13 @@ const PARSERS: Array<{
     label: "Vendor advance",
     pickPrimary: (p) => p[0],
     href: (id) => `/purchases/payments-made/${id}`,
+  },
+  {
+    prefix: "MJ:",
+    kind: "MANUAL_JOURNAL",
+    label: "Manual journal",
+    pickPrimary: (p) => p[0],
+    href: (id) => `/accountant/manual-journals/${id}`,
   },
 ];
 

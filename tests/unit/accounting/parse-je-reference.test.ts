@@ -44,6 +44,13 @@ describe("parseJeReference — single-id keys", () => {
     expect(r?.kind).toBe("VENDOR_ADVANCE");
     expect(r?.sourceHref).toBe("/purchases/payments-made/cm-pay");
   });
+
+  it("MJ:<id> → manual-journal detail link (ACCT-A)", () => {
+    const r = parseJeReference("MJ:cm-mj1");
+    expect(r?.kind).toBe("MANUAL_JOURNAL");
+    expect(r?.label).toBe("Manual journal");
+    expect(r?.sourceHref).toBe("/accountant/manual-journals/cm-mj1");
+  });
 });
 
 describe("parseJeReference — two-id keys link to the parent record", () => {
