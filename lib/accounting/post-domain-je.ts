@@ -285,9 +285,10 @@ export async function reversePaymentMadeJes(
  *   1. payment.depositToAccountId / paidThroughAccountId → must
  *      reference a CoA in this org
  *   2. payment.bankAccountId (legacy) → via BankAccount.glAccountId
- *      (lazy bridge). If the bank has no glAccountId yet, fall back
- *      to creating one inline.
- *   3. Throw — caller surfaces a "pick a posting account" error.
+ *      (lazy bridge)
+ *   3. Lazy-create + post to the `SYS-CASH` (Cash on Hand) fallback
+ *      account. Lets the action succeed even when the user hasn't
+ *      configured a bank account yet; books still balance.
  */
 export async function resolveBankCoaForPayment(
   tx: Tx,
@@ -350,7 +351,10 @@ export async function resolveBankCoaForPayment(
     return created.id;
   }
 
-  throw new Error(
-    "Payment has no posting account — pick a deposit / paid-through account on the form."
-  );
+  // Fallback — the org hasn't configured any bank or deposit-to account.
+  // Post to a system "Cash on Hand" asset so the books still balance.
+  const cash = await (
+    await import("@/lib/accounting/system-accounts")
+  ).getOrCreateSystemAccount(organizationId, "CASH_ON_HAND", tx);
+  return cash.id;
 }

@@ -19,7 +19,12 @@ import type { AccountType, ChartOfAccount, Prisma } from "@prisma/client";
  * `(organizationId, code)` and we re-read.
  */
 
-export type SystemAccountKind = "AR" | "AP" | "SALES_REVENUE" | "BILL_EXPENSE";
+export type SystemAccountKind =
+  | "AR"
+  | "AP"
+  | "SALES_REVENUE"
+  | "BILL_EXPENSE"
+  | "CASH_ON_HAND";
 
 type Spec = {
   code: string;
@@ -56,6 +61,13 @@ const SPEC: Record<SystemAccountKind, Spec> = {
     type: "EXPENSE",
     description:
       "System account: default expense account for bills (DR side).",
+  },
+  CASH_ON_HAND: {
+    code: "SYS-CASH",
+    name: "Cash on Hand",
+    type: "ASSET",
+    description:
+      "System account: fallback bank-side leg for payments when no bank or deposit-to account is configured.",
   },
 };
 

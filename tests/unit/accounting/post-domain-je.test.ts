@@ -292,15 +292,17 @@ describe("resolveBankCoaForPayment", () => {
     });
   });
 
-  it("throws when no posting account can be resolved", async () => {
+  it("falls back to SYS-CASH when no bank / deposit account is configured", async () => {
     const tx = mockTx();
-    await expect(
-      resolveBankCoaForPayment(
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        tx as any,
-        ORG,
-        { depositToAccountId: null, bankAccountId: null }
-      )
-    ).rejects.toThrow(/no posting account/i);
+    // No depositToAccountId, no bankAccountId — the helper should
+    // dynamic-import system-accounts and return its CASH_ON_HAND id.
+    const id = await resolveBankCoaForPayment(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      tx as any,
+      ORG,
+      { depositToAccountId: null, bankAccountId: null }
+    );
+    // The mocked getOrCreateSystemAccount returns id `sys-cash_on_hand`.
+    expect(id).toBe("sys-cash_on_hand");
   });
 });
