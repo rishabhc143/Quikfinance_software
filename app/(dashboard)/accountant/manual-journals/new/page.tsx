@@ -1,35 +1,55 @@
 import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, FileText } from "lucide-react";
 import { format } from "date-fns";
+import { db } from "@/lib/db";
+import { requireOrganization } from "@/lib/auth-helpers";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Card, CardContent } from "@/components/ui/card";
-import { createManualJournalAction } from "../actions";
+import { ManualJournalForm } from "./form";
 
 export const metadata = { title: "New Manual Journal" };
 
-export default function NewManualJournalPage() {
+/**
+ * ACCT-A — Server wrapper. Loads the org's active CoA entries so the
+ * client form's account picker has something to populate.
+ */
+export default async function NewManualJournalPage() {
+  const { organization } = await requireOrganization();
+
+  const accounts = await db.chartOfAccount.findMany({
+    where: { organizationId: organization.id, isActive: true },
+    select: { id: true, name: true, code: true, type: true },
+    orderBy: [{ type: "asc" }, { code: "asc" }, { name: "asc" }],
+  });
+
   return (
-    <div className="p-6 max-w-2xl mx-auto space-y-4">
+    <div className="p-6 max-w-5xl mx-auto space-y-4">
       <div className="flex items-center gap-2">
-        <Button asChild variant="ghost" size="icon"><Link href="/accountant/manual-journals"><ArrowLeft className="h-4 w-4" /></Link></Button>
+        <Button asChild variant="ghost" size="icon">
+          <Link href="/accountant/manual-journals">
+            <ArrowLeft className="h-4 w-4" />
+          </Link>
+        </Button>
+        <FileText className="h-5 w-5 text-muted-foreground" />
         <h1 className="text-xl font-semibold">New Manual Journal</h1>
       </div>
-      <Card>
-        <CardContent className="pt-6">
-          <form action={createManualJournalAction} className="space-y-4">
-            <div><Label>Date <span className="text-destructive">*</span></Label><Input type="date" name="date" defaultValue={format(new Date(), "yyyy-MM-dd")} required /></div>
-            <div><Label>Notes</Label><Textarea name="notes" rows={4} placeholder="What's this adjustment for?" /></div>
-            <p className="text-xs text-muted-foreground">Debit/credit lines on manual journals land alongside Journal Entries. For now this records the journal header.</p>
-            <div className="flex justify-end gap-2 pt-2 border-t">
-              <Button type="button" variant="outline" asChild><Link href="/accountant/manual-journals">Cancel</Link></Button>
-              <Button type="submit">Create journal</Button>
-            </div>
-          </form>
-        </CardContent>
-      </Card>
+      {accounts.length === 0 ? (
+        <p className="text-sm text-muted-foreground">
+          You need at least one Chart-of-Accounts entry first.{" "}
+          <Link
+            href="/accountant/chart-of-accounts/new"
+            className="text-primary underline"
+          >
+            Create one
+          </Link>
+          .
+        </p>
+      ) : (
+        <ManualJournalForm
+          accounts={accounts}
+          currency={organization.currency}
+          defaultDate={format(new Date(), "yyyy-MM-dd")}
+        />
+      )}
     </div>
   );
 }
