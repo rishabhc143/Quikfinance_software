@@ -19,6 +19,10 @@ import {
   type ApplyCreditInput,
   type RefundCreditInput,
 } from "@/lib/validations/credit-note";
+import {
+  postCreditNoteOpenJe,
+  reverseCreditNoteJes,
+} from "@/lib/accounting/post-domain-je";
 
 async function totalsFor(orgId: string, input: CreditNoteInput) {
   const taxes = await db.tax.findMany({
@@ -44,51 +48,57 @@ export async function createCreditNoteAction(input: CreditNoteInput) {
   const number = await getNextDocumentNumber(organization.id, "CREDIT_NOTE");
   const totals = await totalsFor(organization.id, data);
 
-  const created = await db.creditNote.create({
-    data: {
-      organizationId: organization.id,
-      number,
-      referenceNumber: data.referenceNumber ?? null,
-      contactId: data.contactId,
-      date: data.creditNoteDate,
-      status: "OPEN",
-      currency: data.currency,
-      subTotal: totals.subTotal,
-      taxAmount: totals.documentTaxAmount,
-      total: totals.total,
-      reason: data.reason ?? null,
-      customerNotes: data.customerNotes ?? null,
-      termsAndConditions: data.termsAndConditions ?? null,
-      pdfTemplateId: data.pdfTemplateId ?? null,
-      attachments:
-        data.attachments && data.attachments.length > 0
-          ? {
-              create: data.attachments.map((a) => ({
-                fileName: a.fileName,
-                fileUrl: a.fileUrl,
-                fileSize: a.fileSize,
-                mimeType: a.mimeType,
-              })),
-            }
-          : undefined,
-      lineItems: {
-        create: data.lines.map((l, i) => ({
-          itemId: l.itemId || null,
-          position: l.position ?? i,
-          name: l.name,
-          description: l.description ?? null,
-          hsnSacCode: l.hsnSacCode ?? null,
-          quantity: l.quantity,
-          unit: l.unit ?? null,
-          rate: l.rate,
-          discount: l.discount ?? 0,
-          discountType: l.discountType ?? "percentage",
-          taxId: l.taxId ?? null,
-          taxAmount: totals.lines[i]?.taxAmount ?? 0,
-          amount: totals.lines[i]?.amount ?? 0,
-        })),
+  // RPT-B.2 — create the credit note and post its OPEN JE in one
+  // transaction so the books-side post can't drift from the domain row.
+  const created = await db.$transaction(async (tx) => {
+    const cn = await tx.creditNote.create({
+      data: {
+        organizationId: organization.id,
+        number,
+        referenceNumber: data.referenceNumber ?? null,
+        contactId: data.contactId,
+        date: data.creditNoteDate,
+        status: "OPEN",
+        currency: data.currency,
+        subTotal: totals.subTotal,
+        taxAmount: totals.documentTaxAmount,
+        total: totals.total,
+        reason: data.reason ?? null,
+        customerNotes: data.customerNotes ?? null,
+        termsAndConditions: data.termsAndConditions ?? null,
+        pdfTemplateId: data.pdfTemplateId ?? null,
+        attachments:
+          data.attachments && data.attachments.length > 0
+            ? {
+                create: data.attachments.map((a) => ({
+                  fileName: a.fileName,
+                  fileUrl: a.fileUrl,
+                  fileSize: a.fileSize,
+                  mimeType: a.mimeType,
+                })),
+              }
+            : undefined,
+        lineItems: {
+          create: data.lines.map((l, i) => ({
+            itemId: l.itemId || null,
+            position: l.position ?? i,
+            name: l.name,
+            description: l.description ?? null,
+            hsnSacCode: l.hsnSacCode ?? null,
+            quantity: l.quantity,
+            unit: l.unit ?? null,
+            rate: l.rate,
+            discount: l.discount ?? 0,
+            discountType: l.discountType ?? "percentage",
+            taxId: l.taxId ?? null,
+            taxAmount: totals.lines[i]?.taxAmount ?? 0,
+            amount: totals.lines[i]?.amount ?? 0,
+          })),
+        },
       },
-    },
+    });
+    await postCreditNoteOpenJe(tx, organization.id, cn);
+    return cn;
   });
 
   // Customer-returns flow: credit note for goods returned ⇒ put
@@ -275,6 +285,8 @@ export async function voidCreditNoteAction(id: string): Promise<void> {
     await tx.creditNote.update({ where: { id }, data: { status: "VOID" } });
     // Voiding cancels the customer return — stock goes back out.
     await reverseCreditNoteStockReturn(tx, organization.id, before);
+    // RPT-B.2 — pull the CN-OPEN JE so Sales Returns + AR back out.
+    await reverseCreditNoteJes(tx, organization.id, id);
   });
   await writeAuditLog({
     organizationId: organization.id,
@@ -307,6 +319,8 @@ export async function deleteCreditNoteAction(id: string) {
       number: cn.number,
       date: cn.date,
     });
+    // RPT-B.2 — delete the CN-OPEN JE so books reflect the un-credit.
+    await reverseCreditNoteJes(tx, organization.id, id);
   });
   await writeAuditLog({
     organizationId: organization.id,

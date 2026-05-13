@@ -4,12 +4,20 @@ import {
   postInvoicePaymentJe,
   postBillOpenJe,
   postBillPaymentJe,
+  postCreditNoteOpenJe,
+  postVendorCreditOpenJe,
+  postInvoiceWriteOffJe,
+  postBillWriteOffJe,
   reverseInvoiceSentJe,
   reverseAllInvoiceJes,
   reverseBillOpenJe,
   reverseAllBillJes,
   reversePaymentReceivedJes,
   reversePaymentMadeJes,
+  reverseCreditNoteJes,
+  reverseVendorCreditJes,
+  reverseInvoiceWriteOffJe,
+  reverseBillWriteOffJe,
   resolveBankCoaForPayment,
 } from "@/lib/accounting/post-domain-je";
 
@@ -304,5 +312,128 @@ describe("resolveBankCoaForPayment", () => {
     );
     // The mocked getOrCreateSystemAccount returns id `sys-cash_on_hand`.
     expect(id).toBe("sys-cash_on_hand");
+  });
+});
+
+// ───────────────────────── RPT-B Phase 2 ─────────────────────────
+
+const CN = { id: "cn-1", number: "CN-001", date: new Date("2026-04-18"), total: 300 };
+const VC = { id: "vc-1", number: "VC-001", date: new Date("2026-04-22"), total: 150 };
+
+describe("postCreditNoteOpenJe", () => {
+  it("creates DR Sales Returns / CR AR for the credit-note total", async () => {
+    const tx = mockTx();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await postCreditNoteOpenJe(tx as any, ORG, CN);
+    expect(tx.journalEntry.findFirst).toHaveBeenCalledWith({
+      where: { organizationId: ORG, reference: "CN-OPEN:cn-1" },
+      select: { id: true },
+    });
+    const arg = tx.journalEntry.create.mock.calls[0][0].data;
+    expect(arg.reference).toBe("CN-OPEN:cn-1");
+    expect(arg.lines.create).toEqual([
+      expect.objectContaining({ accountId: "sys-sales_returns", debit: 300, credit: 0 }),
+      expect.objectContaining({ accountId: "sys-ar", debit: 0, credit: 300 }),
+    ]);
+  });
+
+  it("is idempotent — second call finds existing JE + does nothing", async () => {
+    const tx = mockTx();
+    tx.journalEntry.findFirst.mockResolvedValue({ id: "je-existing" });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await postCreditNoteOpenJe(tx as any, ORG, CN);
+    expect(tx.journalEntry.create).not.toHaveBeenCalled();
+  });
+
+  it("no-op for zero total", async () => {
+    const tx = mockTx();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await postCreditNoteOpenJe(tx as any, ORG, { ...CN, total: 0 });
+    expect(tx.journalEntry.create).not.toHaveBeenCalled();
+  });
+});
+
+describe("postVendorCreditOpenJe", () => {
+  it("creates DR AP / CR Purchase Returns for the vendor-credit total", async () => {
+    const tx = mockTx();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await postVendorCreditOpenJe(tx as any, ORG, VC);
+    const arg = tx.journalEntry.create.mock.calls[0][0].data;
+    expect(arg.reference).toBe("VC-OPEN:vc-1");
+    expect(arg.lines.create).toEqual([
+      expect.objectContaining({ accountId: "sys-ap", debit: 150, credit: 0 }),
+      expect.objectContaining({ accountId: "sys-purchase_returns", debit: 0, credit: 150 }),
+    ]);
+  });
+});
+
+describe("postInvoiceWriteOffJe", () => {
+  it("creates DR Bad Debt Expense / CR AR for the write-off amount", async () => {
+    const tx = mockTx();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await postInvoiceWriteOffJe(tx as any, ORG, { id: "inv-2", number: "INV-002", issueDate: new Date("2026-04-15") }, 500);
+    const arg = tx.journalEntry.create.mock.calls[0][0].data;
+    expect(arg.reference).toBe("INV-WRITEOFF:inv-2");
+    expect(arg.lines.create).toEqual([
+      expect.objectContaining({ accountId: "sys-bad_debt_expense", debit: 500, credit: 0 }),
+      expect.objectContaining({ accountId: "sys-ar", debit: 0, credit: 500 }),
+    ]);
+  });
+
+  it("no-op on zero / negative writeOffAmount", async () => {
+    const tx = mockTx();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await postInvoiceWriteOffJe(tx as any, ORG, { id: "x", number: "x", issueDate: new Date() }, 0);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await postInvoiceWriteOffJe(tx as any, ORG, { id: "x", number: "x", issueDate: new Date() }, -10);
+    expect(tx.journalEntry.create).not.toHaveBeenCalled();
+  });
+});
+
+describe("postBillWriteOffJe", () => {
+  it("creates DR AP / CR Bad Debt Recovery for the write-off amount", async () => {
+    const tx = mockTx();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await postBillWriteOffJe(tx as any, ORG, { id: "bill-2", number: "BILL-002", issueDate: new Date("2026-04-20") }, 250);
+    const arg = tx.journalEntry.create.mock.calls[0][0].data;
+    expect(arg.reference).toBe("BILL-WRITEOFF:bill-2");
+    expect(arg.lines.create).toEqual([
+      expect.objectContaining({ accountId: "sys-ap", debit: 250, credit: 0 }),
+      expect.objectContaining({ accountId: "sys-bad_debt_recovery", debit: 0, credit: 250 }),
+    ]);
+  });
+});
+
+describe("RPT-B.2 reverse helpers", () => {
+  it("reverseCreditNoteJes deletes CN-OPEN:<id>", async () => {
+    const tx = mockTx();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await reverseCreditNoteJes(tx as any, ORG, "cn-1");
+    expect(tx.journalEntry.deleteMany).toHaveBeenCalledWith({
+      where: { organizationId: ORG, reference: "CN-OPEN:cn-1" },
+    });
+  });
+
+  it("reverseVendorCreditJes deletes VC-OPEN:<id>", async () => {
+    const tx = mockTx();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await reverseVendorCreditJes(tx as any, ORG, "vc-1");
+    expect(tx.journalEntry.deleteMany).toHaveBeenCalledWith({
+      where: { organizationId: ORG, reference: "VC-OPEN:vc-1" },
+    });
+  });
+
+  it("reverseInvoiceWriteOffJe + reverseBillWriteOffJe use precise reference keys", async () => {
+    const tx = mockTx();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await reverseInvoiceWriteOffJe(tx as any, ORG, "inv-2");
+    expect(tx.journalEntry.deleteMany).toHaveBeenCalledWith({
+      where: { organizationId: ORG, reference: "INV-WRITEOFF:inv-2" },
+    });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await reverseBillWriteOffJe(tx as any, ORG, "bill-2");
+    expect(tx.journalEntry.deleteMany).toHaveBeenLastCalledWith({
+      where: { organizationId: ORG, reference: "BILL-WRITEOFF:bill-2" },
+    });
   });
 });

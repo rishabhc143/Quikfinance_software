@@ -24,7 +24,11 @@ export type SystemAccountKind =
   | "AP"
   | "SALES_REVENUE"
   | "BILL_EXPENSE"
-  | "CASH_ON_HAND";
+  | "CASH_ON_HAND"
+  | "SALES_RETURNS"
+  | "PURCHASE_RETURNS"
+  | "BAD_DEBT_EXPENSE"
+  | "BAD_DEBT_RECOVERY";
 
 type Spec = {
   code: string;
@@ -68,6 +72,35 @@ const SPEC: Record<SystemAccountKind, Spec> = {
     type: "ASSET",
     description:
       "System account: fallback bank-side leg for payments when no bank or deposit-to account is configured.",
+  },
+  // RPT-B Phase 2 — credit notes + write-offs.
+  SALES_RETURNS: {
+    code: "SYS-SR",
+    name: "Sales Returns",
+    type: "EXPENSE",
+    description:
+      "System account: contra-revenue posting for sales credit notes (DR side of CN creation).",
+  },
+  PURCHASE_RETURNS: {
+    code: "SYS-PR",
+    name: "Purchase Returns",
+    type: "OTHER_INCOME",
+    description:
+      "System account: contra-expense posting for vendor credits (CR side of VC creation).",
+  },
+  BAD_DEBT_EXPENSE: {
+    code: "SYS-BAD",
+    name: "Bad Debt Expense",
+    type: "EXPENSE",
+    description:
+      "System account: posted when an unpaid invoice is written off (DR side; CR is AR).",
+  },
+  BAD_DEBT_RECOVERY: {
+    code: "SYS-RECOV",
+    name: "Bad Debt Recovery",
+    type: "OTHER_INCOME",
+    description:
+      "System account: posted when an unpaid bill is written off (CR side; DR is AP).",
   },
 };
 
