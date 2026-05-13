@@ -11,13 +11,12 @@ import {
   type BankLine,
 } from "@/lib/banking/match-candidates";
 import {
-  categorisedRecordType,
   validateGLForDirection,
   assertSameDirection,
   VALID_ACCOUNT_TYPES,
   type BankLineDirection,
 } from "@/lib/banking/categorise";
-import { getOrCreateBankGLAccount } from "@/lib/banking/bank-gl-account";
+import { applyCategorise } from "@/lib/banking/apply-categorise";
 
 /**
  * BNK-C — Server actions for the bank-line ↔ existing-record match flow.
@@ -402,87 +401,18 @@ export async function categoriseAction(input: {
   const directionError = validateGLForDirection(direction, gl.type);
   if (directionError) return { ok: false, error: directionError };
 
-  const recordType = categorisedRecordType(direction);
-  const amount = Number(bankTxn.amount);
-  const noteText =
-    input.notes?.trim() ||
-    `Categorised from bank line on ${bankTxn.date.toISOString().slice(0, 10)}`;
-
-  let createdId: string;
-
-  if (recordType === "EXPENSE") {
-    // Money Out → Expense row. Reuses the existing Expense model so it
-    // shows up in /purchases/expenses with the rest.
-    const expense = await db.expense.create({
-      data: {
-        organizationId: organization.id,
-        date: bankTxn.date,
-        category: gl.name, // legacy free-text column; new code reads expenseAccountId
-        expenseAccountId: gl.id,
-        amount,
-        reference: bankTxn.reference ?? null,
-        notes: noteText,
-        status: "RECORDED",
-      },
-      select: { id: true },
+  try {
+    await applyCategorise({
+      organizationId: organization.id,
+      userId: user.id,
+      bankTxn,
+      glAccount: gl,
+      notes: input.notes ?? null,
+      // No ruleId — this is a user-initiated Categorise.
     });
-    createdId = expense.id;
-  } else {
-    // Money In → 2-line JournalEntry. Lazy-create the bank's GL bridge
-    // so the DR leg has somewhere to land.
-    const bankGL = await getOrCreateBankGLAccount(bankTxn.bankAccountId);
-    const je = await db.journalEntry.create({
-      data: {
-        organizationId: organization.id,
-        date: bankTxn.date,
-        reference: bankTxn.reference ?? null,
-        notes: noteText,
-        lines: {
-          create: [
-            {
-              accountId: bankGL.id,
-              debit: amount,
-              credit: 0,
-              description: bankTxn.description ?? null,
-            },
-            {
-              accountId: gl.id,
-              debit: 0,
-              credit: amount,
-              description: noteText,
-            },
-          ],
-        },
-      },
-      select: { id: true },
-    });
-    createdId = je.id;
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Categorise failed" };
   }
-
-  await db.bankTransaction.update({
-    where: { id: bankTxn.id },
-    data: {
-      matchedRecordType: recordType,
-      matchedRecordId: createdId,
-      matchedAt: new Date(),
-      matchedById: user.id,
-      matchAutoCreated: true,
-    },
-  });
-
-  await writeAuditLog({
-    organizationId: organization.id,
-    userId: user.id,
-    action: "CREATE",
-    entityType: recordType === "EXPENSE" ? "Expense" : "JournalEntry",
-    entityId: createdId,
-    after: {
-      categorisedFromBankTxn: bankTxn.id,
-      glAccountId: gl.id,
-      glAccountName: gl.name,
-      amount,
-    },
-  });
 
   revalidatePath(`/banking/accounts/${bankTxn.bankAccountId}`);
   revalidatePath(`/banking/accounts/${bankTxn.bankAccountId}/match`);
