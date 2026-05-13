@@ -17,7 +17,9 @@ import {
 } from "@/lib/validations/vendor-credit";
 import {
   postVendorCreditOpenJe,
+  postVendorCreditRefundJe,
   reverseVendorCreditJes,
+  resolveBankCoaForPayment,
 } from "@/lib/accounting/post-domain-je";
 
 export type {
@@ -490,7 +492,7 @@ export async function recordVendorCreditRefundAction(
       );
     }
 
-    await tx.vendorCreditRefund.create({
+    const refund = await tx.vendorCreditRefund.create({
       data: {
         vendorCreditId: vc.id,
         amount: data.amount,
@@ -509,6 +511,22 @@ export async function recordVendorCreditRefundAction(
       where: { id: vc.id },
       data: { amountRefunded: newRefunded, status: nextStatus },
     });
+
+    // RPT-B.3 — DR Bank / CR AP for the refund. Counterbalances the
+    // VC-OPEN entry's AP offset for this slice.
+    const bankCoaId = await resolveBankCoaForPayment(tx, organization.id, {
+      paidThroughAccountId: data.fromAccountId,
+    });
+    await postVendorCreditRefundJe(
+      tx,
+      organization.id,
+      vc.id,
+      refund.id,
+      vc.number,
+      data.amount,
+      data.refundDate,
+      bankCoaId
+    );
   });
 
   await writeAuditLog({

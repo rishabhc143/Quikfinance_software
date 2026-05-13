@@ -8,6 +8,10 @@ import {
   postVendorCreditOpenJe,
   postInvoiceWriteOffJe,
   postBillWriteOffJe,
+  postCreditNoteRefundJe,
+  postVendorCreditRefundJe,
+  postVendorAdvanceCreateJe,
+  postVendorAdvanceApplicationJe,
   reverseInvoiceSentJe,
   reverseAllInvoiceJes,
   reverseBillOpenJe,
@@ -234,16 +238,11 @@ describe("reverse helpers", () => {
     });
   });
 
-  it("reversePaymentReceivedJes / reversePaymentMadeJes use startsWith keys", async () => {
+  it("reversePaymentReceivedJes uses startsWith INV-PMT key", async () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await reversePaymentReceivedJes(tx as any, ORG, "pmt-1");
     expect(tx.journalEntry.deleteMany).toHaveBeenCalledWith({
       where: { organizationId: ORG, reference: { startsWith: "INV-PMT:pmt-1:" } },
-    });
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await reversePaymentMadeJes(tx as any, ORG, "pmade-1");
-    expect(tx.journalEntry.deleteMany).toHaveBeenLastCalledWith({
-      where: { organizationId: ORG, reference: { startsWith: "BILL-PMT:pmade-1:" } },
     });
   });
 });
@@ -405,22 +404,26 @@ describe("postBillWriteOffJe", () => {
 });
 
 describe("RPT-B.2 reverse helpers", () => {
-  it("reverseCreditNoteJes deletes CN-OPEN:<id>", async () => {
+  it("reverseCreditNoteJes deletes CN-OPEN + CN-REFUND prefix for the credit note", async () => {
     const tx = mockTx();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await reverseCreditNoteJes(tx as any, ORG, "cn-1");
-    expect(tx.journalEntry.deleteMany).toHaveBeenCalledWith({
-      where: { organizationId: ORG, reference: "CN-OPEN:cn-1" },
-    });
+    const where = tx.journalEntry.deleteMany.mock.calls[0][0].where;
+    expect(where.OR).toEqual([
+      { reference: "CN-OPEN:cn-1" },
+      { reference: { startsWith: "CN-REFUND:cn-1:" } },
+    ]);
   });
 
-  it("reverseVendorCreditJes deletes VC-OPEN:<id>", async () => {
+  it("reverseVendorCreditJes deletes VC-OPEN + VC-REFUND prefix for the credit", async () => {
     const tx = mockTx();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await reverseVendorCreditJes(tx as any, ORG, "vc-1");
-    expect(tx.journalEntry.deleteMany).toHaveBeenCalledWith({
-      where: { organizationId: ORG, reference: "VC-OPEN:vc-1" },
-    });
+    const where = tx.journalEntry.deleteMany.mock.calls[0][0].where;
+    expect(where.OR).toEqual([
+      { reference: "VC-OPEN:vc-1" },
+      { reference: { startsWith: "VC-REFUND:vc-1:" } },
+    ]);
   });
 
   it("reverseInvoiceWriteOffJe + reverseBillWriteOffJe use precise reference keys", async () => {
@@ -435,5 +438,125 @@ describe("RPT-B.2 reverse helpers", () => {
     expect(tx.journalEntry.deleteMany).toHaveBeenLastCalledWith({
       where: { organizationId: ORG, reference: "BILL-WRITEOFF:bill-2" },
     });
+  });
+});
+
+// ───────────────────────── RPT-B Phase 3 ─────────────────────────
+
+describe("postCreditNoteRefundJe", () => {
+  it("creates DR AR / CR Bank with reference CN-REFUND:<cnId>:<refundId>", async () => {
+    const tx = mockTx();
+    await postCreditNoteRefundJe(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      tx as any,
+      ORG,
+      "cn-1",
+      "refund-1",
+      "CN-001",
+      500,
+      new Date("2026-04-25"),
+      "coa-bank"
+    );
+    expect(tx.journalEntry.findFirst).toHaveBeenCalledWith({
+      where: { organizationId: ORG, reference: "CN-REFUND:cn-1:refund-1" },
+      select: { id: true },
+    });
+    const arg = tx.journalEntry.create.mock.calls[0][0].data;
+    expect(arg.lines.create).toEqual([
+      expect.objectContaining({ accountId: "sys-ar", debit: 500, credit: 0 }),
+      expect.objectContaining({ accountId: "coa-bank", debit: 0, credit: 500 }),
+    ]);
+  });
+});
+
+describe("postVendorCreditRefundJe", () => {
+  it("creates DR Bank / CR AP with reference VC-REFUND:<vcId>:<refundId>", async () => {
+    const tx = mockTx();
+    await postVendorCreditRefundJe(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      tx as any,
+      ORG,
+      "vc-1",
+      "refund-2",
+      "VC-001",
+      300,
+      new Date("2026-04-26"),
+      "coa-bank"
+    );
+    const arg = tx.journalEntry.create.mock.calls[0][0].data;
+    expect(arg.reference).toBe("VC-REFUND:vc-1:refund-2");
+    expect(arg.lines.create).toEqual([
+      expect.objectContaining({ accountId: "coa-bank", debit: 300, credit: 0 }),
+      expect.objectContaining({ accountId: "sys-ap", debit: 0, credit: 300 }),
+    ]);
+  });
+});
+
+describe("postVendorAdvanceCreateJe", () => {
+  it("creates DR Vendor Advances / CR Bank for the prepayment", async () => {
+    const tx = mockTx();
+    await postVendorAdvanceCreateJe(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      tx as any,
+      ORG,
+      { id: "adv-1", number: "ADV-001", paymentDate: new Date("2026-04-10"), amount: 1000 },
+      "coa-bank"
+    );
+    const arg = tx.journalEntry.create.mock.calls[0][0].data;
+    expect(arg.reference).toBe("VA-CREATE:adv-1");
+    expect(arg.lines.create).toEqual([
+      expect.objectContaining({ accountId: "sys-vendor_advances", debit: 1000, credit: 0 }),
+      expect.objectContaining({ accountId: "coa-bank", debit: 0, credit: 1000 }),
+    ]);
+  });
+});
+
+describe("postVendorAdvanceApplicationJe", () => {
+  it("creates DR AP / CR Vendor Advances (no Bank touch — cash already left)", async () => {
+    const tx = mockTx();
+    await postVendorAdvanceApplicationJe(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      tx as any,
+      ORG,
+      "pmt-1",
+      "bill-1",
+      "BILL-001",
+      600,
+      new Date("2026-04-22")
+    );
+    const arg = tx.journalEntry.create.mock.calls[0][0].data;
+    expect(arg.reference).toBe("BILL-PMT-ADV:pmt-1:bill-1");
+    expect(arg.lines.create).toEqual([
+      expect.objectContaining({ accountId: "sys-ap", debit: 600, credit: 0 }),
+      expect.objectContaining({ accountId: "sys-vendor_advances", debit: 0, credit: 600 }),
+    ]);
+    // Confirm we did not include a Bank leg.
+    const accounts = arg.lines.create.map((l: { accountId: string }) => l.accountId);
+    expect(accounts).not.toContain("coa-bank");
+  });
+});
+
+describe("reverse-helpers extended coverage (Phase 3)", () => {
+  it("reverseCreditNoteJes deletes CN-OPEN + every CN-REFUND under the credit note", async () => {
+    const tx = mockTx();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await reverseCreditNoteJes(tx as any, ORG, "cn-1");
+    const where = tx.journalEntry.deleteMany.mock.calls[0][0].where;
+    expect(where.OR).toEqual([
+      { reference: "CN-OPEN:cn-1" },
+      { reference: { startsWith: "CN-REFUND:cn-1:" } },
+    ]);
+  });
+
+  it("reversePaymentMadeJes catches BILL-PMT, BILL-PMT-ADV, and VA-CREATE for the payment", async () => {
+    const tx = mockTx();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await reversePaymentMadeJes(tx as any, ORG, "pmt-1");
+    const where = tx.journalEntry.deleteMany.mock.calls[0][0].where;
+    expect(where.OR).toEqual([
+      { reference: { startsWith: "BILL-PMT:pmt-1:" } },
+      { reference: { startsWith: "BILL-PMT-ADV:pmt-1:" } },
+      { reference: "VA-CREATE:pmt-1" },
+    ]);
   });
 });

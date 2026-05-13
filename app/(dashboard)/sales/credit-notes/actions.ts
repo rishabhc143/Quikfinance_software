@@ -21,7 +21,9 @@ import {
 } from "@/lib/validations/credit-note";
 import {
   postCreditNoteOpenJe,
+  postCreditNoteRefundJe,
   reverseCreditNoteJes,
+  resolveBankCoaForPayment,
 } from "@/lib/accounting/post-domain-je";
 
 async function totalsFor(orgId: string, input: CreditNoteInput) {
@@ -206,7 +208,7 @@ export async function refundCreditNoteAction(
   }
 
   await db.$transaction(async (tx) => {
-    await tx.creditNoteRefund.create({
+    const refund = await tx.creditNoteRefund.create({
       data: {
         creditNoteId,
         refundDate: data.refundDate,
@@ -226,6 +228,21 @@ export async function refundCreditNoteAction(
         status: newBalance <= 0.0001 ? "CLOSED" : cn.status,
       },
     });
+    // RPT-B.3 — DR AR / CR Bank for the refund. Counterbalances the
+    // CN-OPEN entry's AR offset for this slice.
+    const bankCoaId = await resolveBankCoaForPayment(tx, organization.id, {
+      paidThroughAccountId: data.fromAccountId,
+    });
+    await postCreditNoteRefundJe(
+      tx,
+      organization.id,
+      creditNoteId,
+      refund.id,
+      cn.number,
+      data.amount,
+      data.refundDate,
+      bankCoaId
+    );
   });
 
   await writeAuditLog({

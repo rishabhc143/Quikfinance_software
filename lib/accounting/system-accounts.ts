@@ -28,7 +28,8 @@ export type SystemAccountKind =
   | "SALES_RETURNS"
   | "PURCHASE_RETURNS"
   | "BAD_DEBT_EXPENSE"
-  | "BAD_DEBT_RECOVERY";
+  | "BAD_DEBT_RECOVERY"
+  | "VENDOR_ADVANCES";
 
 type Spec = {
   code: string;
@@ -101,6 +102,14 @@ const SPEC: Record<SystemAccountKind, Spec> = {
     type: "OTHER_INCOME",
     description:
       "System account: posted when an unpaid bill is written off (CR side; DR is AP).",
+  },
+  // RPT-B Phase 3 — vendor advances (prepayments held for future bills).
+  VENDOR_ADVANCES: {
+    code: "SYS-VADV",
+    name: "Vendor Advances",
+    type: "ASSET",
+    description:
+      "System account: prepayments made to vendors before a bill arrives. Reduced as advances are drawn down against bills.",
   },
 };
 
