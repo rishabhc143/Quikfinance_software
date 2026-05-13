@@ -26,6 +26,13 @@ import {
   type InvoiceInput,
   type RecordPaymentInput,
 } from "@/lib/validations/invoice";
+import {
+  postInvoiceSentJe,
+  postInvoicePaymentJe,
+  reverseInvoiceSentJe,
+  reverseAllInvoiceJes,
+  resolveBankCoaForPayment,
+} from "@/lib/accounting/post-domain-je";
 import { format } from "date-fns";
 
 /**
@@ -302,9 +309,18 @@ export async function updateInvoiceAction(id: string, input: InvoiceInput) {
 
 export async function markInvoiceSentAction(id: string): Promise<void> {
   const { user, organization } = await requireOrganization();
-  await db.invoice.update({
-    where: { id },
-    data: { status: "SENT", sentAt: new Date() },
+  // RPT-B — flip status + post the AR/Revenue JE in one transaction
+  // so a JE failure rolls the status change back.
+  await db.$transaction(async (tx) => {
+    const inv = await tx.invoice.update({
+      where: { id },
+      data: { status: "SENT", sentAt: new Date() },
+      select: { id: true, number: true, issueDate: true, total: true, organizationId: true },
+    });
+    if (inv.organizationId !== organization.id) {
+      throw new Error("Invoice not in this organization");
+    }
+    await postInvoiceSentJe(tx, organization.id, inv);
   });
   await enqueueAndAttach(organization.id, id);
   await writeAuditLog({
@@ -335,6 +351,10 @@ export async function voidInvoiceAction(id: string): Promise<void> {
       number: before.number,
       date: before.issueDate,
     });
+    // RPT-B — pull the invoice-posting JE. Payment JEs intentionally
+    // stay (the money really moved); they become a customer-credit
+    // imbalance on Trial Balance which is the desired audit signal.
+    await reverseInvoiceSentJe(tx, organization.id, id);
   });
   await writeAuditLog({
     organizationId: organization.id,
@@ -415,6 +435,13 @@ export async function recordPaymentAction(input: RecordPaymentInput): Promise<vo
       },
     });
 
+    // RPT-B — resolve the bank-side CoA once so per-allocation JE posts
+    // can use it. Throws (rolls back) if no posting account can be
+    // determined from the user input.
+    const bankCoaId = await resolveBankCoaForPayment(tx, organization.id, {
+      depositToAccountId: payment.depositToAccountId,
+    });
+
     for (const a of data.allocations.filter((a) => Number(a.amount) > 0)) {
       const inv = await tx.invoice.findFirst({
         where: {
@@ -442,6 +469,17 @@ export async function recordPaymentAction(input: RecordPaymentInput): Promise<vo
         where: { id: inv.id },
         data: { amountPaid: newPaid, status: newStatus },
       });
+      // RPT-B — DR Bank / CR AR per allocation
+      await postInvoicePaymentJe(
+        tx,
+        organization.id,
+        payment.id,
+        inv.id,
+        inv.number,
+        Number(a.amount),
+        data.paymentDate,
+        bankCoaId
+      );
     }
   });
 
@@ -659,6 +697,10 @@ export async function deleteInvoiceAction(id: string) {
       number: inv.number,
       date: inv.issueDate,
     });
+    // RPT-B — delete every JE tied to this invoice (the SENT post plus
+    // any payment allocations). Soft-delete with payments is blocked
+    // above, so this is safe — only DRAFT/SENT/VOID get here.
+    await reverseAllInvoiceJes(tx, organization.id, id);
   });
   await writeAuditLog({
     organizationId: organization.id,

@@ -7,6 +7,11 @@ import { requireOrganization } from "@/lib/auth-helpers";
 import { writeAuditLog } from "@/lib/audit";
 import { computeDocument } from "@/lib/sales/totals";
 import { billSchema, type BillInput } from "@/lib/validations/bill";
+import {
+  postBillOpenJe,
+  reverseBillOpenJe,
+  reverseAllBillJes,
+} from "@/lib/accounting/post-domain-je";
 
 export type { BillInput };
 
@@ -529,9 +534,14 @@ export async function markBillOpenAction(id: string): Promise<void> {
       `Cannot mark as Open — current status is ${b.status}.`
     );
   }
-  await db.bill.update({
-    where: { id },
-    data: { status: "OPEN" },
+  // RPT-B — flip + post Expense/AP JE atomically.
+  await db.$transaction(async (tx) => {
+    const updated = await tx.bill.update({
+      where: { id },
+      data: { status: "OPEN" },
+      select: { id: true, number: true, issueDate: true, total: true },
+    });
+    await postBillOpenJe(tx, organization.id, updated);
   });
   await writeAuditLog({
     organizationId: organization.id,
@@ -558,9 +568,14 @@ export async function voidBillAction(id: string): Promise<void> {
       "Cannot void a paid bill — reverse the payment(s) first."
     );
   }
-  await db.bill.update({
-    where: { id },
-    data: { status: "VOID", voidedAt: new Date() },
+  // RPT-B — flip status + remove the OPEN JE (payments-side JEs stay,
+  // mirroring invoice void behaviour).
+  await db.$transaction(async (tx) => {
+    await tx.bill.update({
+      where: { id },
+      data: { status: "VOID", voidedAt: new Date() },
+    });
+    await reverseBillOpenJe(tx, organization.id, id);
   });
   await writeAuditLog({
     organizationId: organization.id,
@@ -829,11 +844,17 @@ export async function softDeleteBillAction(id: string) {
   const { user, organization } = await requireOrganization();
   const b = await db.bill.findFirst({ where: { id, organizationId: organization.id } });
   if (!b) return { ok: false };
-  if (b.status === "DRAFT") {
-    await db.bill.delete({ where: { id } });
-  } else {
-    await db.bill.update({ where: { id }, data: { deletedAt: new Date(), status: "VOID" } });
-  }
+  await db.$transaction(async (tx) => {
+    if (b.status === "DRAFT") {
+      await tx.bill.delete({ where: { id } });
+    } else {
+      await tx.bill.update({ where: { id }, data: { deletedAt: new Date(), status: "VOID" } });
+    }
+    // RPT-B — remove every JE tied to this bill (OPEN post + any
+    // payment allocations). Bills with active payments shouldn't
+    // typically hit this path, but the helper is safe regardless.
+    await reverseAllBillJes(tx, organization.id, id);
+  });
   await writeAuditLog({ organizationId: organization.id, userId: user.id, action: "DELETE", entityType: "Bill", entityId: id, before: { number: b.number, status: b.status } });
   revalidatePath("/purchases/bills");
   return { ok: true };
