@@ -119,12 +119,9 @@ describe("coerceBulkUpdateValue — select + boolean", () => {
 
 describe("coerceBulkUpdateValue — guardrails", () => {
   it("rejects non-whitelisted (category, field) pairs", () => {
-    const r = coerceBulkUpdateValue(
-      "ITEMS",
-      // @ts-expect-error — intentionally invalid
-      "paymentTermsId",
-      "cm0pt1"
-    );
+    // paymentTermsId is a Contact-only field; coercing it under ITEMS
+    // should hit the whitelist rejection.
+    const r = coerceBulkUpdateValue("ITEMS", "paymentTermsId", "cm0pt1");
     expect("error" in r).toBe(true);
     if ("error" in r) {
       expect(r.error).toMatch(/isn't bulk-updatable/i);
