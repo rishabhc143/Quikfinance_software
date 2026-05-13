@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Download } from "lucide-react";
 import { startOfYear, format } from "date-fns";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
@@ -55,6 +55,13 @@ export default async function SalesSummaryPage({ searchParams }: { searchParams:
       <div className="flex items-center gap-2">
         <Button asChild variant="ghost" size="icon"><Link href="/reports"><ArrowLeft className="h-4 w-4" /></Link></Button>
         <h1 className="text-xl font-semibold">Sales Summary</h1>
+        <div className="ml-auto">
+          <Button asChild variant="outline" size="sm" className="gap-1">
+            <a href={`/reports/sales-summary/export?from=${format(from, "yyyy-MM-dd")}&to=${format(to, "yyyy-MM-dd")}`}>
+              <Download className="h-4 w-4" /> Download CSV
+            </a>
+          </Button>
+        </div>
       </div>
       <form className="flex items-center gap-2 text-sm" action="/reports/sales-summary">
         <label>From <input type="date" name="from" defaultValue={format(from, "yyyy-MM-dd")} className="ml-1 h-9 rounded-md border border-input bg-background px-3 text-sm" /></label>

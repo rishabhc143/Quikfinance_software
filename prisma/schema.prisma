@@ -260,6 +260,8 @@ model ChartOfAccount {
   bankAccounts   BankAccount[]    @relation("BankAccountGL")
   /// BNK-E back-relation: rules whose Categorise action posts here.
   ruleActions    BankRule[]       @relation("BankRuleActionGL")
+  /// RPT-A back-relation: JE lines posting to this account.
+  journalEntryLines JournalEntryLine[]
 
   @@unique([organizationId, code])
   @@index([organizationId, type])
@@ -1708,13 +1710,17 @@ model JournalEntry {
 }
 
 model JournalEntryLine {
-  id             String       @id @default(cuid())
+  id             String         @id @default(cuid())
   journalEntryId String
   accountId      String
-  debit          Decimal      @default(0) @db.Decimal(18, 4)
-  credit         Decimal      @default(0) @db.Decimal(18, 4)
+  debit          Decimal        @default(0) @db.Decimal(18, 4)
+  credit         Decimal        @default(0) @db.Decimal(18, 4)
   description    String?
-  journalEntry   JournalEntry @relation(fields: [journalEntryId], references: [id], onDelete: Cascade)
+  journalEntry   JournalEntry   @relation(fields: [journalEntryId], references: [id], onDelete: Cascade)
+  /// RPT-A — declared so the Trial Balance + P&L reports can `include`
+  /// the CoA entry without a separate query. FK added by migration
+  /// 20260513000006.
+  account        ChartOfAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
 }
 
 model ManualJournal {

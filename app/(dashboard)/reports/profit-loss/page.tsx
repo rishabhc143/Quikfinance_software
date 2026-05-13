@@ -1,11 +1,16 @@
 import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Download } from "lucide-react";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatMoney } from "@/lib/money";
 import { startOfYear, endOfYear, format } from "date-fns";
+import {
+  aggregateLedgerLines,
+  sumByBucket,
+  type AccountBucket,
+} from "@/lib/reports/ledger-aggregation";
 
 export const metadata = { title: "Profit & Loss" };
 
@@ -16,7 +21,7 @@ export default async function ProfitLossPage({ searchParams }: { searchParams: R
   const from = searchParams.from ? new Date(searchParams.from) : startOfYear(now);
   const to = searchParams.to ? new Date(searchParams.to) : endOfYear(now);
 
-  const [paidInvoices, expenses, openInvoices] = await Promise.all([
+  const [paidInvoices, expenses, openInvoices, jeLines] = await Promise.all([
     db.invoice.aggregate({
       where: {
         organizationId: organization.id, deletedAt: null, status: "PAID",
@@ -25,7 +30,7 @@ export default async function ProfitLossPage({ searchParams }: { searchParams: R
       _sum: { total: true }, _count: true,
     }),
     db.expense.findMany({
-      where: { organizationId: organization.id, date: { gte: from, lte: to } },
+      where: { organizationId: organization.id, date: { gte: from, lte: to }, deletedAt: null },
       select: { category: true, amount: true },
     }),
     db.invoice.aggregate({
@@ -36,6 +41,33 @@ export default async function ProfitLossPage({ searchParams }: { searchParams: R
       },
       _sum: { total: true, amountPaid: true },
     }),
+    // RPT-A — JournalEntryLine rows in the period whose account is an
+    // income or expense bucket. Captures BNK-D Money In Categorise +
+    // BNK-E rule fires + any Manual Journals.
+    db.journalEntryLine.findMany({
+      where: {
+        journalEntry: {
+          organizationId: organization.id,
+          date: { gte: from, lte: to },
+        },
+        account: {
+          type: {
+            in: [
+              "INCOME",
+              "OTHER_INCOME",
+              "EXPENSE",
+              "COST_OF_GOODS_SOLD",
+              "OTHER_EXPENSE",
+            ],
+          },
+        },
+      },
+      select: {
+        debit: true,
+        credit: true,
+        account: { select: { id: true, name: true, code: true, type: true } },
+      },
+    }),
   ]);
 
   const revenue = Number(paidInvoices._sum.total ?? 0);
@@ -45,9 +77,41 @@ export default async function ProfitLossPage({ searchParams }: { searchParams: R
     acc[e.category] = (acc[e.category] ?? 0) + Number(e.amount);
     return acc;
   }, {});
-  const totalExpenses = Object.values(expenseByCategory).reduce((s, n) => s + n, 0);
-  const netCash = revenue - totalExpenses;
-  const netAccrual = (revenue + accruedRevenue) - totalExpenses;
+  const totalExpensesFromTable = Object.values(expenseByCategory).reduce(
+    (s, n) => s + n,
+    0
+  );
+
+  // RPT-A — aggregate the JE lines into bucket totals. Income buckets
+  // contribute their CR side to revenue; expense buckets contribute
+  // their DR side (less any reversing CRs).
+  const ledgerRows = aggregateLedgerLines(
+    jeLines.map((l) => ({
+      account: {
+        id: l.account.id,
+        name: l.account.name,
+        code: l.account.code,
+        type: l.account.type as AccountBucket,
+      },
+      debit: Number(l.debit),
+      credit: Number(l.credit),
+    }))
+  );
+  const buckets = sumByBucket(ledgerRows);
+  const ledgerIncome =
+    buckets.INCOME.totalCredit -
+    buckets.INCOME.totalDebit +
+    (buckets.OTHER_INCOME.totalCredit - buckets.OTHER_INCOME.totalDebit);
+  const ledgerExpense =
+    buckets.EXPENSE.totalDebit -
+    buckets.EXPENSE.totalCredit +
+    (buckets.COST_OF_GOODS_SOLD.totalDebit -
+      buckets.COST_OF_GOODS_SOLD.totalCredit) +
+    (buckets.OTHER_EXPENSE.totalDebit - buckets.OTHER_EXPENSE.totalCredit);
+
+  const totalExpenses = totalExpensesFromTable + ledgerExpense;
+  const netCash = revenue + ledgerIncome - totalExpenses;
+  const netAccrual = revenue + accruedRevenue + ledgerIncome - totalExpenses;
 
   return (
     <div className="p-6 max-w-4xl mx-auto space-y-4">
@@ -56,6 +120,15 @@ export default async function ProfitLossPage({ searchParams }: { searchParams: R
         <div>
           <h1 className="text-xl font-semibold">Profit &amp; Loss</h1>
           <p className="text-sm text-muted-foreground">{format(from, "dd MMM yyyy")} → {format(to, "dd MMM yyyy")}</p>
+        </div>
+        <div className="ml-auto">
+          <Button asChild variant="outline" size="sm" className="gap-1">
+            <a
+              href={`/reports/profit-loss/export?from=${format(from, "yyyy-MM-dd")}&to=${format(to, "yyyy-MM-dd")}`}
+            >
+              <Download className="h-4 w-4" /> Download CSV
+            </a>
+          </Button>
         </div>
       </div>
 
@@ -78,9 +151,20 @@ export default async function ProfitLossPage({ searchParams }: { searchParams: R
             <tbody className="divide-y">
               <tr><td className="p-3">Invoiced and paid</td><td className="p-3 text-right tabular-nums">{formatMoney(revenue, cur)}</td></tr>
               <tr><td className="p-3 text-muted-foreground">Invoiced but unpaid (accrual)</td><td className="p-3 text-right tabular-nums text-muted-foreground">{formatMoney(accruedRevenue, cur)}</td></tr>
+              <tr>
+                <td className="p-3">
+                  Bank-categorised income
+                  <span className="text-[11px] text-muted-foreground ml-1">
+                    (BNK-D + Manual Journal credits to INCOME/Other Income)
+                  </span>
+                </td>
+                <td className="p-3 text-right tabular-nums">
+                  {formatMoney(ledgerIncome, cur)}
+                </td>
+              </tr>
             </tbody>
             <tfoot className="bg-muted/30">
-              <tr><td className="p-3 font-medium">Total revenue (accrual basis)</td><td className="p-3 text-right tabular-nums font-semibold">{formatMoney(revenue + accruedRevenue, cur)}</td></tr>
+              <tr><td className="p-3 font-medium">Total revenue (accrual basis)</td><td className="p-3 text-right tabular-nums font-semibold">{formatMoney(revenue + accruedRevenue + ledgerIncome, cur)}</td></tr>
             </tfoot>
           </table>
         </CardContent>
@@ -89,7 +173,7 @@ export default async function ProfitLossPage({ searchParams }: { searchParams: R
       <Card>
         <CardHeader><CardTitle className="text-base">Expenses by category</CardTitle></CardHeader>
         <CardContent className="p-0">
-          {Object.keys(expenseByCategory).length === 0 ? (
+          {Object.keys(expenseByCategory).length === 0 && ledgerExpense === 0 ? (
             <div className="p-6 text-sm text-center text-muted-foreground">No expenses recorded in this period.</div>
           ) : (
             <table className="w-full text-sm">
@@ -97,6 +181,19 @@ export default async function ProfitLossPage({ searchParams }: { searchParams: R
                 {Object.entries(expenseByCategory).sort((a, b) => b[1] - a[1]).map(([cat, amt]) => (
                   <tr key={cat}><td className="p-3">{cat}</td><td className="p-3 text-right tabular-nums">{formatMoney(amt, cur)}</td></tr>
                 ))}
+                {ledgerExpense !== 0 ? (
+                  <tr>
+                    <td className="p-3">
+                      Journal-entry expenses
+                      <span className="text-[11px] text-muted-foreground ml-1">
+                        (Manual Journal debits to Expense / COGS / Other Expense)
+                      </span>
+                    </td>
+                    <td className="p-3 text-right tabular-nums">
+                      {formatMoney(ledgerExpense, cur)}
+                    </td>
+                  </tr>
+                ) : null}
               </tbody>
               <tfoot className="bg-muted/30">
                 <tr><td className="p-3 font-medium">Total expenses</td><td className="p-3 text-right tabular-nums font-semibold">{formatMoney(totalExpenses, cur)}</td></tr>

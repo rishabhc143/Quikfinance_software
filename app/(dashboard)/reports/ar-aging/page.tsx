@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Download } from "lucide-react";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
 import { Button } from "@/components/ui/button";
@@ -50,6 +50,11 @@ export default async function ArAgingPage() {
       <div className="flex items-center gap-2">
         <Button asChild variant="ghost" size="icon"><Link href="/reports"><ArrowLeft className="h-4 w-4" /></Link></Button>
         <h1 className="text-xl font-semibold">Receivables Aging</h1>
+        <div className="ml-auto">
+          <Button asChild variant="outline" size="sm" className="gap-1">
+            <a href="/reports/ar-aging/export"><Download className="h-4 w-4" /> Download CSV</a>
+          </Button>
+        </div>
       </div>
       <Card>
         <CardHeader><CardTitle className="text-base">Outstanding by customer</CardTitle></CardHeader>
