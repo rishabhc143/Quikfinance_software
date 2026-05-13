@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Download } from "lucide-react";
+import { Download, Upload } from "lucide-react";
 import { format } from "date-fns";
 import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
@@ -172,6 +172,13 @@ export default async function ManualJournalsPage({
         ctaHref="/accountant/manual-journals/new"
         ctaLabel="+ New Journal"
       >
+        {/* ACCT-A.4.b — Bulk Import wizard. Lands on the upload
+            step; everything created is a DRAFT for safety. */}
+        <Button asChild variant="outline" size="sm" className="gap-1">
+          <Link href="/accountant/manual-journals/import">
+            <Upload className="h-4 w-4" /> Import
+          </Link>
+        </Button>
         {/* ACCT-A.4.a — Export carries the current search query so
             what you see in the table is what you get in the CSV.
             Defaults to the last 90 days, all statuses. */}
