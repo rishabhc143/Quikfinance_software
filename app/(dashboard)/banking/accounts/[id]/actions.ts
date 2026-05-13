@@ -8,6 +8,7 @@ import { writeAuditLog } from "@/lib/audit";
 import {
   parseCsv,
   type CsvColumnMap,
+  type ParsedRow,
   type RowError,
 } from "@/lib/banking/csv-import";
 import { markDuplicates } from "@/lib/banking/duplicate-detection";
@@ -19,6 +20,13 @@ import {
 } from "@/lib/banking/rule-engine";
 import { validateGLForDirection } from "@/lib/banking/categorise";
 import { applyCategorise } from "@/lib/banking/apply-categorise";
+import {
+  detectFormat,
+  type BankStatementFormat,
+} from "@/lib/banking/format-detection";
+import { parseQif } from "@/lib/banking/parsers/qif";
+import { parseOfx } from "@/lib/banking/parsers/ofx";
+import { parseCamt053 } from "@/lib/banking/parsers/camt053";
 import type { AccountType, Prisma } from "@prisma/client";
 
 /**
@@ -46,9 +54,17 @@ export type ImportResult = {
 
 export async function importBankStatementAction(input: {
   bankAccountId: string;
+  /** Raw file text (CSV, OFX, QIF, or CAMT.053 XML). Field name kept
+   *  for backwards compat — was originally CSV-only. */
   csvText: string;
   fileName: string;
-  columnMap: CsvColumnMap;
+  /** BNK-A: column map for CSV. Required when format = "CSV". For
+   *  OFX/QIF/CAMT.053 the parsers have fixed schemas so this is
+   *  ignored. */
+  columnMap?: CsvColumnMap;
+  /** BNK-G: explicit format. If omitted, we sniff it from fileName +
+   *  content. */
+  format?: BankStatementFormat;
 }): Promise<ImportResult> {
   const { user, organization } = await requireOrganization();
 
@@ -62,22 +78,57 @@ export async function importBankStatementAction(input: {
   });
   if (!account) throw new Error("Bank account not found");
 
-  // Step 1 — raw CSV → header-keyed rows.
-  let rows: Record<string, string>[];
-  try {
-    rows = parseCsvText(input.csvText, {
-      columns: true,
-      skip_empty_lines: true,
-      trim: true,
-    }) as Record<string, string>[];
-  } catch (err) {
-    throw new Error(
-      `CSV parse failed: ${err instanceof Error ? err.message : "unknown"}`
-    );
+  // BNK-G — route by format. CSV path is unchanged (still uses the
+  // column-map). OFX / QIF / CAMT.053 each have a dedicated parser
+  // returning the same ParsedRow[] shape.
+  const format: BankStatementFormat =
+    input.format ?? detectFormat(input.fileName, input.csvText);
+
+  let parsed: ParsedRow[];
+  let errors: RowError[];
+  let fileCurrency: string | undefined;
+
+  if (format === "CSV") {
+    if (!input.columnMap) {
+      throw new Error("CSV imports require a column map.");
+    }
+    // Step 1 — raw CSV → header-keyed rows.
+    let rows: Record<string, string>[];
+    try {
+      rows = parseCsvText(input.csvText, {
+        columns: true,
+        skip_empty_lines: true,
+        trim: true,
+      }) as Record<string, string>[];
+    } catch (err) {
+      throw new Error(
+        `CSV parse failed: ${err instanceof Error ? err.message : "unknown"}`
+      );
+    }
+    // Step 2 — apply column map.
+    const csvResult = parseCsv(rows, input.columnMap);
+    parsed = csvResult.rows;
+    errors = csvResult.errors;
+  } else {
+    const parser =
+      format === "OFX" ? parseOfx : format === "QIF" ? parseQif : parseCamt053;
+    const result = parser(input.csvText);
+    parsed = result.rows;
+    errors = result.errors;
+    fileCurrency = result.currency;
   }
 
-  // Step 2 — apply column map.
-  const { rows: parsed, errors } = parseCsv(rows, input.columnMap);
+  // BNK-G — currency guard. If the file declared a currency that
+  // doesn't match the bank account's, refuse rather than silently
+  // mixing the books.
+  if (
+    fileCurrency &&
+    fileCurrency.toUpperCase() !== account.currency.toUpperCase()
+  ) {
+    throw new Error(
+      `Currency mismatch: account is ${account.currency}, file says ${fileCurrency}.`
+    );
+  }
 
   // Step 3 — duplicate detection against the existing per-account history.
   // We pull the last 365 days of transactions (anything older isn't a
