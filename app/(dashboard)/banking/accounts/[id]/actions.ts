@@ -11,6 +11,15 @@ import {
   type RowError,
 } from "@/lib/banking/csv-import";
 import { markDuplicates } from "@/lib/banking/duplicate-detection";
+import {
+  firstMatchingRule,
+  type BankLineFacts,
+  type RuleCondition,
+  type RuleCombinator,
+} from "@/lib/banking/rule-engine";
+import { validateGLForDirection } from "@/lib/banking/categorise";
+import { applyCategorise } from "@/lib/banking/apply-categorise";
+import type { AccountType, Prisma } from "@prisma/client";
 
 /**
  * BNK-A — Server actions for the per-account import flow.
@@ -85,8 +94,10 @@ export async function importBankStatementAction(input: {
   const annotated = markDuplicates(parsed, existing);
 
   // Step 4 — one BankImportBatch + N BankTransaction rows in a
-  // transaction so Undo can find them later.
-  const result = await db.$transaction(async (tx) => {
+  // transaction so Undo can find them later. We use
+  // createManyAndReturn (Prisma 5.14+) to keep the inserted ids for
+  // BNK-E rule application below.
+  const { result, insertedTxns } = await db.$transaction(async (tx) => {
     const batch = await tx.bankImportBatch.create({
       data: {
         organizationId: organization.id,
@@ -98,8 +109,18 @@ export async function importBankStatementAction(input: {
       },
     });
 
+    let insertedTxns: Array<{
+      id: string;
+      type: string;
+      description: string | null;
+      reference: string | null;
+      amount: Prisma.Decimal;
+      date: Date;
+      bankAccountId: string;
+      excluded: boolean;
+    }> = [];
     if (annotated.length > 0) {
-      await tx.bankTransaction.createMany({
+      insertedTxns = await tx.bankTransaction.createManyAndReturn({
         data: annotated.map((r) => ({
           organizationId: organization.id,
           bankAccountId: account.id,
@@ -112,16 +133,39 @@ export async function importBankStatementAction(input: {
           excludedReason: r.duplicateReason,
           importBatchId: batch.id,
         })),
+        select: {
+          id: true,
+          type: true,
+          description: true,
+          reference: true,
+          amount: true,
+          date: true,
+          bankAccountId: true,
+          excluded: true,
+        },
       });
     }
 
     return {
-      batchId: batch.id,
-      parsed: parsed.length,
-      inserted: annotated.length,
-      duplicates: annotated.filter((r) => r.duplicateOfId).length,
-      errors,
+      result: {
+        batchId: batch.id,
+        parsed: parsed.length,
+        inserted: annotated.length,
+        duplicates: annotated.filter((r) => r.duplicateOfId).length,
+        errors,
+      },
+      insertedTxns,
     };
+  });
+
+  // Step 5 — BNK-E. Fire transaction rules against the just-inserted
+  // (non-duplicate) rows. Per-account rules win over org-wide ones;
+  // within each scope, lower priority wins. First-match-wins per row.
+  await applyRulesToImportedTxns({
+    organizationId: organization.id,
+    userId: user.id,
+    bankAccountId: account.id,
+    insertedTxns,
   });
 
   await writeAuditLog({
@@ -245,3 +289,104 @@ export async function undoLastImportAction(bankAccountId: string): Promise<{
   revalidatePath("/banking");
   return { ok: true, deleted: result };
 }
+
+/**
+ * BNK-E — Post-import rule application. Called from
+ * `importBankStatementAction` after the batch commits. For each
+ * non-excluded inserted bank line:
+ *
+ *   1. Find the first matching active rule (per-account first, then
+ *      org-wide; within each scope, ascending priority).
+ *   2. Skip if the rule's GL account doesn't match the line direction
+ *      (defensive — the rule form lets the user pick any GL, since a
+ *      "amount > X" rule could plausibly fire on either direction).
+ *   3. Call applyCategorise() to do the actual create + audit + stamp.
+ *   4. Swallow per-row errors (a misconfigured rule shouldn't tank the
+ *      whole import) — just log and continue.
+ *
+ * No-ops if there are no active rules.
+ */
+async function applyRulesToImportedTxns(input: {
+  organizationId: string;
+  userId: string;
+  bankAccountId: string;
+  insertedTxns: Array<{
+    id: string;
+    type: string;
+    description: string | null;
+    reference: string | null;
+    amount: Prisma.Decimal;
+    date: Date;
+    bankAccountId: string;
+    excluded: boolean;
+  }>;
+}): Promise<void> {
+  const eligible = input.insertedTxns.filter((t) => !t.excluded);
+  if (eligible.length === 0) return;
+
+  const rules = await db.bankRule.findMany({
+    where: {
+      organizationId: input.organizationId,
+      isActive: true,
+      OR: [
+        { bankAccountId: input.bankAccountId },
+        { bankAccountId: null },
+      ],
+    },
+    // Per-account rules (non-null bankAccountId) sort first, then by
+    // ascending priority. Postgres nulls-last with desc sort gives us
+    // exactly that.
+    orderBy: [{ bankAccountId: "desc" }, { priority: "asc" }],
+    include: {
+      actionGlAccount: { select: { id: true, name: true, type: true } },
+    },
+  });
+  if (rules.length === 0) return;
+
+  for (const row of eligible) {
+    const facts: BankLineFacts = {
+      description: row.description,
+      reference: row.reference,
+      amount: Number(row.amount),
+      type: row.type === "CREDIT" ? "CREDIT" : "DEBIT",
+    };
+    const rule = firstMatchingRule(
+      facts,
+      rules.map((r) => ({
+        ...r,
+        conditions: (r.conditionsJson as unknown as RuleCondition[]) ?? [],
+        combinator: r.combinator as RuleCombinator,
+      }))
+    );
+    if (!rule) continue;
+    // Sanity: skip if the GL account doesn't fit the bank-line direction.
+    const directionErr = validateGLForDirection(
+      facts.type,
+      rule.actionGlAccount.type as AccountType
+    );
+    if (directionErr) continue;
+    try {
+      await applyCategorise({
+        organizationId: input.organizationId,
+        userId: input.userId,
+        bankTxn: {
+          id: row.id,
+          bankAccountId: row.bankAccountId,
+          date: row.date,
+          amount: row.amount,
+          type: row.type,
+          description: row.description,
+          reference: row.reference,
+        },
+        glAccount: rule.actionGlAccount,
+        notes: rule.actionNotes ?? null,
+        ruleId: rule.id,
+      });
+    } catch {
+      // Swallow per-row failures. Worst case: this row stays
+      // unmatched and the user Categorises it manually. Don't tank
+      // the entire import batch on one rule misfire.
+    }
+  }
+}
+

@@ -89,6 +89,7 @@ const NAV: NavItem[] = [
     children: [
       { label: "Accounts", href: "/banking/accounts" },
       { label: "Transactions", href: "/banking/transactions" },
+      { label: "Rules", href: "/banking/rules" },
       { label: "Transfers", href: "/banking/transfers" },
       { label: "Card Payments", href: "/banking/card-payments" },
       { label: "Other Income", href: "/banking/other-income" },

@@ -121,6 +121,7 @@ model Organization {
   bankTransactions      BankTransaction[]
   bankImportBatches     BankImportBatch[]
   bankImportPresets     BankImportPreset[]
+  bankRules             BankRule[]
   journalEntries        JournalEntry[]
   manualJournals        ManualJournal[]
   chartOfAccounts       ChartOfAccount[]
@@ -254,6 +255,8 @@ model ChartOfAccount {
   organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   /// BNK-D back-relation: bank accounts whose GL bridge points here.
   bankAccounts   BankAccount[]    @relation("BankAccountGL")
+  /// BNK-E back-relation: rules whose Categorise action posts here.
+  ruleActions    BankRule[]       @relation("BankRuleActionGL")
 
   @@unique([organizationId, code])
   @@index([organizationId, type])
@@ -1515,6 +1518,8 @@ model BankAccount {
   transactions   BankTransaction[]
   importBatches  BankImportBatch[]
   importPresets  BankImportPreset[]
+  /// BNK-E — rules scoped to this specific bank account.
+  rules          BankRule[]
 }
 
 enum BankAccountType {
@@ -1555,11 +1560,15 @@ model BankTransaction {
   /// orphan entries. False for records the user matched manually
   /// (preserves original BNK-C unmatch semantics).
   matchAutoCreated  Boolean          @default(false)
+  /// BNK-E — which rule fired on import. Nullable: manual matches and
+  /// rule-less imports leave this empty.
+  appliedRuleId     String?
   createdAt      DateTime         @default(now())
   organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   bankAccount    BankAccount      @relation(fields: [bankAccountId], references: [id])
   importBatch    BankImportBatch? @relation(fields: [importBatchId], references: [id], onDelete: SetNull)
   matchedBy      User?            @relation("BankTransactionMatchedBy", fields: [matchedById], references: [id], onDelete: SetNull)
+  appliedRule    BankRule?        @relation(fields: [appliedRuleId], references: [id], onDelete: SetNull)
 
   @@index([organizationId, date])
   @@index([bankAccountId, date, amount, reference], name: "BankTransaction_dedup_idx")
@@ -1601,6 +1610,41 @@ model BankImportPreset {
   bankAccount      BankAccount  @relation(fields: [bankAccountId], references: [id], onDelete: Cascade)
 
   @@unique([bankAccountId, name], name: "BankImportPreset_account_name_unique")
+}
+
+/// BNK-E — Transaction rule. IF (conditions joined by combinator)
+/// THEN Categorise to actionGlAccountId.
+///
+/// Conditions live as JSONB so the operator vocabulary can grow
+/// without schema churn — each entry is { field, op, value }.
+/// Combinator is "AND" or "OR" (v1 supports both; UI exposes AND only).
+///
+/// Per-account rules (bankAccountId not null) beat org-wide rules
+/// (null) when both match. Within the same scope, lower priority
+/// wins. First-match-wins — the engine stops at the first hit.
+model BankRule {
+  id                String           @id @default(cuid())
+  organizationId    String
+  bankAccountId     String?
+  name              String
+  priority          Int              @default(100)
+  isActive          Boolean          @default(true)
+  conditionsJson    Json
+  combinator        String           @default("AND")
+  actionGlAccountId String
+  actionNotes       String?
+  /// Counter bumped each time the rule fires on import. Cheap stat;
+  /// the rules list shows "Fired 47×" so users can spot dead rules.
+  timesFired        Int              @default(0)
+  lastFiredAt       DateTime?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @default(now()) @updatedAt
+  organization      Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  bankAccount       BankAccount?     @relation(fields: [bankAccountId], references: [id], onDelete: SetNull)
+  actionGlAccount   ChartOfAccount   @relation("BankRuleActionGL", fields: [actionGlAccountId], references: [id], onDelete: Restrict)
+  appliedTo         BankTransaction[]
+
+  @@index([organizationId, bankAccountId, priority], name: "BankRule_org_account_priority_idx")
 }
 
 // ───────────────────────── ACCOUNTANT ─────────────────────────
