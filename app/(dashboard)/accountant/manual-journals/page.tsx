@@ -68,31 +68,57 @@ export default async function ManualJournalsPage({
     }),
   ]);
 
-  // Hydrate the linked JE totals in one query keyed by reference.
-  const refs = rows.map((r) => `MJ:${r.id}`);
-  const jes = refs.length
-    ? await db.journalEntry.findMany({
-        where: {
-          organizationId: organization.id,
-          reference: { in: refs },
-        },
-        select: {
-          reference: true,
-          lines: { select: { debit: true } },
-        },
-      })
-    : [];
-  const totalsByRef = new Map<string, { lineCount: number; totalDebit: number }>();
+  // Hydrate totals: PUBLISHED rows pull from JournalEntryLine
+  // (the canonical ledger), DRAFT rows pull from ManualJournalLine
+  // (the editable source). Either way we render lineCount + totalDebit.
+  const publishedRefs = rows
+    .filter((r) => r.status === "PUBLISHED")
+    .map((r) => `MJ:${r.id}`);
+  const draftIds = rows.filter((r) => r.status !== "PUBLISHED").map((r) => r.id);
+
+  const [jes, draftLines] = await Promise.all([
+    publishedRefs.length
+      ? db.journalEntry.findMany({
+          where: {
+            organizationId: organization.id,
+            reference: { in: publishedRefs },
+          },
+          select: {
+            reference: true,
+            lines: { select: { debit: true } },
+          },
+        })
+      : Promise.resolve([]),
+    draftIds.length
+      ? db.manualJournalLine.findMany({
+          where: { manualJournalId: { in: draftIds } },
+          select: { manualJournalId: true, debit: true },
+        })
+      : Promise.resolve([]),
+  ]);
+
+  const totalsByMjId = new Map<string, { lineCount: number; totalDebit: number }>();
   for (const je of jes) {
     if (!je.reference) continue;
-    totalsByRef.set(je.reference, {
+    const mjId = je.reference.slice("MJ:".length);
+    totalsByMjId.set(mjId, {
       lineCount: je.lines.length,
       totalDebit: je.lines.reduce((s, l) => s + Number(l.debit), 0),
     });
   }
+  for (const l of draftLines) {
+    const cur = totalsByMjId.get(l.manualJournalId) ?? {
+      lineCount: 0,
+      totalDebit: 0,
+    };
+    totalsByMjId.set(l.manualJournalId, {
+      lineCount: cur.lineCount + 1,
+      totalDebit: cur.totalDebit + Number(l.debit),
+    });
+  }
 
   const dataRows = rows.map((j) => {
-    const totals = totalsByRef.get(`MJ:${j.id}`);
+    const totals = totalsByMjId.get(j.id);
     const displayCurrency = j.currency ?? organization.currency;
     return {
       id: j.id,

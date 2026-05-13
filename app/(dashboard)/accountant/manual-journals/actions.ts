@@ -9,24 +9,42 @@ import { requireOrganization } from "@/lib/auth-helpers";
 import { writeAuditLog } from "@/lib/audit";
 import { nextDocumentNumber } from "@/lib/next-number";
 import { validateManualJournalLines } from "@/lib/accounting/manual-journal-validation";
+import {
+  flipDrCrLines,
+  manualJournalReference,
+  manualJournalReverseReference,
+} from "@/lib/accounting/manual-journal-publish";
 
 /**
- * ACCT-A.2 — Manual Journals with Zoho-parity header fields.
+ * ACCT-A.3 — Manual Journals with full DRAFT → PUBLISHED lifecycle.
  *
- *   createManualJournalAction        — header + lines, always PUBLISHED
- *   createManualJournalAndRedirectAction  — bind-friendly wrapper
- *   deleteManualJournalAction        — sweeps MJ:* AND MJ-REV:* JEs
- *   deleteManualJournalByIdAction    — bind-friendly wrapper
+ *   createManualJournalAction               — writes header + ManualJournalLine.
+ *                                              `saveAsDraft: true` skips JE post.
+ *   updateManualJournalAction               — replaces header + lines on a DRAFT.
+ *                                              Refuses to edit a PUBLISHED journal.
+ *   publishManualJournalAction              — DRAFT → PUBLISHED: reads stored
+ *                                              lines, validates, posts JEs.
+ *   deleteManualJournalAction               — drops header + lines (FK cascade)
+ *                                              and clears MJ:/MJ-REV: JEs if any.
+ *
+ * Bind-friendly wrappers for <ActionFormButton>:
+ *   createManualJournalAndRedirectAction
+ *   updateManualJournalAndRedirectAction
+ *   publishManualJournalByIdAction
+ *   deleteManualJournalByIdAction
  *
  * Reference-key convention (see docs/accounting-architecture.md §3):
  *   MJ:<manualJournalId>      — the primary posting
  *   MJ-REV:<manualJournalId>  — the auto-reverse posting (set when
  *                                reverseJournalDate is provided)
  *
- * The schema includes a `status` column (DRAFT | PUBLISHED) for
- * forward-compat with ACCT-A.3's Save-as-Draft flow, but every
- * journal created via this action is PUBLISHED. Save-as-Draft needs
- * line-storage support — designed in ACCT-A.3.
+ * Lines live in two places by design:
+ *   ManualJournalLine  — human-editable source of truth (DRAFT + PUBLISHED)
+ *   JournalEntryLine   — canonical ledger (PUBLISHED only; copied at publish)
+ *
+ * Reports read from JournalEntryLine; the form reads from ManualJournalLine.
+ * Sync happens exactly at publish time. Delete cascades both via FK +
+ * an explicit deleteMany on the MJ:* / MJ-REV:* references.
  */
 
 const lineSchema = z.object({
@@ -54,10 +72,18 @@ const createSchema = z.object({
     .nullable(),
   reverseJournalDate: z.coerce.date().optional().nullable(),
   publishReverseOnlyOnDate: z.coerce.boolean().default(false),
+  saveAsDraft: z.coerce.boolean().default(false),
   lines: z.array(lineSchema).min(2, "Need at least two lines."),
 });
 
 export type ManualJournalInput = z.input<typeof createSchema>;
+
+type NormalisedLine = {
+  accountId: string;
+  debit: number;
+  credit: number;
+  description: string | null;
+};
 
 /** Verify every account belongs to this org. */
 async function verifyAccountOwnership(
@@ -80,6 +106,29 @@ async function verifyAccountOwnership(
 }
 
 /**
+ * Replace the line set on a ManualJournal: delete-all-then-create.
+ * Runs inside the caller's transaction so it's atomic.
+ */
+async function replaceManualJournalLines(
+  tx: Prisma.TransactionClient,
+  manualJournalId: string,
+  lines: NormalisedLine[]
+): Promise<void> {
+  await tx.manualJournalLine.deleteMany({ where: { manualJournalId } });
+  if (lines.length === 0) return;
+  await tx.manualJournalLine.createMany({
+    data: lines.map((l, i) => ({
+      manualJournalId,
+      position: i,
+      accountId: l.accountId,
+      debit: l.debit,
+      credit: l.credit,
+      description: l.description,
+    })),
+  });
+}
+
+/**
  * Post the primary JE + (optional) reverse JE in the caller's
  * transaction. Reverse JE flips DR ↔ CR and date-stamps to
  * `reverseJournalDate`.
@@ -94,18 +143,13 @@ async function postJournalEntries(
     notes: string | null;
     reverseJournalDate: Date | null;
   },
-  lines: {
-    accountId: string;
-    debit: number;
-    credit: number;
-    description: string | null;
-  }[]
+  lines: NormalisedLine[]
 ): Promise<void> {
   await tx.journalEntry.create({
     data: {
       organizationId,
       date: header.date,
-      reference: `MJ:${header.id}`,
+      reference: manualJournalReference(header.id),
       notes: header.notes ?? `Manual journal ${header.number}`,
       lines: {
         create: lines.map((l) => ({
@@ -119,24 +163,33 @@ async function postJournalEntries(
   });
 
   if (header.reverseJournalDate) {
+    const reversed = flipDrCrLines(lines);
     await tx.journalEntry.create({
       data: {
         organizationId,
         date: header.reverseJournalDate,
-        reference: `MJ-REV:${header.id}`,
+        reference: manualJournalReverseReference(header.id),
         notes: `Auto-reverse of manual journal ${header.number}`,
         lines: {
-          create: lines.map((l) => ({
+          create: reversed.map((l) => ({
             accountId: l.accountId,
-            // Flip DR ↔ CR.
-            debit: l.credit,
-            credit: l.debit,
+            debit: l.debit,
+            credit: l.credit,
             description: l.description,
           })),
         },
       },
     });
   }
+}
+
+function normaliseLines(input: ManualJournalInput["lines"]): NormalisedLine[] {
+  return input.map((l) => ({
+    accountId: l.accountId,
+    debit: Number(l.debit ?? 0),
+    credit: Number(l.credit ?? 0),
+    description: l.description ?? null,
+  }));
 }
 
 // ───────────────────────── create ─────────────────────────
@@ -154,6 +207,8 @@ export async function createManualJournalAction(
   if (accountErr) return { ok: false, error: accountErr };
 
   const number = await nextDocumentNumber(organization.id, "manualJournal");
+  const normLines = normaliseLines(data.lines);
+  const status = data.saveAsDraft ? "DRAFT" : "PUBLISHED";
 
   const created = await db.$transaction(async (tx) => {
     const header = await tx.manualJournal.create({
@@ -163,32 +218,30 @@ export async function createManualJournalAction(
         date: data.date,
         notes: data.notes ?? null,
         referenceNumber: data.referenceNumber ?? null,
-        // Every journal posted via this action is PUBLISHED (Save as
-        // Draft lands in ACCT-A.3 with proper line storage).
-        status: "PUBLISHED",
+        status,
         reportingMethod: data.reportingMethod,
         currency: data.currency ? data.currency.toUpperCase() : null,
         reverseJournalDate: data.reverseJournalDate ?? null,
         publishReverseOnlyOnDate: data.publishReverseOnlyOnDate,
       },
     });
-    await postJournalEntries(
-      tx,
-      organization.id,
-      {
-        id: header.id,
-        number: header.number,
-        date: header.date,
-        notes: header.notes,
-        reverseJournalDate: header.reverseJournalDate,
-      },
-      data.lines.map((l) => ({
-        accountId: l.accountId,
-        debit: l.debit,
-        credit: l.credit,
-        description: l.description ?? null,
-      }))
-    );
+    // Always persist the editable line copy.
+    await replaceManualJournalLines(tx, header.id, normLines);
+
+    if (!data.saveAsDraft) {
+      await postJournalEntries(
+        tx,
+        organization.id,
+        {
+          id: header.id,
+          number: header.number,
+          date: header.date,
+          notes: header.notes,
+          reverseJournalDate: header.reverseJournalDate,
+        },
+        normLines
+      );
+    }
     return header;
   });
 
@@ -200,8 +253,9 @@ export async function createManualJournalAction(
     entityId: created.id,
     after: {
       number,
-      totalDebit: data.lines.reduce((s, l) => s + l.debit, 0),
-      lines: data.lines.length,
+      status,
+      totalDebit: normLines.reduce((s, l) => s + l.debit, 0),
+      lines: normLines.length,
       hasReverse: !!data.reverseJournalDate,
       reportingMethod: data.reportingMethod,
     },
@@ -222,6 +276,208 @@ export async function createManualJournalAndRedirectAction(
   redirect(`/accountant/manual-journals/${res.id}`);
 }
 
+// ───────────────────────── update (DRAFT-only) ─────────────────────────
+
+export async function updateManualJournalAction(
+  id: string,
+  input: ManualJournalInput
+): Promise<{ ok: boolean; error?: string }> {
+  const { user, organization } = await requireOrganization();
+  const data = createSchema.parse(input);
+
+  const existing = await db.manualJournal.findFirst({
+    where: { id, organizationId: organization.id },
+    select: { id: true, number: true, status: true },
+  });
+  if (!existing) return { ok: false, error: "Manual journal not found" };
+  if (existing.status === "PUBLISHED") {
+    return {
+      ok: false,
+      error:
+        "Published journals can't be edited — post a reversing manual journal instead.",
+    };
+  }
+
+  const lineErr = validateManualJournalLines(data.lines);
+  if (lineErr) return { ok: false, error: lineErr };
+
+  const accountErr = await verifyAccountOwnership(db, organization.id, data.lines);
+  if (accountErr) return { ok: false, error: accountErr };
+
+  const normLines = normaliseLines(data.lines);
+  const targetStatus = data.saveAsDraft ? "DRAFT" : "PUBLISHED";
+
+  await db.$transaction(async (tx) => {
+    // Re-check status under the transaction in case another tab
+    // published the same row mid-edit.
+    const fresh = await tx.manualJournal.findFirst({
+      where: { id, organizationId: organization.id },
+      select: { status: true },
+    });
+    if (!fresh) {
+      throw new Error("Manual journal not found");
+    }
+    if (fresh.status === "PUBLISHED") {
+      throw new Error(
+        "Published journals can't be edited — post a reversing manual journal instead."
+      );
+    }
+
+    await tx.manualJournal.update({
+      where: { id },
+      data: {
+        date: data.date,
+        notes: data.notes ?? null,
+        referenceNumber: data.referenceNumber ?? null,
+        reportingMethod: data.reportingMethod,
+        currency: data.currency ? data.currency.toUpperCase() : null,
+        reverseJournalDate: data.reverseJournalDate ?? null,
+        publishReverseOnlyOnDate: data.publishReverseOnlyOnDate,
+      },
+    });
+    await replaceManualJournalLines(tx, id, normLines);
+
+    if (!data.saveAsDraft) {
+      // Save and Publish from the edit form: post JEs inline and
+      // flip status, all in the same transaction so the row is
+      // never observed in a half-published state.
+      const header = await tx.manualJournal.findFirstOrThrow({
+        where: { id, organizationId: organization.id },
+        select: {
+          id: true,
+          number: true,
+          date: true,
+          notes: true,
+          reverseJournalDate: true,
+        },
+      });
+      await postJournalEntries(tx, organization.id, header, normLines);
+      await tx.manualJournal.update({
+        where: { id },
+        data: { status: "PUBLISHED" },
+      });
+    }
+  });
+
+  await writeAuditLog({
+    organizationId: organization.id,
+    userId: user.id,
+    action: "UPDATE",
+    entityType: "ManualJournal",
+    entityId: id,
+    after: {
+      number: existing.number,
+      status: targetStatus,
+      totalDebit: normLines.reduce((s, l) => s + l.debit, 0),
+      lines: normLines.length,
+      hasReverse: !!data.reverseJournalDate,
+      reportingMethod: data.reportingMethod,
+    },
+  });
+
+  revalidatePath("/accountant/manual-journals");
+  revalidatePath(`/accountant/manual-journals/${id}`);
+  revalidatePath("/accountant/journal-entries");
+  return { ok: true };
+}
+
+export async function updateManualJournalAndRedirectAction(
+  id: string,
+  input: ManualJournalInput
+): Promise<void> {
+  const res = await updateManualJournalAction(id, input);
+  if (!res.ok) {
+    throw new Error(res.error ?? "Failed to update manual journal");
+  }
+  redirect(`/accountant/manual-journals/${id}`);
+}
+
+// ───────────────────────── publish (DRAFT → PUBLISHED) ─────────────────────────
+
+export async function publishManualJournalAction(
+  id: string
+): Promise<{ ok: boolean; error?: string }> {
+  const { user, organization } = await requireOrganization();
+
+  const mj = await db.manualJournal.findFirst({
+    where: { id, organizationId: organization.id },
+    include: {
+      lines: { orderBy: { position: "asc" } },
+    },
+  });
+  if (!mj) return { ok: false, error: "Manual journal not found" };
+  // Idempotent: publishing a PUBLISHED journal is a no-op.
+  if (mj.status === "PUBLISHED") return { ok: true };
+
+  const linesForValidation = mj.lines.map((l) => ({
+    accountId: l.accountId,
+    debit: Number(l.debit),
+    credit: Number(l.credit),
+    description: l.description,
+  }));
+  if (linesForValidation.length < 2) {
+    return { ok: false, error: "Need at least two lines before publishing." };
+  }
+
+  const lineErr = validateManualJournalLines(linesForValidation);
+  if (lineErr) return { ok: false, error: lineErr };
+
+  const accountErr = await verifyAccountOwnership(
+    db,
+    organization.id,
+    linesForValidation
+  );
+  if (accountErr) return { ok: false, error: accountErr };
+
+  await db.$transaction(async (tx) => {
+    // Status guard inside the tx — protects against a concurrent
+    // publish from another tab.
+    const fresh = await tx.manualJournal.findFirstOrThrow({
+      where: { id, organizationId: organization.id },
+      select: { status: true },
+    });
+    if (fresh.status === "PUBLISHED") return;
+
+    await postJournalEntries(
+      tx,
+      organization.id,
+      {
+        id: mj.id,
+        number: mj.number,
+        date: mj.date,
+        notes: mj.notes,
+        reverseJournalDate: mj.reverseJournalDate,
+      },
+      linesForValidation
+    );
+    await tx.manualJournal.update({
+      where: { id },
+      data: { status: "PUBLISHED" },
+    });
+  });
+
+  await writeAuditLog({
+    organizationId: organization.id,
+    userId: user.id,
+    action: "UPDATE",
+    entityType: "ManualJournal",
+    entityId: id,
+    before: { status: "DRAFT" },
+    after: { status: "PUBLISHED", number: mj.number },
+  });
+
+  revalidatePath("/accountant/manual-journals");
+  revalidatePath(`/accountant/manual-journals/${id}`);
+  revalidatePath("/accountant/journal-entries");
+  return { ok: true };
+}
+
+export async function publishManualJournalByIdAction(id: string): Promise<void> {
+  const res = await publishManualJournalAction(id);
+  if (!res.ok) throw new Error(res.error ?? "Publish failed");
+  redirect(`/accountant/manual-journals/${id}`);
+}
+
 // ───────────────────────── delete ─────────────────────────
 
 export async function deleteManualJournalAction(
@@ -233,12 +489,17 @@ export async function deleteManualJournalAction(
   });
   if (!j) return { ok: false, error: "Manual journal not found" };
 
+  // FK cascade drops ManualJournalLine rows for us. We still need
+  // to manually sweep the JEs since their join key is the structured
+  // `reference` string, not a real FK.
   await db.$transaction([
-    // Catch the primary MJ:<id> AND the reverse MJ-REV:<id> JE.
     db.journalEntry.deleteMany({
       where: {
         organizationId: organization.id,
-        OR: [{ reference: `MJ:${id}` }, { reference: `MJ-REV:${id}` }],
+        OR: [
+          { reference: manualJournalReference(id) },
+          { reference: manualJournalReverseReference(id) },
+        ],
       },
     }),
     db.manualJournal.delete({ where: { id } }),

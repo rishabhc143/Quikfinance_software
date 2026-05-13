@@ -12,6 +12,7 @@ import { formatMoney } from "@/lib/money";
 import { toast } from "sonner";
 import {
   createManualJournalAndRedirectAction,
+  updateManualJournalAndRedirectAction,
   type ManualJournalInput,
 } from "../actions";
 
@@ -25,8 +26,31 @@ type Line = {
 
 type ReportingMethod = "ACCRUAL_AND_CASH" | "ACCRUAL_ONLY" | "CASH_ONLY";
 
+export type ManualJournalFormInitialValues = {
+  date: string; // ISO YYYY-MM-DD
+  reverseJournalDate: string; // "" if not set
+  publishReverseOnlyOnDate: boolean;
+  referenceNumber: string;
+  notes: string;
+  reportingMethod: ReportingMethod;
+  currency: string;
+  lines: Line[];
+};
+
+type Props = {
+  accounts: Account[];
+  currency: string;
+  defaultDate: string;
+  /** Pre-populate the form for Edit mode. */
+  initialValues?: ManualJournalFormInitialValues;
+  /** Submit target. */
+  mode?: "create" | "edit";
+  /** Required when `mode = "edit"`. */
+  manualJournalId?: string;
+};
+
 /**
- * ACCT-A.2 — Manual Journal create form with Zoho-parity header.
+ * ACCT-A.3 — Manual Journal form. Used for both Create and Edit (DRAFT-only).
  *
  * Header fields:
  *   - Date *
@@ -37,39 +61,50 @@ type ReportingMethod = "ACCRUAL_AND_CASH" | "ACCRUAL_ONLY" | "CASH_ONLY";
  *   - Currency (defaults to org currency)
  *
  * Lines: balanced DR/CR table with live totals + "Balanced ✓" indicator.
- * Submit posts the JE + (optional) reverse JE atomically server-side.
- *
- * Save as Draft is intentionally NOT here (lands in ACCT-A.3 with
- * proper line storage).
+ * Two submit buttons:
+ *   - "Save as Draft"     → stores header + lines, no JE posted.
+ *   - "Save and Publish"  → stores + posts JE atomically. Auto-reverses
+ *                           if `reverseJournalDate` is set.
  */
 export function ManualJournalForm({
   accounts,
   currency: orgCurrency,
   defaultDate,
-}: {
-  accounts: Account[];
-  currency: string;
-  defaultDate: string;
-}) {
+  initialValues,
+  mode = "create",
+  manualJournalId,
+}: Props) {
   const router = useRouter();
 
   // Header state
-  const [date, setDate] = React.useState(defaultDate);
-  const [reverseDate, setReverseDate] = React.useState("");
-  const [publishReverseOnlyOnDate, setPublishReverseOnlyOnDate] =
-    React.useState(false);
-  const [referenceNumber, setReferenceNumber] = React.useState("");
-  const [notes, setNotes] = React.useState("");
-  const [reportingMethod, setReportingMethod] =
-    React.useState<ReportingMethod>("ACCRUAL_AND_CASH");
-  const [currency, setCurrency] = React.useState(orgCurrency);
+  const [date, setDate] = React.useState(initialValues?.date ?? defaultDate);
+  const [reverseDate, setReverseDate] = React.useState(
+    initialValues?.reverseJournalDate ?? ""
+  );
+  const [publishReverseOnlyOnDate, setPublishReverseOnlyOnDate] = React.useState(
+    initialValues?.publishReverseOnlyOnDate ?? false
+  );
+  const [referenceNumber, setReferenceNumber] = React.useState(
+    initialValues?.referenceNumber ?? ""
+  );
+  const [notes, setNotes] = React.useState(initialValues?.notes ?? "");
+  const [reportingMethod, setReportingMethod] = React.useState<ReportingMethod>(
+    initialValues?.reportingMethod ?? "ACCRUAL_AND_CASH"
+  );
+  const [currency, setCurrency] = React.useState(
+    initialValues?.currency || orgCurrency
+  );
 
   // Lines state
-  const [lines, setLines] = React.useState<Line[]>([
-    { accountId: "", debit: 0, credit: 0, description: "" },
-    { accountId: "", debit: 0, credit: 0, description: "" },
-  ]);
-  const [busy, setBusy] = React.useState(false);
+  const [lines, setLines] = React.useState<Line[]>(
+    initialValues?.lines?.length
+      ? initialValues.lines
+      : [
+          { accountId: "", debit: 0, credit: 0, description: "" },
+          { accountId: "", debit: 0, credit: 0, description: "" },
+        ]
+  );
+  const [busy, setBusy] = React.useState<null | "draft" | "publish">(null);
 
   const totalDebit = lines.reduce(
     (s, l) => s + (Number.isFinite(l.debit) ? l.debit : 0),
@@ -95,44 +130,66 @@ export function ManualJournalForm({
     if (lines.length > 2) setLines((s) => s.filter((_, idx) => idx !== i));
   }
 
-  async function submit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    if (!balanced) {
-      toast.error("Debits and credits must balance and total > 0");
-      return;
-    }
+  function buildInput(saveAsDraft: boolean): ManualJournalInput {
+    return {
+      date: new Date(date),
+      notes: notes || null,
+      referenceNumber: referenceNumber.trim() || null,
+      reportingMethod,
+      currency: currency.trim().toUpperCase() || null,
+      reverseJournalDate: reverseDate ? new Date(reverseDate) : null,
+      publishReverseOnlyOnDate,
+      saveAsDraft,
+      lines: lines.map((l) => ({
+        accountId: l.accountId,
+        debit: l.debit,
+        credit: l.credit,
+        description: l.description || null,
+      })),
+    };
+  }
+
+  async function save(saveAsDraft: boolean) {
     if (lines.some((l) => !l.accountId)) {
       toast.error("Pick an account on every line");
       return;
     }
-    setBusy(true);
+    if (!saveAsDraft && !balanced) {
+      toast.error("Debits and credits must balance and total > 0");
+      return;
+    }
+    // For drafts we still require totals > 0 if both sides are zero
+    // so we never persist a fully empty draft; but we allow off-balance.
+    if (saveAsDraft && totalDebit === 0 && totalCredit === 0) {
+      toast.error("Add at least one amount before saving");
+      return;
+    }
+    setBusy(saveAsDraft ? "draft" : "publish");
     try {
-      const input: ManualJournalInput = {
-        date: new Date(date),
-        notes: notes || null,
-        referenceNumber: referenceNumber.trim() || null,
-        reportingMethod,
-        currency: currency.trim().toUpperCase() || null,
-        reverseJournalDate: reverseDate ? new Date(reverseDate) : null,
-        publishReverseOnlyOnDate,
-        lines: lines.map((l) => ({
-          accountId: l.accountId,
-          debit: l.debit,
-          credit: l.credit,
-          description: l.description || null,
-        })),
-      };
-      await createManualJournalAndRedirectAction(input);
+      const input = buildInput(saveAsDraft);
+      if (mode === "edit") {
+        if (!manualJournalId) throw new Error("Missing manualJournalId");
+        await updateManualJournalAndRedirectAction(manualJournalId, input);
+      } else {
+        await createManualJournalAndRedirectAction(input);
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Save failed";
       if (msg.startsWith("NEXT_REDIRECT")) return;
       toast.error(msg);
-      setBusy(false);
+      setBusy(null);
     }
   }
 
+  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    // The two buttons set busy themselves; preventing the default
+    // submit here means hitting "Enter" inside an input doesn't fire
+    // the wrong action.
+    e.preventDefault();
+  }
+
   return (
-    <form onSubmit={submit} className="space-y-5">
+    <form onSubmit={handleSubmit} className="space-y-5">
       <Card>
         <CardContent className="pt-6 space-y-4">
           {/* Date + Reverse Journal Date */}
@@ -378,12 +435,27 @@ export function ManualJournalForm({
           type="button"
           variant="outline"
           onClick={() => router.push("/accountant/manual-journals")}
-          disabled={busy}
+          disabled={busy !== null}
         >
           Cancel
         </Button>
-        <Button type="submit" disabled={busy || !balanced}>
-          {busy && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+        <Button
+          type="button"
+          variant="secondary"
+          onClick={() => save(true)}
+          disabled={busy !== null}
+        >
+          {busy === "draft" && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+          Save as Draft
+        </Button>
+        <Button
+          type="button"
+          onClick={() => save(false)}
+          disabled={busy !== null || !balanced}
+        >
+          {busy === "publish" && (
+            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+          )}
           Save and Publish
         </Button>
       </div>
