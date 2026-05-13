@@ -17,8 +17,13 @@ import {
 } from "../actions";
 
 type Account = { id: string; name: string; code: string | null; type: string };
+type Contact = { id: string; displayName: string; type: string };
+type Project = { id: string; name: string };
 type Line = {
   accountId: string;
+  /** ACCT-A.3.b — optional per-line dimensions. "" = no selection. */
+  contactId: string;
+  projectId: string;
   debit: number;
   credit: number;
   description: string;
@@ -39,6 +44,10 @@ export type ManualJournalFormInitialValues = {
 
 type Props = {
   accounts: Account[];
+  /** ACCT-A.3.b — optional per-line dimension pickers. Empty arrays
+   *  hide the corresponding column. */
+  contacts?: Contact[];
+  projects?: Project[];
   currency: string;
   defaultDate: string;
   /** Pre-populate the form for Edit mode. */
@@ -68,6 +77,8 @@ type Props = {
  */
 export function ManualJournalForm({
   accounts,
+  contacts = [],
+  projects = [],
   currency: orgCurrency,
   defaultDate,
   initialValues,
@@ -75,6 +86,8 @@ export function ManualJournalForm({
   manualJournalId,
 }: Props) {
   const router = useRouter();
+  const showContactCol = contacts.length > 0;
+  const showProjectCol = projects.length > 0;
 
   // Header state
   const [date, setDate] = React.useState(initialValues?.date ?? defaultDate);
@@ -100,8 +113,22 @@ export function ManualJournalForm({
     initialValues?.lines?.length
       ? initialValues.lines
       : [
-          { accountId: "", debit: 0, credit: 0, description: "" },
-          { accountId: "", debit: 0, credit: 0, description: "" },
+          {
+            accountId: "",
+            contactId: "",
+            projectId: "",
+            debit: 0,
+            credit: 0,
+            description: "",
+          },
+          {
+            accountId: "",
+            contactId: "",
+            projectId: "",
+            debit: 0,
+            credit: 0,
+            description: "",
+          },
         ]
   );
   const [busy, setBusy] = React.useState<null | "draft" | "publish">(null);
@@ -123,7 +150,14 @@ export function ManualJournalForm({
   function addLine() {
     setLines((s) => [
       ...s,
-      { accountId: "", debit: 0, credit: 0, description: "" },
+      {
+        accountId: "",
+        contactId: "",
+        projectId: "",
+        debit: 0,
+        credit: 0,
+        description: "",
+      },
     ]);
   }
   function removeLine(i: number) {
@@ -142,6 +176,8 @@ export function ManualJournalForm({
       saveAsDraft,
       lines: lines.map((l) => ({
         accountId: l.accountId,
+        contactId: l.contactId || null,
+        projectId: l.projectId || null,
         debit: l.debit,
         credit: l.credit,
         description: l.description || null,
@@ -319,6 +355,12 @@ export function ManualJournalForm({
               <tr>
                 <th className="text-left p-3">Account</th>
                 <th className="text-left p-3">Description</th>
+                {showContactCol && (
+                  <th className="text-left p-3 w-44">Contact</th>
+                )}
+                {showProjectCol && (
+                  <th className="text-left p-3 w-44">Project</th>
+                )}
                 <th className="text-right p-3 w-32">Debit</th>
                 <th className="text-right p-3 w-32">Credit</th>
                 <th className="w-8" />
@@ -352,6 +394,43 @@ export function ManualJournalForm({
                       className="h-9"
                     />
                   </td>
+                  {showContactCol && (
+                    <td className="p-2">
+                      <select
+                        value={l.contactId}
+                        onChange={(e) =>
+                          setLine(i, { contactId: e.target.value })
+                        }
+                        className="flex h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+                      >
+                        <option value="">—</option>
+                        {contacts.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.displayName}{" "}
+                            <span>({c.type.toLowerCase()})</span>
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                  )}
+                  {showProjectCol && (
+                    <td className="p-2">
+                      <select
+                        value={l.projectId}
+                        onChange={(e) =>
+                          setLine(i, { projectId: e.target.value })
+                        }
+                        className="flex h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+                      >
+                        <option value="">—</option>
+                        {projects.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.name}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                  )}
                   <td className="p-2">
                     <Input
                       type="number"
@@ -393,7 +472,10 @@ export function ManualJournalForm({
             </tbody>
             <tfoot className="bg-muted/20 text-sm">
               <tr>
-                <td colSpan={2} className="p-3 text-right">
+                <td
+                  colSpan={2 + (showContactCol ? 1 : 0) + (showProjectCol ? 1 : 0)}
+                  className="p-3 text-right"
+                >
                   <Button
                     type="button"
                     variant="ghost"
@@ -413,7 +495,7 @@ export function ManualJournalForm({
               </tr>
               <tr>
                 <td
-                  colSpan={2}
+                  colSpan={2 + (showContactCol ? 1 : 0) + (showProjectCol ? 1 : 0)}
                   className={
                     "p-3 text-right text-xs " +
                     (balanced ? "text-emerald-600" : "text-destructive")

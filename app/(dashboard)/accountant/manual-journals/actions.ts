@@ -49,6 +49,18 @@ import {
 
 const lineSchema = z.object({
   accountId: z.string().min(1, "Pick an account for every line."),
+  /** ACCT-A.3.b — optional per-line dimensions. Empty string from
+   *  the form's "—" option is normalised to null below. */
+  contactId: z
+    .string()
+    .nullable()
+    .optional()
+    .transform((v) => (v === "" || v === undefined ? null : v)),
+  projectId: z
+    .string()
+    .nullable()
+    .optional()
+    .transform((v) => (v === "" || v === undefined ? null : v)),
   debit: z.coerce.number().nonnegative().default(0),
   credit: z.coerce.number().nonnegative().default(0),
   description: z.string().max(500).optional().nullable(),
@@ -80,6 +92,8 @@ export type ManualJournalInput = z.input<typeof createSchema>;
 
 type NormalisedLine = {
   accountId: string;
+  contactId: string | null;
+  projectId: string | null;
   debit: number;
   credit: number;
   description: string | null;
@@ -106,6 +120,44 @@ async function verifyAccountOwnership(
 }
 
 /**
+ * ACCT-A.3.b — Per-line dimensions must also belong to the caller's
+ * org. Cheap follow-up check after account ownership; the queries
+ * are guarded by `id IN (…)` so they're each a single index lookup.
+ */
+async function verifyLineDimsOwnership(
+  client: Prisma.TransactionClient | typeof db,
+  organizationId: string,
+  lines: NormalisedLine[]
+): Promise<string | null> {
+  const contactIds = Array.from(
+    new Set(lines.map((l) => l.contactId).filter((v): v is string => !!v))
+  );
+  const projectIds = Array.from(
+    new Set(lines.map((l) => l.projectId).filter((v): v is string => !!v))
+  );
+
+  if (contactIds.length > 0) {
+    const found = await client.contact.findMany({
+      where: { id: { in: contactIds }, organizationId },
+      select: { id: true },
+    });
+    if (found.length !== contactIds.length) {
+      return "Some contacts not found in this org.";
+    }
+  }
+  if (projectIds.length > 0) {
+    const found = await client.project.findMany({
+      where: { id: { in: projectIds }, organizationId },
+      select: { id: true },
+    });
+    if (found.length !== projectIds.length) {
+      return "Some projects not found in this org.";
+    }
+  }
+  return null;
+}
+
+/**
  * Replace the line set on a ManualJournal: delete-all-then-create.
  * Runs inside the caller's transaction so it's atomic.
  */
@@ -121,6 +173,8 @@ async function replaceManualJournalLines(
       manualJournalId,
       position: i,
       accountId: l.accountId,
+      contactId: l.contactId,
+      projectId: l.projectId,
       debit: l.debit,
       credit: l.credit,
       description: l.description,
@@ -154,6 +208,8 @@ async function postJournalEntries(
       lines: {
         create: lines.map((l) => ({
           accountId: l.accountId,
+          contactId: l.contactId,
+          projectId: l.projectId,
           debit: l.debit,
           credit: l.credit,
           description: l.description,
@@ -173,6 +229,8 @@ async function postJournalEntries(
         lines: {
           create: reversed.map((l) => ({
             accountId: l.accountId,
+            contactId: l.contactId,
+            projectId: l.projectId,
             debit: l.debit,
             credit: l.credit,
             description: l.description,
@@ -186,6 +244,8 @@ async function postJournalEntries(
 function normaliseLines(input: ManualJournalInput["lines"]): NormalisedLine[] {
   return input.map((l) => ({
     accountId: l.accountId,
+    contactId: l.contactId ?? null,
+    projectId: l.projectId ?? null,
     debit: Number(l.debit ?? 0),
     credit: Number(l.credit ?? 0),
     description: l.description ?? null,
@@ -208,6 +268,10 @@ export async function createManualJournalAction(
 
   const number = await nextDocumentNumber(organization.id, "manualJournal");
   const normLines = normaliseLines(data.lines);
+
+  const dimsErr = await verifyLineDimsOwnership(db, organization.id, normLines);
+  if (dimsErr) return { ok: false, error: dimsErr };
+
   const status = data.saveAsDraft ? "DRAFT" : "PUBLISHED";
 
   const created = await db.$transaction(async (tx) => {
@@ -305,6 +369,10 @@ export async function updateManualJournalAction(
   if (accountErr) return { ok: false, error: accountErr };
 
   const normLines = normaliseLines(data.lines);
+
+  const dimsErr = await verifyLineDimsOwnership(db, organization.id, normLines);
+  if (dimsErr) return { ok: false, error: dimsErr };
+
   const targetStatus = data.saveAsDraft ? "DRAFT" : "PUBLISHED";
 
   await db.$transaction(async (tx) => {
@@ -409,8 +477,10 @@ export async function publishManualJournalAction(
   // Idempotent: publishing a PUBLISHED journal is a no-op.
   if (mj.status === "PUBLISHED") return { ok: true };
 
-  const linesForValidation = mj.lines.map((l) => ({
+  const linesForValidation: NormalisedLine[] = mj.lines.map((l) => ({
     accountId: l.accountId,
+    contactId: l.contactId,
+    projectId: l.projectId,
     debit: Number(l.debit),
     credit: Number(l.credit),
     description: l.description,
@@ -428,6 +498,15 @@ export async function publishManualJournalAction(
     linesForValidation
   );
   if (accountErr) return { ok: false, error: accountErr };
+
+  // Re-validate dims at publish time — covers the rare case where
+  // a contact or project was deleted while the draft sat.
+  const dimsErr = await verifyLineDimsOwnership(
+    db,
+    organization.id,
+    linesForValidation
+  );
+  if (dimsErr) return { ok: false, error: dimsErr };
 
   await db.$transaction(async (tx) => {
     // Status guard inside the tx — protects against a concurrent

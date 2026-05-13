@@ -361,6 +361,11 @@ model Contact {
   recurringBills       RecurringBill[]
   recurringExpenses    RecurringExpense[]
   bankAccounts         ContactBankAccount[]
+  /// ACCT-A.3.b — per-line dimensions on Manual Journals + the
+  /// canonical ledger. Named relations so Prisma doesn't conflate
+  /// the two back-refs.
+  manualJournalLines   ManualJournalLine[] @relation("ManualJournalLineContact")
+  journalEntryLines    JournalEntryLine[]  @relation("JournalEntryLineContact")
 
   @@index([organizationId, type, deletedAt])
   @@index([organizationId, displayName])
@@ -1718,11 +1723,21 @@ model JournalEntryLine {
   debit          Decimal        @default(0) @db.Decimal(18, 4)
   credit         Decimal        @default(0) @db.Decimal(18, 4)
   description    String?
+  /// ACCT-A.3.b — per-line dimensions. Carried through from
+  /// ManualJournalLine at publish time so reports can group by
+  /// contact / project at the ledger level.
+  contactId      String?
+  projectId      String?
   journalEntry   JournalEntry   @relation(fields: [journalEntryId], references: [id], onDelete: Cascade)
   /// RPT-A — declared so the Trial Balance + P&L reports can `include`
   /// the CoA entry without a separate query. FK added by migration
   /// 20260513000006.
   account        ChartOfAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  contact        Contact?       @relation("JournalEntryLineContact", fields: [contactId], references: [id], onDelete: SetNull)
+  project        Project?       @relation("JournalEntryLineProject", fields: [projectId], references: [id], onDelete: SetNull)
+
+  @@index([contactId])
+  @@index([projectId])
 }
 
 model ManualJournal {
@@ -1769,10 +1784,18 @@ model ManualJournalLine {
   debit           Decimal        @default(0) @db.Decimal(18, 4)
   credit          Decimal        @default(0) @db.Decimal(18, 4)
   description     String?
+  /// ACCT-A.3.b — per-line dimensions. Optional; copied verbatim into
+  /// the canonical JournalEntryLine rows at publish time.
+  contactId       String?
+  projectId       String?
   manualJournal   ManualJournal  @relation(fields: [manualJournalId], references: [id], onDelete: Cascade)
   account         ChartOfAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  contact         Contact?       @relation("ManualJournalLineContact", fields: [contactId], references: [id], onDelete: SetNull)
+  project         Project?       @relation("ManualJournalLineProject", fields: [projectId], references: [id], onDelete: SetNull)
 
   @@index([manualJournalId])
+  @@index([contactId])
+  @@index([projectId])
 }
 
 // ───────────────────────── TAX ─────────────────────────
@@ -1859,18 +1882,21 @@ model EmailJob {
 // ───────────────────────── PROJECTS / TIME ─────────────────────────
 
 model Project {
-  id             String       @id @default(cuid())
-  organizationId String
-  name           String
-  customerId     String?
-  status         String       @default("active")
-  budget         Decimal?     @db.Decimal(18, 4)
-  startDate      DateTime?
-  endDate        DateTime?
-  createdAt      DateTime     @default(now())
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  tasks          Task[]
-  timeEntries    TimeEntry[]
+  id                 String              @id @default(cuid())
+  organizationId     String
+  name               String
+  customerId         String?
+  status             String              @default("active")
+  budget             Decimal?            @db.Decimal(18, 4)
+  startDate          DateTime?
+  endDate            DateTime?
+  createdAt          DateTime            @default(now())
+  organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  tasks              Task[]
+  timeEntries        TimeEntry[]
+  /// ACCT-A.3.b — per-line dimensions on Manual Journals + ledger.
+  manualJournalLines ManualJournalLine[] @relation("ManualJournalLineProject")
+  journalEntryLines  JournalEntryLine[]  @relation("JournalEntryLineProject")
 }
 
 model Task {
