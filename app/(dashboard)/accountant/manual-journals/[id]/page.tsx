@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { format } from "date-fns";
-import { ArrowLeft, FileText, Trash2, RotateCcw, Pencil, Send } from "lucide-react";
+import { ArrowLeft, FileText, Trash2, RotateCcw, Pencil, Send, Repeat } from "lucide-react";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
 import { Button } from "@/components/ui/button";
@@ -186,6 +186,18 @@ export default async function ManualJournalDetailPage({
                 redirects
               />
             </>
+          )}
+          {/* ACCT-A.4.c — Only PUBLISHED journals can be made
+              recurring. DRAFTs aren't worth scheduling — finish
+              them first. */}
+          {!isDraft && (
+            <Button asChild variant="outline" size="sm" className="gap-1">
+              <Link
+                href={`/accountant/recurring-manual-journals/new?fromMjId=${header.id}`}
+              >
+                <Repeat className="h-4 w-4" /> Make Recurring
+              </Link>
+            </Button>
           )}
           <ActionFormButton
             action={deleteManualJournalByIdAction.bind(null, header.id)}
