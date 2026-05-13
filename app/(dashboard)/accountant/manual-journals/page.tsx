@@ -9,6 +9,7 @@ import {
   EmptyState,
   type ColumnDef,
 } from "@/components/shared/data-table";
+import { Badge } from "@/components/ui/badge";
 import { formatMoney } from "@/lib/money";
 
 export const metadata = { title: "Manual Journals" };
@@ -16,6 +17,8 @@ export const metadata = { title: "Manual Journals" };
 const COLUMNS: ColumnDef[] = [
   { key: "number", header: "Number", sortable: true },
   { key: "date", header: "Date", sortable: true },
+  { key: "status", header: "Status" },
+  { key: "ref", header: "Ref#" },
   { key: "lines", header: "Lines" },
   { key: "amount", header: "Amount", align: "right" },
   { key: "notes", header: "Notes" },
@@ -90,6 +93,7 @@ export default async function ManualJournalsPage({
 
   const dataRows = rows.map((j) => {
     const totals = totalsByRef.get(`MJ:${j.id}`);
+    const displayCurrency = j.currency ?? organization.currency;
     return {
       id: j.id,
       cells: [
@@ -101,6 +105,16 @@ export default async function ManualJournalsPage({
           {j.number}
         </Link>,
         format(j.date, "dd MMM yyyy"),
+        <Badge
+          key="s"
+          variant={j.status === "PUBLISHED" ? "secondary" : "outline"}
+          className="text-[10px]"
+        >
+          {j.status === "PUBLISHED" ? "Published" : "Draft"}
+        </Badge>,
+        <span key="r" className="font-mono text-xs text-muted-foreground">
+          {j.referenceNumber ?? "—"}
+        </span>,
         totals ? (
           <span key="l" className="text-xs">
             {totals.lineCount} lines
@@ -111,13 +125,11 @@ export default async function ManualJournalsPage({
           </span>
         ),
         <span key="a" className="tabular-nums">
-          {totals
-            ? formatMoney(totals.totalDebit, organization.currency)
-            : "—"}
+          {totals ? formatMoney(totals.totalDebit, displayCurrency) : "—"}
         </span>,
         <span
           key="o"
-          className="text-muted-foreground truncate inline-block max-w-[260px]"
+          className="text-muted-foreground truncate inline-block max-w-[200px]"
         >
           {j.notes ?? "—"}
         </span>,

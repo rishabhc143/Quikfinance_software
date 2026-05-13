@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, Plus, Trash2 } from "lucide-react";
+import { Loader2, Plus, Trash2, Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -16,16 +16,35 @@ import {
 } from "../actions";
 
 type Account = { id: string; name: string; code: string | null; type: string };
-type Line = { accountId: string; debit: number; credit: number; description: string };
+type Line = {
+  accountId: string;
+  debit: number;
+  credit: number;
+  description: string;
+};
+
+type ReportingMethod = "ACCRUAL_AND_CASH" | "ACCRUAL_ONLY" | "CASH_ONLY";
 
 /**
- * ACCT-A — Manual Journal create form. Mirrors the JournalEntryForm
- * shape but no user-facing Reference field — we auto-set the JE's
- * reference to `MJ:<headerId>` on the server.
+ * ACCT-A.2 — Manual Journal create form with Zoho-parity header.
+ *
+ * Header fields:
+ *   - Date *
+ *   - Reverse Journal Date (optional) + publish-only-on-date checkbox
+ *   - Reference#
+ *   - Notes *
+ *   - Reporting Method (Accrual and Cash / Accrual Only / Cash Only)
+ *   - Currency (defaults to org currency)
+ *
+ * Lines: balanced DR/CR table with live totals + "Balanced ✓" indicator.
+ * Submit posts the JE + (optional) reverse JE atomically server-side.
+ *
+ * Save as Draft is intentionally NOT here (lands in ACCT-A.3 with
+ * proper line storage).
  */
 export function ManualJournalForm({
   accounts,
-  currency,
+  currency: orgCurrency,
   defaultDate,
 }: {
   accounts: Account[];
@@ -33,8 +52,19 @@ export function ManualJournalForm({
   defaultDate: string;
 }) {
   const router = useRouter();
+
+  // Header state
   const [date, setDate] = React.useState(defaultDate);
+  const [reverseDate, setReverseDate] = React.useState("");
+  const [publishReverseOnlyOnDate, setPublishReverseOnlyOnDate] =
+    React.useState(false);
+  const [referenceNumber, setReferenceNumber] = React.useState("");
   const [notes, setNotes] = React.useState("");
+  const [reportingMethod, setReportingMethod] =
+    React.useState<ReportingMethod>("ACCRUAL_AND_CASH");
+  const [currency, setCurrency] = React.useState(orgCurrency);
+
+  // Lines state
   const [lines, setLines] = React.useState<Line[]>([
     { accountId: "", debit: 0, credit: 0, description: "" },
     { accountId: "", debit: 0, credit: 0, description: "" },
@@ -80,6 +110,11 @@ export function ManualJournalForm({
       const input: ManualJournalInput = {
         date: new Date(date),
         notes: notes || null,
+        referenceNumber: referenceNumber.trim() || null,
+        reportingMethod,
+        currency: currency.trim().toUpperCase() || null,
+        reverseJournalDate: reverseDate ? new Date(reverseDate) : null,
+        publishReverseOnlyOnDate,
         lines: lines.map((l) => ({
           accountId: l.accountId,
           debit: l.debit,
@@ -98,19 +133,128 @@ export function ManualJournalForm({
 
   return (
     <form onSubmit={submit} className="space-y-5">
-      <div>
-        <Label>
-          Date <span className="text-destructive">*</span>
-        </Label>
-        <Input
-          type="date"
-          value={date}
-          onChange={(e) => setDate(e.target.value)}
-          required
-          className="md:max-w-xs"
-        />
-      </div>
+      <Card>
+        <CardContent className="pt-6 space-y-4">
+          {/* Date + Reverse Journal Date */}
+          <div className="grid gap-3 md:grid-cols-2">
+            <div>
+              <Label>
+                Date <span className="text-destructive">*</span>
+              </Label>
+              <Input
+                type="date"
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+                required
+              />
+            </div>
+            <div>
+              <Label>Reverse Journal Date</Label>
+              <Input
+                type="date"
+                value={reverseDate}
+                onChange={(e) => setReverseDate(e.target.value)}
+                min={date}
+                placeholder="dd/MM/yyyy"
+              />
+              <label className="mt-2 inline-flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="h-3.5 w-3.5"
+                  checked={publishReverseOnlyOnDate}
+                  onChange={(e) => setPublishReverseOnlyOnDate(e.target.checked)}
+                />
+                Publish reverse journal only on the reverse journal date
+                <span title="For v1 the reverse JE is always date-stamped to the reverse date. This checkbox is stored for round-trip fidelity with Zoho exports but has no effect on math.">
+                  <Info className="h-3 w-3" />
+                </span>
+              </label>
+            </div>
+          </div>
 
+          {/* Reference# + Notes */}
+          <div className="grid gap-3 md:grid-cols-2">
+            <div>
+              <Label>Reference#</Label>
+              <Input
+                value={referenceNumber}
+                onChange={(e) => setReferenceNumber(e.target.value)}
+                maxLength={120}
+                placeholder="External doc id / memo"
+              />
+            </div>
+            <div>
+              <Label>
+                Notes <span className="text-destructive">*</span>
+              </Label>
+              <Textarea
+                rows={2}
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="Max 500 characters"
+                maxLength={500}
+                required
+              />
+            </div>
+          </div>
+
+          {/* Reporting Method + Currency */}
+          <div className="grid gap-3 md:grid-cols-2">
+            <div>
+              <Label>
+                Reporting Method
+                <span
+                  className="ml-1 inline-flex"
+                  title="Stored on the journal. Cash-basis reports (coming soon) will use this; the current accrual P&L + Trial Balance ignore it."
+                >
+                  <Info className="h-3 w-3 text-muted-foreground" />
+                </span>
+              </Label>
+              <div className="flex gap-3 mt-1.5">
+                {(
+                  [
+                    ["ACCRUAL_AND_CASH", "Accrual and Cash"],
+                    ["ACCRUAL_ONLY", "Accrual Only"],
+                    ["CASH_ONLY", "Cash Only"],
+                  ] as const
+                ).map(([value, label]) => (
+                  <label
+                    key={value}
+                    className="inline-flex items-center gap-1.5 text-sm cursor-pointer"
+                  >
+                    <input
+                      type="radio"
+                      name="reportingMethod"
+                      value={value}
+                      checked={reportingMethod === value}
+                      onChange={() => setReportingMethod(value)}
+                      className="h-4 w-4"
+                    />
+                    {label}
+                  </label>
+                ))}
+              </div>
+            </div>
+            <div>
+              <Label>Currency</Label>
+              <Input
+                value={currency}
+                onChange={(e) =>
+                  setCurrency(e.target.value.toUpperCase().slice(0, 3))
+                }
+                maxLength={3}
+                placeholder="INR"
+                className="md:max-w-[150px] uppercase tracking-wider"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Three-letter ISO code. Defaults to your org currency.
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Lines table */}
       <Card>
         <CardContent className="p-0">
           <table className="w-full text-sm">
@@ -145,7 +289,9 @@ export function ManualJournalForm({
                   <td className="p-2">
                     <Input
                       value={l.description}
-                      onChange={(e) => setLine(i, { description: e.target.value })}
+                      onChange={(e) =>
+                        setLine(i, { description: e.target.value })
+                      }
                       className="h-9"
                     />
                   </td>
@@ -201,10 +347,10 @@ export function ManualJournalForm({
                   </Button>
                 </td>
                 <td className="p-3 text-right tabular-nums font-semibold">
-                  {formatMoney(totalDebit, currency)}
+                  {formatMoney(totalDebit, currency || orgCurrency)}
                 </td>
                 <td className="p-3 text-right tabular-nums font-semibold">
-                  {formatMoney(totalCredit, currency)}
+                  {formatMoney(totalCredit, currency || orgCurrency)}
                 </td>
                 <td />
               </tr>
@@ -218,7 +364,7 @@ export function ManualJournalForm({
                 >
                   {balanced
                     ? "Balanced ✓"
-                    : `Off by ${formatMoney(Math.abs(diff), currency)}`}
+                    : `Off by ${formatMoney(Math.abs(diff), currency || orgCurrency)}`}
                 </td>
                 <td colSpan={3} />
               </tr>
@@ -226,16 +372,6 @@ export function ManualJournalForm({
           </table>
         </CardContent>
       </Card>
-
-      <div>
-        <Label>Notes</Label>
-        <Textarea
-          rows={3}
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-          placeholder="What's this adjustment for?"
-        />
-      </div>
 
       <div className="flex justify-end gap-2 pt-2 border-t">
         <Button
@@ -248,7 +384,7 @@ export function ManualJournalForm({
         </Button>
         <Button type="submit" disabled={busy || !balanced}>
           {busy && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-          Post manual journal
+          Save and Publish
         </Button>
       </div>
     </form>
