@@ -5,6 +5,11 @@ import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
 import { writeAuditLog } from "@/lib/audit";
+import {
+  postBillPaymentJe,
+  reversePaymentMadeJes,
+  resolveBankCoaForPayment,
+} from "@/lib/accounting/post-domain-je";
 import { nextDocumentNumber } from "@/lib/next-number";
 import {
   billPaymentSchema,
@@ -270,8 +275,18 @@ export async function createBillPaymentAction(input: BillPaymentInput) {
       },
     });
 
+    // RPT-B — resolve bank-side CoA once for the JE posts below. Throws
+    // (rolls back) if no posting account can be determined.
+    const freshAllocs = data.allocations.filter((x) => x.source === "FRESH");
+    let bankCoaId: string | null = null;
+    if (freshAllocs.length > 0) {
+      bankCoaId = await resolveBankCoaForPayment(tx, organization.id, {
+        paidThroughAccountId: payment.paidThroughAccountId,
+      });
+    }
+
     // Fresh allocations point at the new BILL_PAYMENT row.
-    for (const a of data.allocations.filter((x) => x.source === "FRESH")) {
+    for (const a of freshAllocs) {
       await tx.paymentMadeAllocation.create({
         data: {
           paymentMadeId: payment.id,
@@ -279,6 +294,21 @@ export async function createBillPaymentAction(input: BillPaymentInput) {
           amount: a.amount,
         },
       });
+      // RPT-B — DR AP / CR Bank per FRESH allocation. ADVANCE
+      // allocations are deferred to Phase 2 (vendor-advance ledger).
+      const bill = bills.find((b) => b.id === a.billId);
+      if (bill && bankCoaId) {
+        await postBillPaymentJe(
+          tx,
+          organization.id,
+          payment.id,
+          bill.id,
+          bill.number,
+          a.amount,
+          data.paymentDate,
+          bankCoaId
+        );
+      }
     }
     // Advance drawdown allocations point at the ORIGINAL advance row
     // so its balance decreases. The new BILL_PAYMENT row doesn't get
@@ -475,6 +505,8 @@ export async function deletePaymentMadeAction(id: string) {
       where: { id },
       data: { deletedAt: new Date() },
     });
+    // RPT-B — pull every JE this payment created (one per allocation).
+    await reversePaymentMadeJes(tx, organization.id, id);
   });
   await writeAuditLog({
     organizationId: organization.id,

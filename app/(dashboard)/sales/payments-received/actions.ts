@@ -13,6 +13,7 @@ import {
   computeProportionalAllocationReversal,
 } from "@/lib/sales/refund-math";
 import type { RecordPaymentInput } from "@/lib/validations/invoice";
+import { reversePaymentReceivedJes } from "@/lib/accounting/post-domain-je";
 import { format } from "date-fns";
 
 /**
@@ -312,9 +313,16 @@ export async function deletePaymentReceivedAction(id: string) {
   if (p.allocations.length > 0) {
     return { ok: false, error: "Cannot delete payments with allocations" };
   }
-  await db.paymentReceived.update({
-    where: { id },
-    data: { deletedAt: new Date() },
+  await db.$transaction(async (tx) => {
+    await tx.paymentReceived.update({
+      where: { id },
+      data: { deletedAt: new Date() },
+    });
+    // RPT-B — defensive: a payment without allocations has no JEs
+    // today, but the helper is a no-op on empty result so this is
+    // safe and future-proofs any code that posts a JE for an
+    // unallocated payment.
+    await reversePaymentReceivedJes(tx, organization.id, id);
   });
   await writeAuditLog({
     organizationId: organization.id,
