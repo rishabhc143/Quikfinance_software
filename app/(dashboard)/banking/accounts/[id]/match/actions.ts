@@ -10,6 +10,14 @@ import {
   type CandidateRecordType,
   type BankLine,
 } from "@/lib/banking/match-candidates";
+import {
+  categorisedRecordType,
+  validateGLForDirection,
+  assertSameDirection,
+  VALID_ACCOUNT_TYPES,
+  type BankLineDirection,
+} from "@/lib/banking/categorise";
+import { getOrCreateBankGLAccount } from "@/lib/banking/bank-gl-account";
 
 /**
  * BNK-C — Server actions for the bank-line ↔ existing-record match flow.
@@ -294,7 +302,32 @@ export async function unmatchTransactionAction(input: {
 
   const before = {
     matched: `${bankTxn.matchedRecordType}:${bankTxn.matchedRecordId}`,
+    autoCreated: bankTxn.matchAutoCreated,
   };
+
+  // BNK-D — if Categorise auto-created the linked record (Expense or
+  // JournalEntry), delete it too so unmatch is symmetrical. Records
+  // the user manually matched (matchAutoCreated=false) stay put.
+  if (
+    bankTxn.matchAutoCreated &&
+    bankTxn.matchedRecordType &&
+    bankTxn.matchedRecordId
+  ) {
+    if (bankTxn.matchedRecordType === "EXPENSE") {
+      await db.expense.update({
+        where: { id: bankTxn.matchedRecordId },
+        data: { deletedAt: new Date() },
+      });
+    } else if (bankTxn.matchedRecordType === "JOURNAL_ENTRY") {
+      // JournalEntry has no soft-delete column — its lines cascade-
+      // delete via FK, so a hard delete is safe.
+      await db.journalEntry.delete({
+        where: { id: bankTxn.matchedRecordId },
+      });
+    }
+    // Other types (INVOICE / BILL / PAYMENT_*) aren't created by
+    // Categorise, so matchAutoCreated wouldn't be true. No-op.
+  }
 
   await db.bankTransaction.update({
     where: { id: bankTxn.id },
@@ -303,6 +336,7 @@ export async function unmatchTransactionAction(input: {
       matchedRecordId: null,
       matchedAt: null,
       matchedById: null,
+      matchAutoCreated: false,
     },
   });
 
@@ -313,12 +347,228 @@ export async function unmatchTransactionAction(input: {
     entityType: "BankTransaction",
     entityId: bankTxn.id,
     before,
-    after: { matched: null },
+    after: { matched: null, autoCreated: false },
   });
 
   revalidatePath(`/banking/accounts/${bankTxn.bankAccountId}`);
   revalidatePath(`/banking/accounts/${bankTxn.bankAccountId}/match`);
   return { ok: true };
+}
+
+/**
+ * BNK-D — Categorise (no-match fallback). For a single unmatched
+ * BankTransaction, create the backing record on the fly:
+ *
+ *   DEBIT  → new Expense pointing at the chosen expenseAccountId
+ *   CREDIT → new 2-line JournalEntry (Bank GL DR + chosen Income CR)
+ *
+ * Then sets the existing match columns + the new matchAutoCreated
+ * flag so unmatch knows to also delete the created record.
+ */
+export async function categoriseAction(input: {
+  bankTransactionId: string;
+  glAccountId: string;
+  notes?: string | null;
+}): Promise<{ ok: boolean; error?: string }> {
+  const { user, organization } = await requireOrganization();
+
+  const bankTxn = await db.bankTransaction.findFirst({
+    where: { id: input.bankTransactionId, organizationId: organization.id },
+  });
+  if (!bankTxn) return { ok: false, error: "Bank transaction not found" };
+  if (bankTxn.matchedRecordType) {
+    return {
+      ok: false,
+      error: `Already matched to ${bankTxn.matchedRecordType}. Unmatch first.`,
+    };
+  }
+  if (bankTxn.excluded) {
+    return { ok: false, error: "Cannot categorise an excluded transaction." };
+  }
+
+  const gl = await db.chartOfAccount.findFirst({
+    where: {
+      id: input.glAccountId,
+      organizationId: organization.id,
+      isActive: true,
+    },
+  });
+  if (!gl) {
+    return { ok: false, error: "GL account not found in this org." };
+  }
+
+  const direction: BankLineDirection =
+    bankTxn.type === "CREDIT" ? "CREDIT" : "DEBIT";
+  const directionError = validateGLForDirection(direction, gl.type);
+  if (directionError) return { ok: false, error: directionError };
+
+  const recordType = categorisedRecordType(direction);
+  const amount = Number(bankTxn.amount);
+  const noteText =
+    input.notes?.trim() ||
+    `Categorised from bank line on ${bankTxn.date.toISOString().slice(0, 10)}`;
+
+  let createdId: string;
+
+  if (recordType === "EXPENSE") {
+    // Money Out → Expense row. Reuses the existing Expense model so it
+    // shows up in /purchases/expenses with the rest.
+    const expense = await db.expense.create({
+      data: {
+        organizationId: organization.id,
+        date: bankTxn.date,
+        category: gl.name, // legacy free-text column; new code reads expenseAccountId
+        expenseAccountId: gl.id,
+        amount,
+        reference: bankTxn.reference ?? null,
+        notes: noteText,
+        status: "RECORDED",
+      },
+      select: { id: true },
+    });
+    createdId = expense.id;
+  } else {
+    // Money In → 2-line JournalEntry. Lazy-create the bank's GL bridge
+    // so the DR leg has somewhere to land.
+    const bankGL = await getOrCreateBankGLAccount(bankTxn.bankAccountId);
+    const je = await db.journalEntry.create({
+      data: {
+        organizationId: organization.id,
+        date: bankTxn.date,
+        reference: bankTxn.reference ?? null,
+        notes: noteText,
+        lines: {
+          create: [
+            {
+              accountId: bankGL.id,
+              debit: amount,
+              credit: 0,
+              description: bankTxn.description ?? null,
+            },
+            {
+              accountId: gl.id,
+              debit: 0,
+              credit: amount,
+              description: noteText,
+            },
+          ],
+        },
+      },
+      select: { id: true },
+    });
+    createdId = je.id;
+  }
+
+  await db.bankTransaction.update({
+    where: { id: bankTxn.id },
+    data: {
+      matchedRecordType: recordType,
+      matchedRecordId: createdId,
+      matchedAt: new Date(),
+      matchedById: user.id,
+      matchAutoCreated: true,
+    },
+  });
+
+  await writeAuditLog({
+    organizationId: organization.id,
+    userId: user.id,
+    action: "CREATE",
+    entityType: recordType === "EXPENSE" ? "Expense" : "JournalEntry",
+    entityId: createdId,
+    after: {
+      categorisedFromBankTxn: bankTxn.id,
+      glAccountId: gl.id,
+      glAccountName: gl.name,
+      amount,
+    },
+  });
+
+  revalidatePath(`/banking/accounts/${bankTxn.bankAccountId}`);
+  revalidatePath(`/banking/accounts/${bankTxn.bankAccountId}/match`);
+  return { ok: true };
+}
+
+/**
+ * BNK-D — Apply the same GL account to N unmatched bank lines at once.
+ * All selected lines must share the same direction (server-validated)
+ * so the GL pick is unambiguous. Creates one Expense or JournalEntry
+ * per bank line, links each, and writes an audit row per line.
+ *
+ * Stops on the first per-line error and reports it. Lines processed
+ * before the failure are already committed (no transaction wrapper —
+ * each line is an atomic unit by itself).
+ */
+export async function bulkCategoriseAction(input: {
+  bankTransactionIds: string[];
+  glAccountId: string;
+  notes?: string | null;
+}): Promise<{ ok: boolean; created?: number; error?: string }> {
+  const { organization } = await requireOrganization();
+
+  if (!input.bankTransactionIds.length) {
+    return { ok: false, error: "No bank lines selected." };
+  }
+
+  const txns = await db.bankTransaction.findMany({
+    where: {
+      id: { in: input.bankTransactionIds },
+      organizationId: organization.id,
+      matchedRecordType: null,
+      excluded: false,
+    },
+    select: { id: true, type: true },
+  });
+  if (txns.length !== input.bankTransactionIds.length) {
+    return {
+      ok: false,
+      error: "Some selected rows aren't eligible (already matched, excluded, or in another org).",
+    };
+  }
+
+  const directionCheck = assertSameDirection(
+    txns.map((t) => ({ type: t.type === "CREDIT" ? "CREDIT" : "DEBIT" }))
+  );
+  if ("error" in directionCheck) {
+    return { ok: false, error: directionCheck.error };
+  }
+
+  // GL-type sanity check up front so we fail before doing any writes.
+  const gl = await db.chartOfAccount.findFirst({
+    where: {
+      id: input.glAccountId,
+      organizationId: organization.id,
+      isActive: true,
+    },
+    select: { type: true },
+  });
+  if (!gl) return { ok: false, error: "GL account not found in this org." };
+  if (!VALID_ACCOUNT_TYPES[directionCheck.direction].includes(gl.type)) {
+    return {
+      ok: false,
+      error: validateGLForDirection(directionCheck.direction, gl.type) ?? "GL account type mismatch.",
+    };
+  }
+
+  // Loop. categoriseAction already validates ownership + direction +
+  // gl-type per row, so we can safely call it for each id.
+  let created = 0;
+  for (const txn of txns) {
+    const res = await categoriseAction({
+      bankTransactionId: txn.id,
+      glAccountId: input.glAccountId,
+      notes: input.notes ?? null,
+    });
+    if (!res.ok) {
+      return {
+        ok: false,
+        created,
+        error: `Stopped after ${created} row${created === 1 ? "" : "s"}: ${res.error}`,
+      };
+    }
+    created += 1;
+  }
+  return { ok: true, created };
 }
 
 /**

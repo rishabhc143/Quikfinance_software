@@ -252,6 +252,8 @@ model ChartOfAccount {
   parent         ChartOfAccount?  @relation("AccountHierarchy", fields: [parentId], references: [id])
   children       ChartOfAccount[] @relation("AccountHierarchy")
   organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  /// BNK-D back-relation: bank accounts whose GL bridge points here.
+  bankAccounts   BankAccount[]    @relation("BankAccountGL")
 
   @@unique([organizationId, code])
   @@index([organizationId, type])
@@ -1503,7 +1505,13 @@ model BankAccount {
   openingBalance Decimal            @default(0) @db.Decimal(18, 4)
   isActive       Boolean            @default(true)
   createdAt      DateTime           @default(now())
+  /// BNK-D — Bridge to ChartOfAccount so Money In Categorise can post a
+  /// balanced 2-line JournalEntry. Lazily created by
+  /// getOrCreateBankGLAccount() on first need; existing rows stay null
+  /// until they're categorised against.
+  glAccountId    String?
   organization   Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  glAccount      ChartOfAccount?    @relation("BankAccountGL", fields: [glAccountId], references: [id], onDelete: SetNull)
   transactions   BankTransaction[]
   importBatches  BankImportBatch[]
   importPresets  BankImportPreset[]
@@ -1541,6 +1549,12 @@ model BankTransaction {
   matchedRecordId   String?
   matchedAt         DateTime?
   matchedById       String?
+  /// BNK-D — true when Categorise auto-created the linked record
+  /// (Expense for Money Out, JournalEntry for Money In). Unmatch then
+  /// also deletes the linked record so the books don't accumulate
+  /// orphan entries. False for records the user matched manually
+  /// (preserves original BNK-C unmatch semantics).
+  matchAutoCreated  Boolean          @default(false)
   createdAt      DateTime         @default(now())
   organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   bankAccount    BankAccount      @relation(fields: [bankAccountId], references: [id])

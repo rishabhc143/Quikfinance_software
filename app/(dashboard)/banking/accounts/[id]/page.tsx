@@ -24,6 +24,8 @@ const MATCH_TYPE_LABEL: Record<string, string> = {
   PAYMENT_RECEIVED: "Payment Received",
   PAYMENT_MADE: "Payment Made",
   EXPENSE: "Expense",
+  // BNK-D — Categorise Money In creates a JournalEntry directly.
+  JOURNAL_ENTRY: "Journal Entry",
 };
 
 export const metadata = { title: "Bank Account" };
