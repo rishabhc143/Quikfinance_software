@@ -1,20 +1,28 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { format } from "date-fns";
 import { ArrowLeft, Target, Trash2 } from "lucide-react";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ActionFormButton } from "@/components/shared/action-form-button";
 import { formatMoney } from "@/lib/money";
 import {
   computeVariance,
   isCreditNaturalAccount,
-  monthlyBucketsForYear,
+  bucketsForFiscalYear,
+  isBudgetPeriod,
+  fiscalYearLabel,
+  type BudgetPeriod,
 } from "@/lib/accounting/budgets";
 import { deleteBudgetByIdAction } from "../actions";
+import { BudgetGridEditor } from "./budget-grid-editor";
 
 export const metadata = { title: "Budget" };
 
@@ -24,16 +32,22 @@ const TYPE_LABEL: Record<string, string> = {
   EXPENSE: "Expense",
   OTHER_EXPENSE: "Other Expense",
   COST_OF_GOODS_SOLD: "COGS",
+  ASSET: "Asset",
+  LIABILITY: "Liability",
+  EQUITY: "Equity",
+};
+
+const PERIOD_LABEL: Record<BudgetPeriod, string> = {
+  MONTHLY: "Monthly",
+  QUARTERLY: "Quarterly",
+  YEARLY: "Yearly",
 };
 
 /**
- * ACCT-D — Budget detail. Renders a Budget vs Actuals table:
- *   one row per budgeted account; columns are Annual Budget,
- *   YTD Actual, Variance, Variance %.
- *
- * Actuals are the sum of JE-line amounts for the budget's fiscal-
- * year window, signed per the account's natural side (income +
- * other_income are credit-natural, everything else debit-natural).
+ * ACCT-D.2 — Budget detail. The detail page now hosts an editable
+ * per-period grid (rows = budgeted accounts, columns = period
+ * buckets aligned to Budget.budgetPeriod). The read-only Budget vs
+ * Actuals comparison stays below the grid.
  */
 export default async function BudgetDetailPage({
   params,
@@ -47,7 +61,9 @@ export default async function BudgetDetailPage({
     include: {
       lines: {
         include: {
-          account: { select: { id: true, name: true, code: true, type: true } },
+          account: {
+            select: { id: true, name: true, code: true, type: true },
+          },
         },
         orderBy: [{ accountId: "asc" }, { periodStart: "asc" }],
       },
@@ -55,46 +71,61 @@ export default async function BudgetDetailPage({
   });
   if (!budget) notFound();
 
-  // Roll the 12-row monthly lines back into one (account → annual)
-  // bucket so the table is one row per account.
-  type Row = {
+  const period: BudgetPeriod = isBudgetPeriod(budget.budgetPeriod)
+    ? budget.budgetPeriod
+    : "MONTHLY";
+
+  const buckets = bucketsForFiscalYear(
+    budget.fiscalYear,
+    organization.fiscalYearStart,
+    period
+  );
+
+  // Group lines by account, mapping periodStart → bucket index.
+  // The buckets array is the source of truth for column order;
+  // each account row holds an `amounts: number[]` parallel to it.
+  type AcctMeta = {
     accountId: string;
-    accountCode: string | null;
     accountName: string;
+    accountCode: string | null;
     accountType: string;
-    budgeted: number;
+    amounts: number[]; // length = buckets.length
   };
-  const rowsByAccount = new Map<string, Row>();
+  const byAccount = new Map<string, AcctMeta>();
+  // Index lookup: ISO date of bucket.start → bucket index.
+  const indexByStart = new Map<string, number>();
+  buckets.forEach((b, i) =>
+    indexByStart.set(b.start.toISOString().slice(0, 10), i)
+  );
+
   for (const l of budget.lines) {
-    const existing = rowsByAccount.get(l.accountId);
-    const amount = Number(l.amount);
-    if (existing) {
-      existing.budgeted += amount;
-    } else {
-      rowsByAccount.set(l.accountId, {
-        accountId: l.accountId,
-        accountCode: l.account.code,
+    const key = l.account.id;
+    let row = byAccount.get(key);
+    if (!row) {
+      row = {
+        accountId: key,
         accountName: l.account.name,
+        accountCode: l.account.code,
         accountType: l.account.type,
-        budgeted: amount,
-      });
+        amounts: new Array(buckets.length).fill(0),
+      };
+      byAccount.set(key, row);
+    }
+    const dateKey = l.periodStart.toISOString().slice(0, 10);
+    const idx = indexByStart.get(dateKey);
+    if (idx !== undefined) {
+      row.amounts[idx] = Number(l.amount);
     }
   }
-  const accountRows = Array.from(rowsByAccount.values()).sort((a, b) =>
+  const accountRows = Array.from(byAccount.values()).sort((a, b) =>
     (a.accountCode ?? a.accountName).localeCompare(
       b.accountCode ?? b.accountName
     )
   );
 
-  // FY window — first bucket start, last bucket end.
-  const buckets = monthlyBucketsForYear(
-    budget.fiscalYear,
-    organization.fiscalYearStart
-  );
+  // ── Budget vs Actuals (read-only, below the grid) ──────────────
   const fyStart = buckets[0].start;
-  const fyEnd = buckets[11].end;
-
-  // One grouped query for actuals.
+  const fyEnd = buckets[buckets.length - 1].end;
   const accountIds = accountRows.map((r) => r.accountId);
   const sums = accountIds.length
     ? await db.journalEntryLine.groupBy({
@@ -117,26 +148,23 @@ export default async function BudgetDetailPage({
     });
   }
 
-  const tableRows = accountRows.map((r) => {
+  const compareRows = accountRows.map((r) => {
     const sum = sumsByAccount.get(r.accountId) ?? { debit: 0, credit: 0 };
     const isCredit = isCreditNaturalAccount(
       r.accountType as Parameters<typeof isCreditNaturalAccount>[0]
     );
     const actual = isCredit ? sum.credit - sum.debit : sum.debit - sum.credit;
-    const { variance, pct } = computeVariance(r.budgeted, actual);
-    // Coloring rule: for income (credit-natural) accounts, OVER budget
-    // is good (positive variance = green). For expense / COGS, OVER
-    // budget is bad (positive variance = red). We expose `goodSign`
-    // so the cell can pick a colour.
+    const budgeted = r.amounts.reduce((s, a) => s + a, 0);
+    const { variance, pct } = computeVariance(budgeted, actual);
     const goodSign: 1 | -1 = isCredit ? 1 : -1;
-    return { ...r, actual, variance, pct, goodSign };
+    return { ...r, budgeted, actual, variance, pct, goodSign };
   });
 
-  const totalBudgeted = tableRows.reduce((s, r) => s + r.budgeted, 0);
-  const totalActual = tableRows.reduce((s, r) => s + r.actual, 0);
+  const totalBudgeted = compareRows.reduce((s, r) => s + r.budgeted, 0);
+  const totalActual = compareRows.reduce((s, r) => s + r.actual, 0);
 
   return (
-    <div className="p-6 max-w-5xl mx-auto space-y-4">
+    <div className="p-6 max-w-7xl mx-auto space-y-4">
       <div className="flex items-center gap-2">
         <Button asChild variant="ghost" size="icon">
           <Link href="/accountant/budgets">
@@ -146,7 +174,14 @@ export default async function BudgetDetailPage({
         <Target className="h-5 w-5 text-muted-foreground" />
         <h1 className="text-xl font-semibold">{budget.name}</h1>
         <Badge variant="outline" className="font-mono text-xs">
-          FY{String(budget.fiscalYear).slice(-2)}
+          {fiscalYearLabel(
+            budget.fiscalYear,
+            organization.fiscalYearStart,
+            "short"
+          )}
+        </Badge>
+        <Badge variant="secondary" className="text-xs">
+          {PERIOD_LABEL[period]}
         </Badge>
         <div className="ml-auto">
           <ActionFormButton
@@ -166,8 +201,10 @@ export default async function BudgetDetailPage({
             <div>
               <div className="text-xs text-muted-foreground">Period</div>
               <div className="font-medium">
-                {format(fyStart, "dd MMM yyyy")} →{" "}
-                {format(fyEnd, "dd MMM yyyy")}
+                {fiscalYearLabel(
+                  budget.fiscalYear,
+                  organization.fiscalYearStart
+                )}
               </div>
             </div>
             <div>
@@ -188,12 +225,34 @@ export default async function BudgetDetailPage({
         </CardContent>
       </Card>
 
+      {/* ── Editable grid ─────────────────────────────────────── */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Budget Amounts</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {accountRows.length === 0 ? (
+            <div className="p-6 text-sm text-muted-foreground text-center">
+              No accounts on this budget.
+            </div>
+          ) : (
+            <BudgetGridEditor
+              budgetId={budget.id}
+              bucketLabels={buckets.map((b) => b.label)}
+              initialRows={accountRows}
+              currencyCode={organization.currency}
+            />
+          )}
+        </CardContent>
+      </Card>
+
+      {/* ── Budget vs Actuals (read-only) ─────────────────────── */}
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Budget vs Actuals</CardTitle>
         </CardHeader>
         <CardContent className="p-0">
-          {tableRows.length === 0 ? (
+          {compareRows.length === 0 ? (
             <div className="p-6 text-sm text-muted-foreground text-center">
               No accounts on this budget.
             </div>
@@ -204,19 +263,15 @@ export default async function BudgetDetailPage({
                   <th className="text-left p-3">Code</th>
                   <th className="text-left p-3">Account</th>
                   <th className="text-left p-3">Type</th>
-                  <th className="text-right p-3">Annual Budget</th>
-                  <th className="text-right p-3">YTD Actual</th>
+                  <th className="text-right p-3">Budgeted</th>
+                  <th className="text-right p-3">Actual (YTD)</th>
                   <th className="text-right p-3">Variance</th>
                   <th className="text-right p-3">Variance %</th>
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {tableRows.map((r) => {
+                {compareRows.map((r) => {
                   const varSign = Math.sign(r.variance) as 0 | 1 | -1;
-                  // Colour: a "good" variance for this account type
-                  // is green; the opposite is red. Zero is neutral.
-                  // varSign==0 falls through both checks to the
-                  // empty class (no colouring).
                   const isGood = varSign === r.goodSign;
                   const isBad = varSign === -r.goodSign;
                   const varClass = isGood

@@ -5,6 +5,10 @@ import {
   isCreditNaturalAccount,
   computeVariance,
   BUDGETABLE_ACCOUNT_TYPES,
+  bucketsForFiscalYear,
+  bucketsCountForPeriod,
+  fiscalYearLabel,
+  isBudgetPeriod,
 } from "@/lib/accounting/budgets";
 
 /**
@@ -125,22 +129,103 @@ describe("computeVariance", () => {
 // ─────────────── BUDGETABLE_ACCOUNT_TYPES ───────────────
 
 describe("BUDGETABLE_ACCOUNT_TYPES", () => {
-  it("pins the v1 P&L-only restriction", () => {
-    // The form + the action validator agree on this list. A change
-    // here is a deliberate widening that should require a test
-    // update.
+  it("includes P&L + balance-sheet types (ACCT-D.2 widened set)", () => {
+    // The form + the action validator agree on this list. ACCT-D.2
+    // added the balance-sheet trio so the Zoho-parity form's
+    // "Include Asset, Liability, and Equity Accounts in Budget"
+    // expandable section actually has accounts to pick.
     expect([...BUDGETABLE_ACCOUNT_TYPES]).toEqual([
       "INCOME",
       "OTHER_INCOME",
       "EXPENSE",
       "OTHER_EXPENSE",
       "COST_OF_GOODS_SOLD",
+      "ASSET",
+      "LIABILITY",
+      "EQUITY",
     ]);
   });
+});
 
-  it("does NOT include balance-sheet types (asset/liability/equity)", () => {
-    expect(BUDGETABLE_ACCOUNT_TYPES).not.toContain("ASSET");
-    expect(BUDGETABLE_ACCOUNT_TYPES).not.toContain("LIABILITY");
-    expect(BUDGETABLE_ACCOUNT_TYPES).not.toContain("EQUITY");
+// ─────────────── bucketsCountForPeriod ───────────────
+
+describe("bucketsCountForPeriod", () => {
+  it("returns 12 / 4 / 1 for the three budget periods", () => {
+    expect(bucketsCountForPeriod("MONTHLY")).toBe(12);
+    expect(bucketsCountForPeriod("QUARTERLY")).toBe(4);
+    expect(bucketsCountForPeriod("YEARLY")).toBe(1);
+  });
+});
+
+// ─────────────── isBudgetPeriod ───────────────
+
+describe("isBudgetPeriod", () => {
+  it("accepts the three canonical values and rejects everything else", () => {
+    expect(isBudgetPeriod("MONTHLY")).toBe(true);
+    expect(isBudgetPeriod("QUARTERLY")).toBe(true);
+    expect(isBudgetPeriod("YEARLY")).toBe(true);
+    expect(isBudgetPeriod("monthly")).toBe(false);
+    expect(isBudgetPeriod("WEEKLY")).toBe(false);
+    expect(isBudgetPeriod("")).toBe(false);
+  });
+});
+
+// ─────────────── bucketsForFiscalYear ───────────────
+
+describe("bucketsForFiscalYear", () => {
+  it("MONTHLY: 12 buckets, label like 'Apr 26'", () => {
+    const buckets = bucketsForFiscalYear(2026, 4, "MONTHLY");
+    expect(buckets).toHaveLength(12);
+    expect(buckets[0].label).toBe("Apr 26");
+    expect(buckets[11].label).toBe("Mar 27");
+    expect(buckets[0].start.toISOString().slice(0, 10)).toBe("2026-04-01");
+    expect(buckets[11].end.toISOString().slice(0, 10)).toBe("2027-03-31");
+  });
+
+  it("QUARTERLY: 4 buckets, each spans 3 months, labels Q1..Q4", () => {
+    const buckets = bucketsForFiscalYear(2026, 4, "QUARTERLY");
+    expect(buckets).toHaveLength(4);
+    expect(buckets.map((b) => b.label)).toEqual(["Q1", "Q2", "Q3", "Q4"]);
+    // Q1 = Apr-Jun 2026
+    expect(buckets[0].start.toISOString().slice(0, 10)).toBe("2026-04-01");
+    expect(buckets[0].end.toISOString().slice(0, 10)).toBe("2026-06-30");
+    // Q4 = Jan-Mar 2027 (last quarter of FY)
+    expect(buckets[3].start.toISOString().slice(0, 10)).toBe("2027-01-01");
+    expect(buckets[3].end.toISOString().slice(0, 10)).toBe("2027-03-31");
+  });
+
+  it("YEARLY: 1 bucket spanning the whole FY, label is the short FY tag", () => {
+    const buckets = bucketsForFiscalYear(2026, 4, "YEARLY");
+    expect(buckets).toHaveLength(1);
+    expect(buckets[0].start.toISOString().slice(0, 10)).toBe("2026-04-01");
+    expect(buckets[0].end.toISOString().slice(0, 10)).toBe("2027-03-31");
+    expect(buckets[0].label).toBe("FY26-27");
+  });
+
+  it("YEARLY on a calendar-year FY uses a single-year FY tag", () => {
+    const buckets = bucketsForFiscalYear(2026, 1, "YEARLY");
+    expect(buckets[0].label).toBe("FY26");
+  });
+});
+
+// ─────────────── fiscalYearLabel ───────────────
+
+describe("fiscalYearLabel", () => {
+  it("Indian FY (April start) renders as 'Apr 2026 - Mar 2027'", () => {
+    expect(fiscalYearLabel(2026, 4)).toBe("Apr 2026 - Mar 2027");
+  });
+
+  it("Calendar-year FY (January start) renders inside a single year", () => {
+    expect(fiscalYearLabel(2026, 1)).toBe("Jan 2026 - Dec 2026");
+  });
+
+  it("'short' mode returns the FY tag", () => {
+    expect(fiscalYearLabel(2026, 4, "short")).toBe("FY26-27");
+    expect(fiscalYearLabel(2026, 1, "short")).toBe("FY26");
+  });
+
+  it("rejects an out-of-range start month", () => {
+    expect(() => fiscalYearLabel(2026, 0)).toThrow();
+    expect(() => fiscalYearLabel(2026, 13)).toThrow();
   });
 });

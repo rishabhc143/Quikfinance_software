@@ -10,12 +10,18 @@ import {
 } from "@/components/shared/data-table";
 import { Badge } from "@/components/ui/badge";
 import { formatMoney } from "@/lib/money";
+import {
+  fiscalYearLabel,
+  isBudgetPeriod,
+  type BudgetPeriod,
+} from "@/lib/accounting/budgets";
 
 export const metadata = { title: "Budgets" };
 
 const COLUMNS: ColumnDef[] = [
   { key: "name", header: "Name", sortable: true },
   { key: "year", header: "Fiscal Year" },
+  { key: "period", header: "Period" },
   { key: "accounts", header: "Accounts", align: "right" },
   { key: "annual", header: "Annual Total", align: "right" },
   { key: "status", header: "Status" },
@@ -24,6 +30,12 @@ const COLUMNS: ColumnDef[] = [
 const STATUS_LABEL: Record<string, string> = {
   ACTIVE: "Active",
   ARCHIVED: "Archived",
+};
+
+const PERIOD_LABEL: Record<BudgetPeriod, string> = {
+  MONTHLY: "Monthly",
+  QUARTERLY: "Quarterly",
+  YEARLY: "Yearly",
 };
 
 /**
@@ -67,9 +79,12 @@ export default async function BudgetsPage({
   ]);
 
   const dataRows = rows.map((r) => {
-    // 12 rows per account; account count = distinct accountId.
+    // N rows per account (12 / 4 / 1 by period); account count = distinct accountId.
     const accountIds = new Set(r.lines.map((l) => l.accountId));
     const annual = r.lines.reduce((s, l) => s + Number(l.amount), 0);
+    const period: BudgetPeriod = isBudgetPeriod(r.budgetPeriod)
+      ? r.budgetPeriod
+      : "MONTHLY";
     return {
       id: r.id,
       cells: [
@@ -80,8 +95,11 @@ export default async function BudgetsPage({
         >
           {r.name}
         </Link>,
-        <span key="y" className="font-mono text-sm">
-          FY{String(r.fiscalYear).slice(-2)}
+        <span key="y" className="font-mono text-xs text-muted-foreground">
+          {fiscalYearLabel(r.fiscalYear, organization.fiscalYearStart, "short")}
+        </span>,
+        <span key="p" className="text-xs">
+          {PERIOD_LABEL[period]}
         </span>,
         <span key="c" className="tabular-nums">
           {accountIds.size}
