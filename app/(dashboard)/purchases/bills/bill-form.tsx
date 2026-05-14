@@ -37,7 +37,7 @@ import type { BillInput } from "@/lib/validations/bill";
  *   2. customerColumnVisible=true on the line items table so each
  *      line can optionally mark itself "billable to <customer>".
  *      Those lines surface on the customer's next Invoice via
- *      <BillableExpensesBanner>.
+ *      <BillableExpensesPanel>.
  *   3. No "Save and Send" button — bills are never emailed per the
  *      master prompt. Buttons are Save as Draft / Save as Open /
  *      Cancel. The Notes field carries the marker that it is

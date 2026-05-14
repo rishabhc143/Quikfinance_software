@@ -12,7 +12,7 @@ import { z } from "zod";
  *     vendors can.
  *   - `billableToCustomerId` per line — when set, the line is owed
  *     back from a specific customer and will surface on their next
- *     Invoice via <BillableExpensesBanner>.
+ *     Invoice via <BillableExpensesPanel>.
  *   - `documentTax` accepts both TDS and TCS like PO (TDS deducts,
  *     TCS adds at source).
  *   - No `deliveryAddressMode` (irrelevant — the bill is just an

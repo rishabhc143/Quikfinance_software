@@ -215,7 +215,7 @@ export async function applyCreditsToBillAction(input: {
  *   - Edit on a non-Draft bill is allowed for header fields, but
  *     PAID bills block edit (payments would orphan).
  *   - Each save persists `billableToCustomerId` per line so the
- *     <BillableExpensesBanner> on the Invoice form can pick them up.
+ *     <BillableExpensesPanel> on the Invoice form can pick them up.
  *   - When a Bill is created with `purchaseOrderId` set, the source
  *     PO's status flips ISSUED/PARTIALLY_BILLED → BILLED in the same
  *     action (acceptance #5).

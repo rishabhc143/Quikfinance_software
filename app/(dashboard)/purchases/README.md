@@ -37,7 +37,7 @@ These come from the master prompt's `<architectural_decisions_locked>` block and
     - `accountColumnVisible: 'inline' | 'expandable' | 'hidden'` (default `'expandable'`; PO + Bill use `'inline'`)
     - `customerColumnVisible: boolean` (default `false`; Bill + Recurring Bill + Expense use `true` — exposes `lineItem.billableToCustomerId`)
 6. **Vendor Advance is a tab on the Payments Made form**, not a separate document. `PaymentMade.paymentType: BILL_PAYMENT | VENDOR_ADVANCE`. Same table, different allocation targets.
-7. **Billable expenses flow**: when a Bill or Expense line item has `billableToCustomerId` set, it becomes available to add to the next Invoice for that customer via `<BillableExpensesBanner>`. Linked back via `BillableExpenseUsage`.
+7. **Billable expenses flow**: when a Bill or Expense line item has `billableToCustomerId` set, it becomes available to add to the next Invoice for that customer via `<BillableExpensesPanel>` (wired on `/sales/invoices/new`). Linked back via `BillableExpenseUsage`.
 8. **Bills are NEVER emailed** — no "Save and Send" button. Save as Draft / Save as Open / Cancel.
 9. **Purchase Orders ARE emailed to vendors** — Save as Draft / Save and Send / Cancel, mirroring the Invoice send flow.
 10. **Partner-bank integration** is scaffolded as a `BankIntegration` model + `/settings/integrations/bill-pay-banks` page with "Coming soon" empty state. No actual API integration in v1.

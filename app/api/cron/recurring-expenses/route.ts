@@ -14,7 +14,7 @@ export const dynamic = "force-dynamic";
  *
  *   "Generate Expense rows from due RecurringExpense profiles. If
  *    isBillable=true and customerId set, expense becomes available
- *    in <BillableExpensesBanner> on the next invoice. Idempotent."
+ *    in <BillableExpensesPanel> on the next invoice. Idempotent."
  *
  * vercel.json schedule: `30 2 * * *` (daily at 02:30 UTC, fifteen
  * minutes after the bills cron so any timing differences settle).
