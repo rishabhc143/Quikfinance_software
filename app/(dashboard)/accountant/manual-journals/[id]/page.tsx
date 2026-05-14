@@ -1,7 +1,16 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { format } from "date-fns";
-import { ArrowLeft, FileText, Trash2, RotateCcw, Pencil, Send, Repeat } from "lucide-react";
+import {
+  ArrowLeft,
+  FileText,
+  Trash2,
+  RotateCcw,
+  Pencil,
+  Send,
+  Repeat,
+  Paperclip,
+} from "lucide-react";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
 import { Button } from "@/components/ui/button";
@@ -81,6 +90,16 @@ export default async function ManualJournalDetailPage({
               reportingTag: { select: { id: true, name: true, color: true } },
             },
           },
+        },
+      },
+      attachments: {
+        orderBy: { createdAt: "asc" },
+        select: {
+          id: true,
+          fileName: true,
+          fileUrl: true,
+          fileSize: true,
+          mimeType: true,
         },
       },
     },
@@ -431,6 +450,42 @@ export default async function ManualJournalDetailPage({
           )}
         </CardContent>
       </Card>
+
+      {header.attachments.length > 0 ? (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base inline-flex items-center gap-2">
+              <Paperclip className="h-4 w-4" /> Attachments
+              <span className="text-xs text-muted-foreground font-normal ml-1">
+                ({header.attachments.length})
+              </span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            <ul className="divide-y text-sm">
+              {header.attachments.map((a) => (
+                <li
+                  key={a.id}
+                  className="flex items-center justify-between p-3"
+                >
+                  <a
+                    href={a.fileUrl}
+                    target="_blank"
+                    rel="noopener"
+                    className="hover:underline truncate inline-flex items-center gap-2"
+                  >
+                    <Paperclip className="h-3.5 w-3.5 text-muted-foreground" />
+                    {a.fileName}
+                  </a>
+                  <span className="text-xs text-muted-foreground tabular-nums whitespace-nowrap ml-3">
+                    {(a.fileSize / 1024).toFixed(0)} KB
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
+      ) : null}
 
       {reverseJe && reverseJe.lines.length > 0 ? (
         <Card className="border-amber-500/40 bg-amber-50/30 dark:bg-amber-950/10">

@@ -1779,10 +1779,29 @@ model ManualJournal {
   /// ledger query path.
   lines          ManualJournalLine[]
   recurringManualJournal RecurringManualJournal? @relation(fields: [recurringManualJournalId], references: [id], onDelete: SetNull)
+  /// ACCT-A.3.c — Up to 5 × 10 MB files per journal. Cascades on
+  /// delete so attachments don't outlive their parent header.
+  attachments    ManualJournalAttachment[]
 
   @@unique([organizationId, number])
   @@index([organizationId, status], name: "ManualJournal_org_status_idx")
   @@index([recurringManualJournalId])
+}
+
+/// ACCT-A.3.c — Mirrors CreditNoteAttachment. Data-URL based for
+/// v1; switches to real blob storage when /api/upload graduates
+/// from its dev stub.
+model ManualJournalAttachment {
+  id              String        @id @default(cuid())
+  manualJournalId String
+  fileName        String
+  fileUrl         String        @db.Text
+  fileSize        Int
+  mimeType        String
+  createdAt       DateTime      @default(now())
+  manualJournal   ManualJournal @relation(fields: [manualJournalId], references: [id], onDelete: Cascade)
+
+  @@index([manualJournalId])
 }
 
 /// ACCT-A.4.c — "Make Recurring" profile for Manual Journals.
