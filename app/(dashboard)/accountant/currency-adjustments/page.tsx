@@ -142,19 +142,10 @@ export default async function BaseCurrencyAdjustmentsPage({
     <div className="p-6 max-w-6xl mx-auto space-y-4">
       <div className="flex items-center justify-between gap-4">
         <h1 className="text-xl font-semibold">Base Currency Adjustments</h1>
-        <div className="flex items-center gap-3">
-          <Link
-            href="#"
-            className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
-            aria-disabled
-          >
-            <span className="text-xs">👤</span> Find Accountants
-          </Link>
-          <NewBaseCurrencyAdjustmentButton
-            accounts={accounts}
-            baseCurrency={organization.currency}
-          />
-        </div>
+        <NewBaseCurrencyAdjustmentButton
+          accounts={accounts}
+          baseCurrency={organization.currency}
+        />
       </div>
 
       <div>
