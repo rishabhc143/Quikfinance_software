@@ -60,6 +60,12 @@ export default async function ManualJournalsPage({
       : {}),
   };
 
+  // Explicit `select` so the list page only depends on the
+  // columns it actually renders. Without this, Prisma's default
+  // SELECT-all generates a query against every column declared
+  // in schema.prisma — and a missing column in prod (forgotten
+  // migration) tanks the whole page rather than just hiding a
+  // not-yet-shipped feature. See plan: hotfix Manual Journals.
   const [total, rows] = await Promise.all([
     db.manualJournal.count({ where }),
     db.manualJournal.findMany({
@@ -67,6 +73,15 @@ export default async function ManualJournalsPage({
       orderBy: { [sort]: dir },
       skip: (page - 1) * pageSize,
       take: pageSize,
+      select: {
+        id: true,
+        number: true,
+        date: true,
+        status: true,
+        referenceNumber: true,
+        notes: true,
+        currency: true,
+      },
     }),
   ]);
 
