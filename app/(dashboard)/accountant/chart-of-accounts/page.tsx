@@ -6,6 +6,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ActionFormButton } from "@/components/shared/action-form-button";
+import { seedDefaultCoaIfEmpty } from "@/lib/accounting/seed-default-coa";
 import {
   archiveAccountByIdAction,
   restoreAccountByIdAction,
@@ -43,6 +44,11 @@ export default async function ChartOfAccountsPage({
 }) {
   const { organization } = await requireOrganization();
   const filter = filterFromSearch(searchParams?.filter);
+
+  // ACCT-E — Seed the Zoho-parity default CoA the first time an
+  // org lands on this page. No-op once the org has any non-SYS
+  // accounts; race-safe via skipDuplicates on the unique constraint.
+  await seedDefaultCoaIfEmpty(organization.id);
 
   const where = {
     organizationId: organization.id,
@@ -138,7 +144,17 @@ export default async function ChartOfAccountsPage({
                           {a.code}
                         </span>
                       )}
-                      <span className="flex-1 truncate">{a.name}</span>
+                      <Link
+                        href={`/accountant/chart-of-accounts/${a.id}`}
+                        className="flex-1 truncate text-primary hover:underline"
+                      >
+                        {a.name}
+                      </Link>
+                      {a.subType && (
+                        <span className="text-xs text-muted-foreground hidden md:inline truncate max-w-[180px]">
+                          {a.subType}
+                        </span>
+                      )}
                       {isSystemAccount ? (
                         <Badge
                           variant="outline"
@@ -154,7 +170,7 @@ export default async function ChartOfAccountsPage({
                         </Badge>
                       ) : null}
                       {a.description && (
-                        <span className="text-xs text-muted-foreground truncate max-w-[200px]">
+                        <span className="text-xs text-muted-foreground truncate max-w-[180px] hidden lg:inline">
                           {a.description}
                         </span>
                       )}

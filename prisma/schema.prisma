@@ -252,6 +252,11 @@ model ChartOfAccount {
   code           String?
   name           String
   type           AccountType
+  /// ACCT-E — Zoho-parity granular label (e.g. "Other Current Asset",
+  /// "Cash", "Fixed Asset", "Non Current Liability", "Stock"). The
+  /// CoA list page shows this when set and falls back to the broad
+  /// `type` label otherwise. Nullable: pre-ACCT-E rows just use type.
+  subType        String?
   parentId       String?
   description    String?
   isActive       Boolean          @default(true)
