@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Plus, MoreHorizontal } from "lucide-react";
+import { MoreHorizontal } from "lucide-react";
 import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
@@ -8,6 +8,7 @@ import { seedDefaultCoaIfEmpty } from "@/lib/accounting/seed-default-coa";
 import { CoaTable } from "./coa-table";
 import { StatusSwitcher } from "./status-switcher";
 import { CoaSearchBox } from "./search-box";
+import { NewAccountDialog } from "./new-account-dialog";
 
 export const metadata = { title: "Chart of Accounts" };
 
@@ -102,11 +103,7 @@ export default async function ChartOfAccountsPage({
         />
         <div className="ml-auto flex items-center gap-2">
           <CoaSearchBox initial={q} />
-          <Button asChild>
-            <Link href="/accountant/chart-of-accounts/new">
-              <Plus className="h-4 w-4 mr-1" /> New
-            </Link>
-          </Button>
+          <NewAccountDialog />
           <Button
             asChild
             variant="outline"
@@ -115,7 +112,7 @@ export default async function ChartOfAccountsPage({
           >
             {/* Reserved for future bulk-import / export / settings.
                 Renders as a passthrough link to a "More" page that
-                doesn't exist yet → coming in ACCT-E.3. */}
+                doesn't exist yet → coming in a follow-up. */}
             <Link
               href="/accountant/chart-of-accounts"
               aria-disabled
