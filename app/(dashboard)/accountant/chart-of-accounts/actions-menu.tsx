@@ -21,6 +21,7 @@ import {
   DropdownMenuPortal,
 } from "@/components/ui/dropdown-menu";
 import { ImportCoaDialog } from "./import-dialog";
+import { ExportCoaDialog } from "./export-dialog";
 
 /**
  * ACCT-E.4 — Chart of Accounts "More actions" menu.
@@ -46,17 +47,19 @@ const SORT_OPTIONS: Array<{ key: SortKey; label: string }> = [
 
 export function CoaActionsMenu({
   currentSort,
-  exportHref,
+  exportScope,
 }: {
   /** Current sort encoded as `<key>:<dir>` or null when default. */
   currentSort: string | null;
-  /** Pre-built `/export?…` href the Export option links to. */
-  exportHref: string;
+  /** `?status=…&q=…` from the list page, passed to the export
+   *  dialog so the download honors the current view. */
+  exportScope: string;
 }) {
   const router = useRouter();
   const pathname = usePathname();
   const search = useSearchParams();
   const [importOpen, setImportOpen] = React.useState(false);
+  const [exportOpen, setExportOpen] = React.useState(false);
 
   const [curKey, curDir] = (currentSort ?? "type:asc").split(":") as [
     SortKey,
@@ -129,26 +132,19 @@ export function CoaActionsMenu({
             Import Chart of Accounts
           </DropdownMenuItem>
 
-          <DropdownMenuSub>
-            <DropdownMenuSubTrigger>
-              <Download className="h-3.5 w-3.5 mr-2" />
-              Export
-            </DropdownMenuSubTrigger>
-            <DropdownMenuPortal>
-              <DropdownMenuSubContent>
-                <DropdownMenuItem asChild>
-                  <a href={exportHref}>
-                    <Download className="h-3.5 w-3.5 mr-2" />
-                    Export to CSV
-                  </a>
-                </DropdownMenuItem>
-              </DropdownMenuSubContent>
-            </DropdownMenuPortal>
-          </DropdownMenuSub>
+          <DropdownMenuItem onClick={() => setExportOpen(true)}>
+            <Download className="h-3.5 w-3.5 mr-2" />
+            Export
+          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
 
       <ImportCoaDialog open={importOpen} onOpenChange={setImportOpen} />
+      <ExportCoaDialog
+        open={exportOpen}
+        onOpenChange={setExportOpen}
+        scopeQuery={exportScope}
+      />
     </>
   );
 }

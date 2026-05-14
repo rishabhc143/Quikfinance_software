@@ -11,10 +11,12 @@ export const dynamic = "force-dynamic";
 /**
  * ACCT-E.4 — Chart of Accounts CSV export.
  *
- * GET /accountant/chart-of-accounts/export?status=&q=
+ * GET /accountant/chart-of-accounts/export?status=&q=&format=&decimal=
  *
  * Honors the same filters the list page exposes so what the user
- * sees on screen is what they get in the CSV.
+ * sees on screen is what they get in the CSV. The `format` and
+ * `decimal` params come from the export-dialog UI; CSV is the only
+ * format wired for v1 (XLS/XLSX coming later).
  */
 export async function GET(req: NextRequest) {
   const { organization } = await requireOrganization();
@@ -22,6 +24,18 @@ export async function GET(req: NextRequest) {
 
   const status = url.searchParams.get("status");
   const q = (url.searchParams.get("q") ?? "").trim();
+  // The format + decimal params arrive here when the dialog drives
+  // the download. CSV is the only honored format today; XLS/XLSX
+  // are reserved for a follow-up. Decimal formatting is reserved
+  // for the future Balance column — CoA rows have no numeric
+  // values today, so it doesn't affect the output yet.
+  const format = url.searchParams.get("format") ?? "csv";
+  if (format !== "csv") {
+    return new Response(
+      `Export format "${format}" not yet supported. Pick CSV for now.`,
+      { status: 400 }
+    );
+  }
 
   const where: Prisma.ChartOfAccountWhereInput = {
     organizationId: organization.id,
