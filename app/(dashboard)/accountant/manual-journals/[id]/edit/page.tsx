@@ -37,6 +37,15 @@ export default async function EditManualJournalPage({
           reportingTagLinks: { select: { reportingTagId: true } },
         },
       },
+      attachments: {
+        orderBy: { createdAt: "asc" },
+        select: {
+          fileName: true,
+          fileUrl: true,
+          fileSize: true,
+          mimeType: true,
+        },
+      },
     },
   });
   if (!header) notFound();
@@ -86,6 +95,7 @@ export default async function EditManualJournalPage({
       | "ACCRUAL_ONLY"
       | "CASH_ONLY",
     currency: header.currency ?? organization.currency,
+    attachments: header.attachments,
     lines:
       header.lines.length > 0
         ? header.lines.map((l) => ({

@@ -11,6 +11,10 @@ import { Card, CardContent } from "@/components/ui/card";
 import { formatMoney } from "@/lib/money";
 import { toast } from "sonner";
 import {
+  AttachFilesField,
+  type AttachedFile,
+} from "@/components/shared/attach-files-field";
+import {
   createManualJournalAndRedirectAction,
   updateManualJournalAndRedirectAction,
   type ManualJournalInput,
@@ -43,6 +47,8 @@ export type ManualJournalFormInitialValues = {
   reportingMethod: ReportingMethod;
   currency: string;
   lines: Line[];
+  /** ACCT-A.3.c — initial attachment list (Edit-mode pre-populate). */
+  attachments?: AttachedFile[];
 };
 
 type Props = {
@@ -141,6 +147,10 @@ export function ManualJournalForm({
         ]
   );
   const [busy, setBusy] = React.useState<null | "draft" | "publish">(null);
+  // ACCT-A.3.c — attachment state (data-URL based for v1).
+  const [attachments, setAttachments] = React.useState<AttachedFile[]>(
+    initialValues?.attachments ?? []
+  );
 
   const totalDebit = lines.reduce(
     (s, l) => s + (Number.isFinite(l.debit) ? l.debit : 0),
@@ -207,6 +217,7 @@ export function ManualJournalForm({
         credit: l.credit,
         description: l.description || null,
       })),
+      attachments,
     };
   }
 
@@ -554,6 +565,21 @@ export function ManualJournalForm({
               </tr>
             </tfoot>
           </table>
+        </CardContent>
+      </Card>
+
+      {/* ACCT-A.3.c — Attachments (max 5 × 10 MB). Lives below the
+          lines table so the form scrolls naturally from header →
+          lines → files → submit. */}
+      <Card>
+        <CardContent className="pt-6">
+          <AttachFilesField
+            initial={attachments}
+            onChange={setAttachments}
+            maxFiles={5}
+            maxSizeMb={10}
+            label="Attach files to Manual Journal"
+          />
         </CardContent>
       </Card>
 

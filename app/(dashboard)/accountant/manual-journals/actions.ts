@@ -14,6 +14,13 @@ import {
   manualJournalReference,
   manualJournalReverseReference,
 } from "@/lib/accounting/manual-journal-publish";
+import {
+  manualJournalAttachmentSchema,
+  manualJournalAttachmentsSchema,
+} from "@/lib/accounting/manual-journal-attachments";
+// Note: cap constants live in lib/accounting/manual-journal-attachments.ts.
+// "use server" files can only export async functions, so we don't
+// re-export them through this module — import direct from lib/ where needed.
 
 /**
  * ACCT-A.3 — Manual Journals with full DRAFT → PUBLISHED lifecycle.
@@ -88,6 +95,7 @@ const createSchema = z.object({
   publishReverseOnlyOnDate: z.coerce.boolean().default(false),
   saveAsDraft: z.coerce.boolean().default(false),
   lines: z.array(lineSchema).min(2, "Need at least two lines."),
+  attachments: manualJournalAttachmentsSchema,
 });
 
 export type ManualJournalInput = z.input<typeof createSchema>;
@@ -169,6 +177,31 @@ async function verifyLineDimsOwnership(
     }
   }
   return null;
+}
+
+/**
+ * ACCT-A.3.c — Replace the attachment set on a Manual Journal.
+ * Delete-all-then-create keeps the editing semantics simple: the
+ * form sends back the full final attachment list (existing + new
+ * + minus any removed), and we re-materialise the table to match.
+ * Runs inside the caller's transaction so the swap is atomic.
+ */
+async function replaceManualJournalAttachments(
+  tx: Prisma.TransactionClient,
+  manualJournalId: string,
+  attachments: z.infer<typeof manualJournalAttachmentSchema>[]
+): Promise<void> {
+  await tx.manualJournalAttachment.deleteMany({ where: { manualJournalId } });
+  if (attachments.length === 0) return;
+  await tx.manualJournalAttachment.createMany({
+    data: attachments.map((a) => ({
+      manualJournalId,
+      fileName: a.fileName,
+      fileUrl: a.fileUrl,
+      fileSize: a.fileSize,
+      mimeType: a.mimeType,
+    })),
+  });
 }
 
 /**
@@ -328,6 +361,10 @@ export async function createManualJournalAction(
     });
     // Always persist the editable line copy.
     await replaceManualJournalLines(tx, header.id, normLines);
+    // ACCT-A.3.c — attachments live alongside both DRAFT and
+    // PUBLISHED journals; replace-all gives the form simple
+    // "send me the final list" semantics.
+    await replaceManualJournalAttachments(tx, header.id, data.attachments);
 
     if (!data.saveAsDraft) {
       await postJournalEntries(
@@ -441,6 +478,7 @@ export async function updateManualJournalAction(
       },
     });
     await replaceManualJournalLines(tx, id, normLines);
+    await replaceManualJournalAttachments(tx, id, data.attachments);
 
     if (!data.saveAsDraft) {
       // Save and Publish from the edit form: post JEs inline and
