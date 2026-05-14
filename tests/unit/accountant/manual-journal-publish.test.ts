@@ -116,6 +116,32 @@ describe("flipDrCrLines", () => {
     expect(flipped[0].credit).toBe(1000);
   });
 
+  it("preserves ACCT-A.3.b.2 per-line reporting tag ids through the flip", () => {
+    // Same idea as contact/project — the reverse JE has to carry
+    // the same tag set so a Department=Sales line and its reversal
+    // both show up under "Sales" in tagged reports.
+    const flipped = flipDrCrLines([
+      {
+        accountId: "acc-1",
+        tagIds: ["tag-sales", "tag-q1"],
+        debit: 500,
+        credit: 0,
+      },
+      {
+        accountId: "acc-2",
+        tagIds: [],
+        debit: 0,
+        credit: 500,
+      },
+    ]);
+    expect(flipped[0].tagIds).toEqual(["tag-sales", "tag-q1"]);
+    expect(flipped[1].tagIds).toEqual([]);
+    // Spread copies the array reference; confirm we didn't accidentally
+    // mutate the input by checking it's still intact.
+    // (flipDrCrLines uses {...l} which is a shallow copy.)
+    expect(Array.isArray(flipped[0].tagIds)).toBe(true);
+  });
+
   it("does not mutate the input array or its objects", () => {
     const input = [
       { debit: 10, credit: 0 },

@@ -61,6 +61,8 @@ const lineSchema = z.object({
     .nullable()
     .optional()
     .transform((v) => (v === "" || v === undefined ? null : v)),
+  /** ACCT-A.3.b.2 — many-to-many reporting tags. Pass tag ids. */
+  tagIds: z.array(z.string()).optional().default([]),
   debit: z.coerce.number().nonnegative().default(0),
   credit: z.coerce.number().nonnegative().default(0),
   description: z.string().max(500).optional().nullable(),
@@ -94,6 +96,8 @@ type NormalisedLine = {
   accountId: string;
   contactId: string | null;
   projectId: string | null;
+  /** Distinct, valid reporting-tag ids for this line. */
+  tagIds: string[];
   debit: number;
   credit: number;
   description: string | null;
@@ -135,6 +139,7 @@ async function verifyLineDimsOwnership(
   const projectIds = Array.from(
     new Set(lines.map((l) => l.projectId).filter((v): v is string => !!v))
   );
+  const tagIds = Array.from(new Set(lines.flatMap((l) => l.tagIds)));
 
   if (contactIds.length > 0) {
     const found = await client.contact.findMany({
@@ -154,6 +159,15 @@ async function verifyLineDimsOwnership(
       return "Some projects not found in this org.";
     }
   }
+  if (tagIds.length > 0) {
+    const found = await client.reportingTag.findMany({
+      where: { id: { in: tagIds }, organizationId },
+      select: { id: true },
+    });
+    if (found.length !== tagIds.length) {
+      return "Some reporting tags not found in this org.";
+    }
+  }
   return null;
 }
 
@@ -166,20 +180,34 @@ async function replaceManualJournalLines(
   manualJournalId: string,
   lines: NormalisedLine[]
 ): Promise<void> {
+  // Cascade drops the existing line rows AND their tag links via
+  // the join table's ON DELETE CASCADE.
   await tx.manualJournalLine.deleteMany({ where: { manualJournalId } });
   if (lines.length === 0) return;
-  await tx.manualJournalLine.createMany({
-    data: lines.map((l, i) => ({
-      manualJournalId,
-      position: i,
-      accountId: l.accountId,
-      contactId: l.contactId,
-      projectId: l.projectId,
-      debit: l.debit,
-      credit: l.credit,
-      description: l.description,
-    })),
-  });
+  // Nested create lets us write the reporting-tag join rows in
+  // the same statement per line. (createMany doesn't support
+  // nested writes; per-line create is fine for v1 throughput —
+  // typical manual journals have < 20 lines.)
+  for (let i = 0; i < lines.length; i++) {
+    const l = lines[i];
+    await tx.manualJournalLine.create({
+      data: {
+        manualJournalId,
+        position: i,
+        accountId: l.accountId,
+        contactId: l.contactId,
+        projectId: l.projectId,
+        debit: l.debit,
+        credit: l.credit,
+        description: l.description,
+        reportingTagLinks: l.tagIds.length
+          ? {
+              create: l.tagIds.map((reportingTagId) => ({ reportingTagId })),
+            }
+          : undefined,
+      },
+    });
+  }
 }
 
 /**
@@ -199,43 +227,49 @@ async function postJournalEntries(
   },
   lines: NormalisedLine[]
 ): Promise<void> {
+  // Nested write per-line so we can attach reporting-tag links
+  // (a join table) in the same round-trip.
+  const primaryLineCreates = lines.map((l) => ({
+    accountId: l.accountId,
+    contactId: l.contactId,
+    projectId: l.projectId,
+    debit: l.debit,
+    credit: l.credit,
+    description: l.description,
+    reportingTagLinks: l.tagIds.length
+      ? { create: l.tagIds.map((reportingTagId) => ({ reportingTagId })) }
+      : undefined,
+  }));
   await tx.journalEntry.create({
     data: {
       organizationId,
       date: header.date,
       reference: manualJournalReference(header.id),
       notes: header.notes ?? `Manual journal ${header.number}`,
-      lines: {
-        create: lines.map((l) => ({
-          accountId: l.accountId,
-          contactId: l.contactId,
-          projectId: l.projectId,
-          debit: l.debit,
-          credit: l.credit,
-          description: l.description,
-        })),
-      },
+      lines: { create: primaryLineCreates },
     },
   });
 
   if (header.reverseJournalDate) {
     const reversed = flipDrCrLines(lines);
+    const reverseLineCreates = reversed.map((l) => ({
+      accountId: l.accountId,
+      contactId: l.contactId,
+      projectId: l.projectId,
+      debit: l.debit,
+      credit: l.credit,
+      description: l.description,
+      reportingTagLinks: l.tagIds.length
+        ? { create: l.tagIds.map((reportingTagId) => ({ reportingTagId })) }
+        : undefined,
+    }));
     await tx.journalEntry.create({
       data: {
         organizationId,
         date: header.reverseJournalDate,
         reference: manualJournalReverseReference(header.id),
         notes: `Auto-reverse of manual journal ${header.number}`,
-        lines: {
-          create: reversed.map((l) => ({
-            accountId: l.accountId,
-            contactId: l.contactId,
-            projectId: l.projectId,
-            debit: l.debit,
-            credit: l.credit,
-            description: l.description,
-          })),
-        },
+        lines: { create: reverseLineCreates },
       },
     });
   }
@@ -246,6 +280,9 @@ function normaliseLines(input: ManualJournalInput["lines"]): NormalisedLine[] {
     accountId: l.accountId,
     contactId: l.contactId ?? null,
     projectId: l.projectId ?? null,
+    // De-dupe at the line level so a user double-clicking the same
+    // tag option doesn't produce two join rows.
+    tagIds: Array.from(new Set((l.tagIds ?? []).filter((t) => !!t))),
     debit: Number(l.debit ?? 0),
     credit: Number(l.credit ?? 0),
     description: l.description ?? null,
@@ -470,7 +507,10 @@ export async function publishManualJournalAction(
   const mj = await db.manualJournal.findFirst({
     where: { id, organizationId: organization.id },
     include: {
-      lines: { orderBy: { position: "asc" } },
+      lines: {
+        orderBy: { position: "asc" },
+        include: { reportingTagLinks: { select: { reportingTagId: true } } },
+      },
     },
   });
   if (!mj) return { ok: false, error: "Manual journal not found" };
@@ -481,6 +521,7 @@ export async function publishManualJournalAction(
     accountId: l.accountId,
     contactId: l.contactId,
     projectId: l.projectId,
+    tagIds: l.reportingTagLinks.map((t) => t.reportingTagId),
     debit: Number(l.debit),
     credit: Number(l.credit),
     description: l.description,

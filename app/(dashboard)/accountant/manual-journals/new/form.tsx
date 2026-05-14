@@ -19,11 +19,14 @@ import {
 type Account = { id: string; name: string; code: string | null; type: string };
 type Contact = { id: string; displayName: string; type: string };
 type Project = { id: string; name: string };
+type ReportingTagOption = { id: string; name: string; color: string };
 type Line = {
   accountId: string;
   /** ACCT-A.3.b — optional per-line dimensions. "" = no selection. */
   contactId: string;
   projectId: string;
+  /** ACCT-A.3.b.2 — selected tag ids (zero or more). */
+  tagIds: string[];
   debit: number;
   credit: number;
   description: string;
@@ -48,6 +51,8 @@ type Props = {
    *  hide the corresponding column. */
   contacts?: Contact[];
   projects?: Project[];
+  /** ACCT-A.3.b.2 — reporting tags. Empty array hides the column. */
+  reportingTags?: ReportingTagOption[];
   currency: string;
   defaultDate: string;
   /** Pre-populate the form for Edit mode. */
@@ -79,6 +84,7 @@ export function ManualJournalForm({
   accounts,
   contacts = [],
   projects = [],
+  reportingTags = [],
   currency: orgCurrency,
   defaultDate,
   initialValues,
@@ -88,6 +94,7 @@ export function ManualJournalForm({
   const router = useRouter();
   const showContactCol = contacts.length > 0;
   const showProjectCol = projects.length > 0;
+  const showTagsCol = reportingTags.length > 0;
 
   // Header state
   const [date, setDate] = React.useState(initialValues?.date ?? defaultDate);
@@ -117,6 +124,7 @@ export function ManualJournalForm({
             accountId: "",
             contactId: "",
             projectId: "",
+            tagIds: [],
             debit: 0,
             credit: 0,
             description: "",
@@ -125,6 +133,7 @@ export function ManualJournalForm({
             accountId: "",
             contactId: "",
             projectId: "",
+            tagIds: [],
             debit: 0,
             credit: 0,
             description: "",
@@ -154,11 +163,26 @@ export function ManualJournalForm({
         accountId: "",
         contactId: "",
         projectId: "",
+        tagIds: [],
         debit: 0,
         credit: 0,
         description: "",
       },
     ]);
+  }
+  function toggleTag(i: number, tagId: string) {
+    setLines((s) =>
+      s.map((l, idx) => {
+        if (idx !== i) return l;
+        const has = l.tagIds.includes(tagId);
+        return {
+          ...l,
+          tagIds: has
+            ? l.tagIds.filter((t) => t !== tagId)
+            : [...l.tagIds, tagId],
+        };
+      })
+    );
   }
   function removeLine(i: number) {
     if (lines.length > 2) setLines((s) => s.filter((_, idx) => idx !== i));
@@ -178,6 +202,7 @@ export function ManualJournalForm({
         accountId: l.accountId,
         contactId: l.contactId || null,
         projectId: l.projectId || null,
+        tagIds: l.tagIds,
         debit: l.debit,
         credit: l.credit,
         description: l.description || null,
@@ -361,6 +386,7 @@ export function ManualJournalForm({
                 {showProjectCol && (
                   <th className="text-left p-3 w-44">Project</th>
                 )}
+                {showTagsCol && <th className="text-left p-3 w-56">Tags</th>}
                 <th className="text-right p-3 w-32">Debit</th>
                 <th className="text-right p-3 w-32">Credit</th>
                 <th className="w-8" />
@@ -431,6 +457,15 @@ export function ManualJournalForm({
                       </select>
                     </td>
                   )}
+                  {showTagsCol && (
+                    <td className="p-2">
+                      <TagPicker
+                        options={reportingTags}
+                        selected={l.tagIds}
+                        onToggle={(tagId) => toggleTag(i, tagId)}
+                      />
+                    </td>
+                  )}
                   <td className="p-2">
                     <Input
                       type="number"
@@ -473,7 +508,12 @@ export function ManualJournalForm({
             <tfoot className="bg-muted/20 text-sm">
               <tr>
                 <td
-                  colSpan={2 + (showContactCol ? 1 : 0) + (showProjectCol ? 1 : 0)}
+                  colSpan={
+                    2 +
+                    (showContactCol ? 1 : 0) +
+                    (showProjectCol ? 1 : 0) +
+                    (showTagsCol ? 1 : 0)
+                  }
                   className="p-3 text-right"
                 >
                   <Button
@@ -495,7 +535,12 @@ export function ManualJournalForm({
               </tr>
               <tr>
                 <td
-                  colSpan={2 + (showContactCol ? 1 : 0) + (showProjectCol ? 1 : 0)}
+                  colSpan={
+                    2 +
+                    (showContactCol ? 1 : 0) +
+                    (showProjectCol ? 1 : 0) +
+                    (showTagsCol ? 1 : 0)
+                  }
                   className={
                     "p-3 text-right text-xs " +
                     (balanced ? "text-emerald-600" : "text-destructive")
@@ -542,5 +587,97 @@ export function ManualJournalForm({
         </Button>
       </div>
     </form>
+  );
+}
+
+/**
+ * ACCT-A.3.b.2 — Compact multi-select for reporting tags. Renders
+ * the selected tags as coloured chips with an inline detach button;
+ * a "+ tag" button reveals a dropdown of the remaining options.
+ *
+ * Lives inside form.tsx because no other surface needs it yet.
+ * If a second consumer shows up (per-line tags on Invoices /
+ * Bills), promote it to components/shared.
+ */
+function TagPicker({
+  options,
+  selected,
+  onToggle,
+}: {
+  options: ReportingTagOption[];
+  selected: string[];
+  onToggle: (tagId: string) => void;
+}) {
+  const [open, setOpen] = React.useState(false);
+  const ref = React.useRef<HTMLDivElement | null>(null);
+  React.useEffect(() => {
+    function onDocClick(e: MouseEvent) {
+      if (!ref.current) return;
+      if (!ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    if (open) document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, [open]);
+
+  const selectedSet = new Set(selected);
+  const selectedOptions = options.filter((o) => selectedSet.has(o.id));
+  const available = options.filter((o) => !selectedSet.has(o.id));
+
+  return (
+    <div ref={ref} className="relative">
+      <div className="flex flex-wrap gap-1 items-center min-h-9 px-1.5 py-1 border border-input rounded-md bg-background">
+        {selectedOptions.map((o) => (
+          <span
+            key={o.id}
+            className="inline-flex items-center gap-1 text-[11px] font-medium rounded-full px-2 py-0.5"
+            style={{
+              backgroundColor: `${o.color}1a`,
+              color: o.color,
+              border: `1px solid ${o.color}40`,
+            }}
+          >
+            {o.name}
+            <button
+              type="button"
+              onClick={() => onToggle(o.id)}
+              className="opacity-70 hover:opacity-100"
+              aria-label={`Remove tag ${o.name}`}
+            >
+              ×
+            </button>
+          </span>
+        ))}
+        {available.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setOpen((v) => !v)}
+            className="text-xs text-muted-foreground hover:text-foreground px-1"
+          >
+            {selectedOptions.length === 0 ? "+ tag" : "+"}
+          </button>
+        )}
+      </div>
+      {open && available.length > 0 && (
+        <div className="absolute z-50 mt-1 max-h-56 overflow-auto rounded-md border bg-popover shadow-md p-1 w-56">
+          {available.map((o) => (
+            <button
+              key={o.id}
+              type="button"
+              onClick={() => {
+                onToggle(o.id);
+                setOpen(false);
+              }}
+              className="flex items-center gap-2 w-full text-left text-sm px-2 py-1.5 rounded hover:bg-muted"
+            >
+              <span
+                className="inline-block h-2.5 w-2.5 rounded-full"
+                style={{ backgroundColor: o.color }}
+              />
+              {o.name}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }

@@ -34,6 +34,8 @@ const lineSchema = z.object({
     .nullable()
     .optional()
     .transform((v) => (v === "" || v === undefined ? null : v)),
+  /** ACCT-A.3.b.2 — per-line reporting tag ids. */
+  tagIds: z.array(z.string()).optional().default([]),
   debit: z.coerce.number().nonnegative().default(0),
   credit: z.coerce.number().nonnegative().default(0),
   description: z.string().max(500).optional().nullable(),
@@ -74,7 +76,7 @@ export async function createRecurringManualJournalAction(
   const lineErr = validateManualJournalLines(data.lines);
   if (lineErr) return { ok: false, error: lineErr };
 
-  // Verify every account / contact / project belongs to this org.
+  // Verify every account / contact / project / tag belongs to this org.
   const accountIds = Array.from(new Set(data.lines.map((l) => l.accountId)));
   const contactIds = Array.from(
     new Set(
@@ -90,8 +92,11 @@ export async function createRecurringManualJournalAction(
         .filter((v): v is string => typeof v === "string" && !!v)
     )
   );
+  const tagIds = Array.from(
+    new Set(data.lines.flatMap((l) => l.tagIds ?? []).filter((t) => !!t))
+  );
 
-  const [accounts, contacts, projects] = await Promise.all([
+  const [accounts, contacts, projects, tags] = await Promise.all([
     db.chartOfAccount.findMany({
       where: { id: { in: accountIds }, organizationId: organization.id },
       select: { id: true },
@@ -108,6 +113,12 @@ export async function createRecurringManualJournalAction(
           select: { id: true },
         })
       : Promise.resolve([] as { id: string }[]),
+    tagIds.length
+      ? db.reportingTag.findMany({
+          where: { id: { in: tagIds }, organizationId: organization.id },
+          select: { id: true },
+        })
+      : Promise.resolve([] as { id: string }[]),
   ]);
   if (accounts.length !== accountIds.length)
     return { ok: false, error: "Some accounts not found in this org" };
@@ -115,6 +126,8 @@ export async function createRecurringManualJournalAction(
     return { ok: false, error: "Some contacts not found in this org" };
   if (projects.length !== projectIds.length)
     return { ok: false, error: "Some projects not found in this org" };
+  if (tags.length !== tagIds.length)
+    return { ok: false, error: "Some reporting tags not found in this org" };
 
   const template: RecurringManualJournalTemplate = {
     referenceNumber: data.referenceNumber ?? null,
@@ -125,6 +138,7 @@ export async function createRecurringManualJournalAction(
       accountId: l.accountId,
       contactId: l.contactId ?? null,
       projectId: l.projectId ?? null,
+      tagIds: Array.from(new Set((l.tagIds ?? []).filter((t) => !!t))),
       debit: Number(l.debit ?? 0),
       credit: Number(l.credit ?? 0),
       description: l.description ?? null,

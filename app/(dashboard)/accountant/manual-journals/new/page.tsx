@@ -15,7 +15,7 @@ export const metadata = { title: "New Manual Journal" };
 export default async function NewManualJournalPage() {
   const { organization } = await requireOrganization();
 
-  const [accounts, contacts, projects] = await Promise.all([
+  const [accounts, contacts, projects, reportingTags] = await Promise.all([
     db.chartOfAccount.findMany({
       where: { organizationId: organization.id, isActive: true },
       select: { id: true, name: true, code: true, type: true },
@@ -33,6 +33,11 @@ export default async function NewManualJournalPage() {
     db.project.findMany({
       where: { organizationId: organization.id, status: "active" },
       select: { id: true, name: true },
+      orderBy: { name: "asc" },
+    }),
+    db.reportingTag.findMany({
+      where: { organizationId: organization.id },
+      select: { id: true, name: true, color: true },
       orderBy: { name: "asc" },
     }),
   ]);
@@ -64,6 +69,7 @@ export default async function NewManualJournalPage() {
           accounts={accounts}
           contacts={contacts}
           projects={projects}
+          reportingTags={reportingTags}
           currency={organization.currency}
           defaultDate={format(new Date(), "yyyy-MM-dd")}
         />
