@@ -102,9 +102,14 @@ const NAV: NavItem[] = [
     icon: BookOpen,
     children: [
       { label: "Chart of Accounts", href: "/accountant/chart-of-accounts" },
-      { label: "Journal Entries", href: "/accountant/journal-entries" },
       { label: "Manual Journals", href: "/accountant/manual-journals" },
+      { label: "Currency Adjustments", href: "/accountant/currency-adjustments" },
+      { label: "Budgets", href: "/accountant/budgets" },
       { label: "Bulk Update", href: "/accountant/bulk-update" },
+      // Note: /accountant/journal-entries is still a live route (the
+      // canonical ledger view); it's unlinked from the sidebar so the
+      // accountant-module nav surfaces the workflow entry points
+      // instead of the read-only ledger drilldown.
     ],
   },
   {
