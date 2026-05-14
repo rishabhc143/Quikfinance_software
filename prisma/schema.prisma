@@ -129,6 +129,7 @@ model Organization {
   manualJournals        ManualJournal[]
   recurringManualJournals RecurringManualJournal[]
   currencyAdjustments   CurrencyAdjustment[]
+  budgets               Budget[]
   chartOfAccounts       ChartOfAccount[]
   taxes                 Tax[]
   projects              Project[]
@@ -266,6 +267,8 @@ model ChartOfAccount {
   journalEntryLines JournalEntryLine[]
   /// ACCT-A.3 back-relation: Manual Journal lines (DRAFT + PUBLISHED).
   manualJournalLines ManualJournalLine[]
+  /// ACCT-D back-relation: monthly budget targets for this account.
+  budgetLines        BudgetLine[]
 
   @@unique([organizationId, code])
   @@index([organizationId, type])
@@ -1787,6 +1790,44 @@ model ManualJournal {
   @@unique([organizationId, number])
   @@index([organizationId, status], name: "ManualJournal_org_status_idx")
   @@index([recurringManualJournalId])
+}
+
+/// ACCT-D — Budget header. One per (org, fiscalYear, name); a year
+/// can hold multiple budgets so accountants run plan A / plan B
+/// side-by-side. Lines are 12 monthly buckets per account so a
+/// future per-month edit UI lands without a schema change.
+model Budget {
+  id             String       @id @default(cuid())
+  organizationId String
+  name           String
+  /// Fiscal year number — e.g. 2026 + Organization.fiscalYearStart=4
+  /// → buckets cover 2026-04-01 through 2027-03-31.
+  fiscalYear     Int
+  /// ACTIVE | ARCHIVED. v1 only flips on delete (which is a hard
+  /// delete); the column is here for the v1.1 archive flow.
+  status         String       @default("ACTIVE")
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @default(now()) @updatedAt
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  lines          BudgetLine[]
+
+  @@unique([organizationId, fiscalYear, name])
+  @@index([organizationId, status])
+}
+
+model BudgetLine {
+  id          String         @id @default(cuid())
+  budgetId    String
+  accountId   String
+  /// Start + end of one month bucket (both inclusive).
+  periodStart DateTime       @db.Date
+  periodEnd   DateTime       @db.Date
+  amount      Decimal        @default(0) @db.Decimal(18, 4)
+  budget      Budget         @relation(fields: [budgetId], references: [id], onDelete: Cascade)
+  account     ChartOfAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
+
+  @@index([budgetId])
+  @@index([accountId, periodStart])
 }
 
 /// ACCT-C — Currency Adjustment header. Each adjustment posts a
