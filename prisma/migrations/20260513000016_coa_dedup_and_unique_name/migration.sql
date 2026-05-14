@@ -46,11 +46,23 @@ WHERE a.id IN (SELECT id FROM ranked WHERE rn > 1)
     SELECT 1 FROM "BankAccount" b WHERE b."glAccountId" = a.id
   );
 
--- ──────────────── 2. Unique index ────────────────
+-- ──────────────── 2. Unique index (partial — non-SYS only) ────────────────
+--
+-- This is a partial index: it covers user-created accounts only.
+-- SYS-* rows (code starts with "SYS-") are EXCLUDED so the existing
+-- `getOrCreateSystemAccount` lazy-create path keeps working — a
+-- user account named "Accounts Payable" (code=2000) and SYS-AP
+-- (code=SYS-AP, name=Accounts Payable) can coexist because only
+-- the user row is in the index.
+--
+-- SYS-* rows are still globally unique by the existing
+-- `(organizationId, code)` constraint, so duplicate SYS accounts
+-- aren't a risk.
 
 DO $$ BEGIN
-  CREATE UNIQUE INDEX "ChartOfAccount_org_name_ci_unique"
-    ON "ChartOfAccount"("organizationId", LOWER(TRIM(name)));
+  CREATE UNIQUE INDEX "ChartOfAccount_org_name_user_unique"
+    ON "ChartOfAccount"("organizationId", LOWER(TRIM(name)))
+    WHERE code IS NULL OR code NOT LIKE 'SYS-%';
 EXCEPTION
   WHEN duplicate_table THEN NULL;   -- index already exists; re-run is fine
   WHEN unique_violation THEN
