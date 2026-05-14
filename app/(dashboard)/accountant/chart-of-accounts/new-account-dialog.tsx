@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Info, Loader2, X } from "lucide-react";
+import { Plus, Info, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -105,10 +105,9 @@ export function NewAccountDialog() {
           <DialogTitle className="text-base font-semibold">
             Create Account
           </DialogTitle>
-          <DialogClose className="absolute right-4 top-4 text-muted-foreground hover:text-foreground">
-            <X className="h-4 w-4" />
-            <span className="sr-only">Close</span>
-          </DialogClose>
+          {/* Note: <DialogContent> already renders its own X close
+              button (components/ui/dialog.tsx). Don't add another
+              one here — that was the dup-close bug. */}
         </DialogHeader>
 
         <form onSubmit={onSubmit}>

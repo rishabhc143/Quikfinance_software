@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Info, X, Eye, EyeOff } from "lucide-react";
+import { Info, Eye, EyeOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -10,7 +10,6 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogClose,
 } from "@/components/ui/dialog";
 
 /**
@@ -75,10 +74,9 @@ export function ExportCoaDialog({
           <DialogTitle className="text-base font-semibold">
             Export Chart of Accounts
           </DialogTitle>
-          <DialogClose className="absolute right-4 top-4 text-destructive hover:opacity-80">
-            <X className="h-5 w-5" />
-            <span className="sr-only">Close</span>
-          </DialogClose>
+          {/* Note: <DialogContent> already renders its own X close
+              button (components/ui/dialog.tsx). Don't add another
+              one here — that was the dup-close bug. */}
         </DialogHeader>
 
         <div className="p-6 space-y-4">
