@@ -46,7 +46,7 @@ export type LineItem = {
   accountId?: string | null;
   // P1 (Purchases): when set on a Bill/Expense line, marks this line
   // as billable to the named customer. Surfaces on the next invoice
-  // for that customer via <BillableExpensesBanner>.
+  // for that customer via <BillableExpensesPanel>.
   billableToCustomerId?: string | null;
 };
 
