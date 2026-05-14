@@ -29,7 +29,10 @@ export type SystemAccountKind =
   | "PURCHASE_RETURNS"
   | "BAD_DEBT_EXPENSE"
   | "BAD_DEBT_RECOVERY"
-  | "VENDOR_ADVANCES";
+  | "VENDOR_ADVANCES"
+  /** ACCT-C — Currency Adjustments. Gain/Loss contra accounts. */
+  | "FX_GAIN"
+  | "FX_LOSS";
 
 type Spec = {
   code: string;
@@ -110,6 +113,23 @@ const SPEC: Record<SystemAccountKind, Spec> = {
     type: "ASSET",
     description:
       "System account: prepayments made to vendors before a bill arrives. Reduced as advances are drawn down against bills.",
+  },
+  // ACCT-C — Currency Adjustments. Two flat accounts (gain vs loss)
+  // keeps each side of the adjustment readable on a P&L; netting
+  // them into a single account is a one-line report transform.
+  FX_GAIN: {
+    code: "SYS-FX-GAIN",
+    name: "Foreign Exchange Gain",
+    type: "OTHER_INCOME",
+    description:
+      "System account: unrealised gain on revaluation of foreign-currency balances (CR side of currency adjustment).",
+  },
+  FX_LOSS: {
+    code: "SYS-FX-LOSS",
+    name: "Foreign Exchange Loss",
+    type: "OTHER_EXPENSE",
+    description:
+      "System account: unrealised loss on revaluation of foreign-currency balances (DR side of currency adjustment).",
   },
 };
 

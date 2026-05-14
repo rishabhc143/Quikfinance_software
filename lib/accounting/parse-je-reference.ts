@@ -36,7 +36,8 @@ export type JeSourceKind =
   | "VENDOR_CREDIT_REFUND"
   | "VENDOR_ADVANCE"
   | "MANUAL_JOURNAL"
-  | "MANUAL_JOURNAL_REVERSE";
+  | "MANUAL_JOURNAL_REVERSE"
+  | "CURRENCY_ADJUSTMENT";
 
 export type JeReferenceParsed = {
   kind: JeSourceKind;
@@ -160,6 +161,13 @@ const PARSERS: Array<{
     label: "Manual journal",
     pickPrimary: (p) => p[0],
     href: (id) => `/accountant/manual-journals/${id}`,
+  },
+  {
+    prefix: "CADJ:",
+    kind: "CURRENCY_ADJUSTMENT",
+    label: "Currency adjustment",
+    pickPrimary: (p) => p[0],
+    href: (id) => `/accountant/currency-adjustments/${id}`,
   },
 ];
 

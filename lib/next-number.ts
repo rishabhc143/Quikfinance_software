@@ -22,6 +22,7 @@ function defaultPrefix(module: string) {
     case "paymentReceived": return "RCV-";
     case "paymentMade": return "PAY-";
     case "manualJournal": return "MJ-";
+    case "currencyAdjustment": return "CADJ-";
     case "deliveryChallan": return "DC-";
     default: return module.toUpperCase().slice(0, 4) + "-";
   }
