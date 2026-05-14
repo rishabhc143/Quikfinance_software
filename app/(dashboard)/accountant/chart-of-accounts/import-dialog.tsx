@@ -8,7 +8,6 @@ import {
   AlertCircle,
   Loader2,
   FileText,
-  X,
   Check,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -19,7 +18,6 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogClose,
 } from "@/components/ui/dialog";
 import {
   parseCoaCsvAction,
@@ -153,10 +151,9 @@ export function ImportCoaDialog({
           <DialogTitle className="text-base font-semibold text-center">
             Accounts - Select File
           </DialogTitle>
-          <DialogClose className="absolute right-4 top-4 text-destructive hover:opacity-80">
-            <X className="h-5 w-5" />
-            <span className="sr-only">Close</span>
-          </DialogClose>
+          {/* Note: <DialogContent> already renders its own X close
+              button (components/ui/dialog.tsx). Don't add another
+              one here — that was the dup-close bug. */}
         </DialogHeader>
 
         {/* ── Stepper ─────────────────────────────────────── */}
