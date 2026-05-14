@@ -12,7 +12,9 @@ const GROUPS: Group[] = [
     items: [
       { label: "Add User", href: "/settings/users/new" },
       { label: "Item", href: "/items/new" },
-      { label: "Journal Entry", href: "/accountant/journal-entries/new" },
+      { label: "Manual Journal", href: "/accountant/manual-journals/new" },
+      { label: "Currency Adjustment", href: "/accountant/currency-adjustments/new" },
+      { label: "Budget", href: "/accountant/budgets/new" },
       { label: "Log Time", href: "/time/entries/new" },
       { label: "Weekly Log", href: "/time/weekly-log" },
     ],
