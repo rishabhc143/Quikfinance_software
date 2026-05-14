@@ -31,7 +31,12 @@ export default async function EditManualJournalPage({
   const header = await db.manualJournal.findFirst({
     where: { id: params.id, organizationId: organization.id },
     include: {
-      lines: { orderBy: { position: "asc" } },
+      lines: {
+        orderBy: { position: "asc" },
+        include: {
+          reportingTagLinks: { select: { reportingTagId: true } },
+        },
+      },
     },
   });
   if (!header) notFound();
@@ -41,7 +46,7 @@ export default async function EditManualJournalPage({
     redirect(`/accountant/manual-journals/${header.id}`);
   }
 
-  const [accounts, contacts, projects] = await Promise.all([
+  const [accounts, contacts, projects, reportingTags] = await Promise.all([
     db.chartOfAccount.findMany({
       where: { organizationId: organization.id, isActive: true },
       select: { id: true, name: true, code: true, type: true },
@@ -59,6 +64,11 @@ export default async function EditManualJournalPage({
     db.project.findMany({
       where: { organizationId: organization.id, status: "active" },
       select: { id: true, name: true },
+      orderBy: { name: "asc" },
+    }),
+    db.reportingTag.findMany({
+      where: { organizationId: organization.id },
+      select: { id: true, name: true, color: true },
       orderBy: { name: "asc" },
     }),
   ]);
@@ -82,6 +92,7 @@ export default async function EditManualJournalPage({
             accountId: l.accountId,
             contactId: l.contactId ?? "",
             projectId: l.projectId ?? "",
+            tagIds: l.reportingTagLinks.map((t) => t.reportingTagId),
             debit: Number(l.debit),
             credit: Number(l.credit),
             description: l.description ?? "",
@@ -92,6 +103,7 @@ export default async function EditManualJournalPage({
               accountId: "",
               contactId: "",
               projectId: "",
+              tagIds: [],
               debit: 0,
               credit: 0,
               description: "",
@@ -100,6 +112,7 @@ export default async function EditManualJournalPage({
               accountId: "",
               contactId: "",
               projectId: "",
+              tagIds: [],
               debit: 0,
               credit: 0,
               description: "",
@@ -139,6 +152,7 @@ export default async function EditManualJournalPage({
           accounts={accounts}
           contacts={contacts}
           projects={projects}
+          reportingTags={reportingTags}
           currency={organization.currency}
           defaultDate={format(new Date(), "yyyy-MM-dd")}
           initialValues={initialValues}

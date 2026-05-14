@@ -61,6 +61,42 @@ describe("parseTemplate — happy path", () => {
     expect(t?.reportingMethod).toBe("ACCRUAL_AND_CASH");
     // String → number coercion happens in parseTemplate via Number().
     expect(t?.lines[0].debit).toBe(100);
+    // ACCT-A.3.b.2 — tagIds defaults to [] when absent.
+    expect(t?.lines[0].tagIds).toEqual([]);
+  });
+
+  it("preserves per-line tagIds (ACCT-A.3.b.2)", () => {
+    const t = parseTemplate({
+      lines: [
+        {
+          accountId: "acc-1",
+          tagIds: ["tag-sales", "tag-q1"],
+          debit: 100,
+          credit: 0,
+        },
+        { accountId: "acc-2", tagIds: [], debit: 0, credit: 100 },
+      ],
+    });
+    expect(t?.lines[0].tagIds).toEqual(["tag-sales", "tag-q1"]);
+    expect(t?.lines[1].tagIds).toEqual([]);
+  });
+
+  it("filters non-string entries out of tagIds (pre-A.3.b.2 forward-compat)", () => {
+    const t = parseTemplate({
+      lines: [
+        {
+          accountId: "acc-1",
+          tagIds: ["tag-1", null, 42, "", "tag-2"],
+          debit: 100,
+          credit: 0,
+        },
+        { accountId: "acc-2", debit: 0, credit: 100 },
+      ],
+    });
+    // Pre-A.3.b.2 profiles may not have tagIds at all; both
+    // "missing" and "garbage-mixed-in" land safely as a clean array.
+    expect(t?.lines[0].tagIds).toEqual(["tag-1", "tag-2"]);
+    expect(t?.lines[1].tagIds).toEqual([]);
   });
 
   it("coerces string numbers to numbers (JSON round-trip safe)", () => {

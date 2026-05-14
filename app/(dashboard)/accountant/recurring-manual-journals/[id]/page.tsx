@@ -62,8 +62,8 @@ export default async function RecurringManualJournalDetailPage({
   });
   if (!profile) notFound();
 
-  // Load accounts + contacts + projects so we can render names
-  // for the template rows. The template stores only ids.
+  // Load accounts + contacts + projects + tags so we can render
+  // names for the template rows. The template stores only ids.
   const template = parseTemplate(profile.templateJson);
   const accountIds = template?.lines.map((l) => l.accountId) ?? [];
   const contactIds = (template?.lines ?? [])
@@ -72,8 +72,11 @@ export default async function RecurringManualJournalDetailPage({
   const projectIds = (template?.lines ?? [])
     .map((l) => l.projectId)
     .filter((v): v is string => !!v);
+  const tagIds = Array.from(
+    new Set((template?.lines ?? []).flatMap((l) => l.tagIds))
+  );
 
-  const [accounts, contacts, projects, generated] = await Promise.all([
+  const [accounts, contacts, projects, tags, generated] = await Promise.all([
     accountIds.length
       ? db.chartOfAccount.findMany({
           where: { id: { in: accountIds } },
@@ -92,6 +95,14 @@ export default async function RecurringManualJournalDetailPage({
           select: { id: true, name: true },
         })
       : Promise.resolve([] as { id: string; name: string }[]),
+    tagIds.length
+      ? db.reportingTag.findMany({
+          where: { id: { in: tagIds } },
+          select: { id: true, name: true, color: true },
+        })
+      : Promise.resolve(
+          [] as { id: string; name: string; color: string }[]
+        ),
     db.manualJournal.findMany({
       where: { recurringManualJournalId: profile.id },
       orderBy: { date: "desc" },
@@ -103,6 +114,7 @@ export default async function RecurringManualJournalDetailPage({
   const accountById = new Map(accounts.map((a) => [a.id, a]));
   const contactById = new Map(contacts.map((c) => [c.id, c]));
   const projectById = new Map(projects.map((p) => [p.id, p]));
+  const tagById = new Map(tags.map((t) => [t.id, t]));
 
   const displayCurrency = template?.currency ?? organization.currency;
   const canPause = profile.status === "ACTIVE";
@@ -228,6 +240,7 @@ export default async function RecurringManualJournalDetailPage({
                   <th className="text-left p-3">Account</th>
                   <th className="text-left p-3">Contact</th>
                   <th className="text-left p-3">Project</th>
+                  <th className="text-left p-3">Tags</th>
                   <th className="text-right p-3">Debit</th>
                   <th className="text-right p-3">Credit</th>
                 </tr>
@@ -257,6 +270,31 @@ export default async function RecurringManualJournalDetailPage({
                       <td className="p-3 text-xs">
                         {pj?.name ?? (
                           <span className="text-muted-foreground">—</span>
+                        )}
+                      </td>
+                      <td className="p-3 text-xs">
+                        {l.tagIds.length === 0 ? (
+                          <span className="text-muted-foreground">—</span>
+                        ) : (
+                          <div className="flex flex-wrap gap-1">
+                            {l.tagIds.map((tid) => {
+                              const t = tagById.get(tid);
+                              if (!t) return null;
+                              return (
+                                <span
+                                  key={t.id}
+                                  className="inline-flex items-center text-[10px] font-medium rounded-full px-1.5 py-0.5"
+                                  style={{
+                                    backgroundColor: `${t.color}1a`,
+                                    color: t.color,
+                                    border: `1px solid ${t.color}40`,
+                                  }}
+                                >
+                                  {t.name}
+                                </span>
+                              );
+                            })}
+                          </div>
                         )}
                       </td>
                       <td className="p-3 text-right tabular-nums">

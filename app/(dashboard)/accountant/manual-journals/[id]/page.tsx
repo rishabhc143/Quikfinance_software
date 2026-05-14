@@ -41,11 +41,13 @@ const STATUS_LABEL: Record<string, string> = {
 type AccountSummary = { id: string; name: string; code: string | null; type: string };
 type ContactSummary = { id: string; displayName: string; type: string } | null;
 type ProjectSummary = { id: string; name: string } | null;
+type TagSummary = { id: string; name: string; color: string };
 type RenderLine = {
   id: string;
   account: AccountSummary;
   contact: ContactSummary;
   project: ProjectSummary;
+  tags: TagSummary[];
   debit: number;
   credit: number;
   description: string | null;
@@ -74,6 +76,11 @@ export default async function ManualJournalDetailPage({
           account: { select: { id: true, name: true, code: true, type: true } },
           contact: { select: { id: true, displayName: true, type: true } },
           project: { select: { id: true, name: true } },
+          reportingTagLinks: {
+            include: {
+              reportingTag: { select: { id: true, name: true, color: true } },
+            },
+          },
         },
       },
     },
@@ -101,6 +108,13 @@ export default async function ManualJournalDetailPage({
                   select: { id: true, displayName: true, type: true },
                 },
                 project: { select: { id: true, name: true } },
+                reportingTagLinks: {
+                  include: {
+                    reportingTag: {
+                      select: { id: true, name: true, color: true },
+                    },
+                  },
+                },
               },
             },
           },
@@ -120,6 +134,13 @@ export default async function ManualJournalDetailPage({
                   select: { id: true, displayName: true, type: true },
                 },
                 project: { select: { id: true, name: true } },
+                reportingTagLinks: {
+                  include: {
+                    reportingTag: {
+                      select: { id: true, name: true, color: true },
+                    },
+                  },
+                },
               },
             },
           },
@@ -133,6 +154,7 @@ export default async function ManualJournalDetailPage({
         account: l.account,
         contact: l.contact,
         project: l.project,
+        tags: l.reportingTagLinks.map((t) => t.reportingTag),
         debit: Number(l.debit),
         credit: Number(l.credit),
         description: l.description,
@@ -142,11 +164,13 @@ export default async function ManualJournalDetailPage({
         account: l.account,
         contact: l.contact,
         project: l.project,
+        tags: l.reportingTagLinks.map((t) => t.reportingTag),
         debit: Number(l.debit),
         credit: Number(l.credit),
         description: l.description,
       }));
   const anyDims = lines.some((l) => l.contact || l.project);
+  const anyTags = lines.some((l) => l.tags.length > 0);
 
   const totalDebit = lines.reduce((s, l) => s + l.debit, 0);
   const totalCredit = lines.reduce((s, l) => s + l.credit, 0);
@@ -306,6 +330,7 @@ export default async function ManualJournalDetailPage({
                   <th className="text-left p-3">Description</th>
                   {anyDims && <th className="text-left p-3">Contact</th>}
                   {anyDims && <th className="text-left p-3">Project</th>}
+                  {anyTags && <th className="text-left p-3">Tags</th>}
                   <th className="text-right p-3">Debit</th>
                   <th className="text-right p-3">Credit</th>
                 </tr>
@@ -344,6 +369,29 @@ export default async function ManualJournalDetailPage({
                         )}
                       </td>
                     )}
+                    {anyTags && (
+                      <td className="p-3 text-xs">
+                        {l.tags.length === 0 ? (
+                          <span className="text-muted-foreground">—</span>
+                        ) : (
+                          <div className="flex flex-wrap gap-1">
+                            {l.tags.map((t) => (
+                              <span
+                                key={t.id}
+                                className="inline-flex items-center text-[10px] font-medium rounded-full px-1.5 py-0.5"
+                                style={{
+                                  backgroundColor: `${t.color}1a`,
+                                  color: t.color,
+                                  border: `1px solid ${t.color}40`,
+                                }}
+                              >
+                                {t.name}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </td>
+                    )}
                     <td className="p-3 text-right tabular-nums">
                       {l.debit > 0 ? formatMoney(l.debit, displayCurrency) : ""}
                     </td>
@@ -358,7 +406,7 @@ export default async function ManualJournalDetailPage({
               <tfoot className="bg-muted/20">
                 <tr>
                   <td
-                    colSpan={4 + (anyDims ? 2 : 0)}
+                    colSpan={4 + (anyDims ? 2 : 0) + (anyTags ? 1 : 0)}
                     className="p-3 text-right font-medium"
                   >
                     Totals

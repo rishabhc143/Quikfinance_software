@@ -26,6 +26,8 @@ export type RecurringManualJournalTemplateLine = {
   accountId: string;
   contactId: string | null;
   projectId: string | null;
+  /** ACCT-A.3.b.2 — per-line reporting tag ids. */
+  tagIds: string[];
   debit: number;
   credit: number;
   description: string | null;
@@ -58,10 +60,16 @@ export function parseTemplate(
     if (!l || typeof l !== "object") return null;
     const line = l as Record<string, unknown>;
     if (typeof line.accountId !== "string" || !line.accountId) return null;
+    // Defensive: tagIds may be missing on pre-A.3.b.2 profiles.
+    const rawTagIds = Array.isArray(line.tagIds) ? line.tagIds : [];
+    const tagIds = rawTagIds.filter(
+      (t): t is string => typeof t === "string" && t.length > 0
+    );
     parsedLines.push({
       accountId: line.accountId,
       contactId: typeof line.contactId === "string" ? line.contactId : null,
       projectId: typeof line.projectId === "string" ? line.projectId : null,
+      tagIds,
       debit: Number(line.debit ?? 0),
       credit: Number(line.credit ?? 0),
       description:
@@ -180,18 +188,29 @@ export async function generateManualJournalFromProfile(
         publishReverseOnlyOnDate: false,
       },
     });
-    await tx.manualJournalLine.createMany({
-      data: template.lines.map((l, i) => ({
-        manualJournalId: header.id,
-        position: i,
-        accountId: l.accountId,
-        contactId: l.contactId,
-        projectId: l.projectId,
-        debit: l.debit,
-        credit: l.credit,
-        description: l.description,
-      })),
-    });
+    // Per-line create so we can attach reporting-tag join rows in
+    // the same statement. typical templates have <20 lines, so
+    // the loop's round-trip cost is fine.
+    for (let i = 0; i < template.lines.length; i++) {
+      const l = template.lines[i];
+      await tx.manualJournalLine.create({
+        data: {
+          manualJournalId: header.id,
+          position: i,
+          accountId: l.accountId,
+          contactId: l.contactId,
+          projectId: l.projectId,
+          debit: l.debit,
+          credit: l.credit,
+          description: l.description,
+          reportingTagLinks: l.tagIds.length
+            ? {
+                create: l.tagIds.map((reportingTagId) => ({ reportingTagId })),
+              }
+            : undefined,
+        },
+      });
+    }
     return header;
   });
 

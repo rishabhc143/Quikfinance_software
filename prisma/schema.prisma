@@ -1736,6 +1736,8 @@ model JournalEntryLine {
   account        ChartOfAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
   contact        Contact?       @relation("JournalEntryLineContact", fields: [contactId], references: [id], onDelete: SetNull)
   project        Project?       @relation("JournalEntryLineProject", fields: [projectId], references: [id], onDelete: SetNull)
+  /// ACCT-A.3.b.2 — many-to-many to ReportingTag via a join table.
+  reportingTagLinks JournalEntryLineReportingTag[]
 
   @@index([contactId])
   @@index([projectId])
@@ -1832,6 +1834,8 @@ model ManualJournalLine {
   account         ChartOfAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
   contact         Contact?       @relation("ManualJournalLineContact", fields: [contactId], references: [id], onDelete: SetNull)
   project         Project?       @relation("ManualJournalLineProject", fields: [projectId], references: [id], onDelete: SetNull)
+  /// ACCT-A.3.b.2 — many-to-many to ReportingTag via a join table.
+  reportingTagLinks ManualJournalLineReportingTag[]
 
   @@index([manualJournalId])
   @@index([contactId])
@@ -2169,8 +2173,37 @@ model ReportingTag {
   color          String       @default("#1d4ed8")
   createdAt      DateTime     @default(now())
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  /// ACCT-A.3.b.2 — direct join to per-line Reporting Tag use on
+  /// Manual Journals + the canonical ledger. The legacy
+  /// ContactReportingTag / QuoteReportingTag pattern routes through
+  /// a (deferred) options layer; we go direct here so deletes
+  /// cascade cleanly and the FK is real.
+  manualJournalLineLinks ManualJournalLineReportingTag[]
+  journalEntryLineLinks  JournalEntryLineReportingTag[]
 
   @@unique([organizationId, name])
+}
+
+model ManualJournalLineReportingTag {
+  id                  String            @id @default(cuid())
+  manualJournalLineId String
+  reportingTagId      String
+  manualJournalLine   ManualJournalLine @relation(fields: [manualJournalLineId], references: [id], onDelete: Cascade)
+  reportingTag        ReportingTag      @relation(fields: [reportingTagId], references: [id], onDelete: Cascade)
+
+  @@unique([manualJournalLineId, reportingTagId], name: "MJLRT_line_tag_unique")
+  @@index([reportingTagId])
+}
+
+model JournalEntryLineReportingTag {
+  id                 String           @id @default(cuid())
+  journalEntryLineId String
+  reportingTagId     String
+  journalEntryLine   JournalEntryLine @relation(fields: [journalEntryLineId], references: [id], onDelete: Cascade)
+  reportingTag       ReportingTag     @relation(fields: [reportingTagId], references: [id], onDelete: Cascade)
+
+  @@unique([journalEntryLineId, reportingTagId], name: "JELRT_line_tag_unique")
+  @@index([reportingTagId])
 }
 
 model WebTab {
