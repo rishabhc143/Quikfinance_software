@@ -7,7 +7,6 @@ import {
   Plus,
   Trash2,
   Loader2,
-  X,
   ArrowLeft,
   Info,
 } from "lucide-react";
@@ -21,7 +20,6 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogClose,
 } from "@/components/ui/dialog";
 import { formatMoney } from "@/lib/money";
 import { ISO_CURRENCIES } from "@/lib/accounting/currencies";
@@ -179,10 +177,10 @@ export function NewBaseCurrencyAdjustmentDialog({
           <DialogTitle className="text-base font-semibold">
             Base Currency Adjustment
           </DialogTitle>
-          <DialogClose className="absolute right-4 top-4 text-destructive hover:opacity-80">
-            <X className="h-5 w-5" />
-            <span className="sr-only">Close</span>
-          </DialogClose>
+          {/* Note: <DialogContent> already renders its own X close
+              button in the top-right (components/ui/dialog.tsx). We
+              don't add another one here — doing so caused two
+              overlapping close marks (PR #150-followup). */}
         </DialogHeader>
 
         {step === 1 ? (
