@@ -14,12 +14,20 @@ import {
  * ACCT-E.4 — Server actions for the Chart of Accounts CSV import.
  *
  *   parseCoaCsvAction  — pure parse + validate; no DB writes.
- *   importCoaAction    — persists the previewed rows. Uses
- *                         createMany + skipDuplicates against the
- *                         (org, LOWER(TRIM(name))) partial unique
- *                         index so a row whose name collides with
- *                         an existing account is silently skipped.
+ *   importCoaAction    — persists the previewed rows. Two modes:
+ *
+ *     "skip"      — Default Zoho behaviour. Rows whose name (or
+ *                    code) collides with an existing account are
+ *                    silently skipped + reported in `errors`.
+ *
+ *     "overwrite" — Rows whose name matches an existing account
+ *                    update that row (description / subType / code /
+ *                    status are refreshed; type stays fixed because
+ *                    changing it would break every JE that posts to
+ *                    the account). SYS-* rows are never overwritten.
  */
+
+export type DuplicateMode = "skip" | "overwrite";
 
 export async function parseCoaCsvAction(csv: string): Promise<ParseResult> {
   await requireOrganization();
@@ -28,28 +36,26 @@ export async function parseCoaCsvAction(csv: string): Promise<ParseResult> {
 
 export type ImportResult = {
   created: number;
+  updated: number;
   skipped: number;
   errors: { name: string; message: string }[];
 };
 
 export async function importCoaAction(
-  rows: ParsedCoaRow[]
+  rows: ParsedCoaRow[],
+  mode: DuplicateMode = "skip"
 ): Promise<ImportResult> {
   const { user, organization } = await requireOrganization();
   if (rows.length === 0) {
-    return { created: 0, skipped: 0, errors: [] };
+    return { created: 0, updated: 0, skipped: 0, errors: [] };
   }
 
-  // Skip rows whose name already exists (case-insensitive). The
-  // partial unique index would block them at the DB layer anyway,
-  // but reporting them clearly avoids a confusing "0 created"
-  // result with no explanation.
   const existing = await db.chartOfAccount.findMany({
     where: { organizationId: organization.id },
-    select: { name: true, code: true },
+    select: { id: true, name: true, code: true, type: true },
   });
-  const existingNames = new Set(
-    existing.map((a) => a.name.trim().toLowerCase())
+  const byName = new Map(
+    existing.map((a) => [a.name.trim().toLowerCase(), a])
   );
   const existingCodes = new Set(
     existing.map((a) => a.code).filter((c): c is string => !!c)
@@ -57,14 +63,40 @@ export async function importCoaAction(
 
   const errors: { name: string; message: string }[] = [];
   const toInsert: ParsedCoaRow[] = [];
+  const toUpdate: Array<{ id: string; row: ParsedCoaRow }> = [];
+
   for (const r of rows) {
-    if (existingNames.has(r.name.trim().toLowerCase())) {
-      errors.push({
-        name: r.name,
-        message: `An account named "${r.name}" already exists — skipped.`,
-      });
+    const nameLower = r.name.trim().toLowerCase();
+    const dupe = byName.get(nameLower);
+
+    if (dupe) {
+      // Refuse to touch SYS-* in either mode — they're code-pinned.
+      if (dupe.code?.startsWith("SYS-")) {
+        errors.push({
+          name: r.name,
+          message: `"${r.name}" is a system account; can't be modified by import.`,
+        });
+        continue;
+      }
+      if (mode === "skip") {
+        errors.push({
+          name: r.name,
+          message: `An account named "${r.name}" already exists — skipped.`,
+        });
+        continue;
+      }
+      // Overwrite — but never change the locked AccountType.
+      if (dupe.type !== r.type) {
+        errors.push({
+          name: r.name,
+          message: `Existing "${r.name}" has type ${dupe.type}; type can't be changed by import.`,
+        });
+        continue;
+      }
+      toUpdate.push({ id: dupe.id, row: r });
       continue;
     }
+
     if (r.code && existingCodes.has(r.code)) {
       errors.push({
         name: r.name,
@@ -74,26 +106,45 @@ export async function importCoaAction(
     }
     toInsert.push(r);
   }
+
+  const created = toInsert.length;
+  const updated = toUpdate.length;
   const skipped = errors.length;
 
-  if (toInsert.length === 0) {
-    return { created: 0, skipped, errors };
+  if (toInsert.length === 0 && toUpdate.length === 0) {
+    return { created: 0, updated: 0, skipped, errors };
   }
 
-  const res = await db.chartOfAccount.createMany({
-    data: toInsert.map((r) => ({
-      organizationId: organization.id,
-      code: r.code,
-      name: r.name,
-      type: r.type,
-      subType: r.subType,
-      description: r.description,
-      isActive: r.isActive,
-    })),
-    skipDuplicates: true,
+  await db.$transaction(async (tx) => {
+    if (toInsert.length > 0) {
+      await tx.chartOfAccount.createMany({
+        data: toInsert.map((r) => ({
+          organizationId: organization.id,
+          code: r.code,
+          name: r.name,
+          type: r.type,
+          subType: r.subType,
+          description: r.description,
+          isActive: r.isActive,
+        })),
+        skipDuplicates: true,
+      });
+    }
+    for (const { id, row } of toUpdate) {
+      await tx.chartOfAccount.update({
+        where: { id },
+        data: {
+          code: row.code,
+          // name stays the same (the dedup is by name)
+          subType: row.subType,
+          description: row.description,
+          isActive: row.isActive,
+        },
+      });
+    }
   });
 
-  if (res.count > 0) {
+  if (created > 0 || updated > 0) {
     await writeAuditLog({
       organizationId: organization.id,
       userId: user.id,
@@ -102,7 +153,9 @@ export async function importCoaAction(
       entityId: "bulk-import",
       after: {
         kind: "csv_import",
-        created: res.count,
+        mode,
+        created,
+        updated,
         skipped,
         errors: errors.length,
       },
@@ -110,5 +163,5 @@ export async function importCoaAction(
     revalidatePath("/accountant/chart-of-accounts");
   }
 
-  return { created: res.count, skipped, errors };
+  return { created, updated, skipped, errors };
 }

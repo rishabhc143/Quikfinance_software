@@ -50,6 +50,19 @@ function isSystemCode(code: string | null): boolean {
   return code?.startsWith("SYS-") ?? false;
 }
 
+/**
+ * ACCT-E.4 — decimal format option for the export modal.
+ *
+ *   - "1234567.89"   period decimal, no thousand separator (US-ish)
+ *   - "1,234,567.89" period decimal + comma thousands (US standard)
+ *   - "1.234.567,89" comma decimal + period thousands (EU/de-DE)
+ *
+ * CoA rows don't currently surface numeric values in the CSV, so
+ * the option is here for parity with Zoho's UX and for the moment
+ * when we add a Balance column.
+ */
+export type DecimalFormat = "1234567.89" | "1,234,567.89" | "1.234.567,89";
+
 export function buildCoaCsvRows(rows: CoaCsvRow[]): CsvRow[] {
   return rows.map((r) => {
     const parent = r.parentName
@@ -68,6 +81,29 @@ export function buildCoaCsvRows(rows: CoaCsvRow[]): CsvRow[] {
       Description: r.description ?? "",
     };
   });
+}
+
+/**
+ * Format a number per the chosen `DecimalFormat`. Pure helper —
+ * unit-tested. Reserved for the upcoming Balance column.
+ */
+export function formatDecimal(n: number, format: DecimalFormat): string {
+  if (!Number.isFinite(n)) return "";
+  const abs = Math.abs(n);
+  const negative = n < 0;
+  // 2-decimal precision is the convention for accounting CSVs.
+  const fixed = abs.toFixed(2);
+  const [intPart, decPart] = fixed.split(".");
+  if (format === "1234567.89") {
+    return `${negative ? "-" : ""}${intPart}.${decPart}`;
+  }
+  if (format === "1,234,567.89") {
+    const grouped = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+    return `${negative ? "-" : ""}${grouped}.${decPart}`;
+  }
+  // 1.234.567,89
+  const grouped = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+  return `${negative ? "-" : ""}${grouped},${decPart}`;
 }
 
 export function buildCoaCsv(rows: CoaCsvRow[]): string {

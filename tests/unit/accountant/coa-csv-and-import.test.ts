@@ -3,6 +3,7 @@ import {
   buildCoaCsv,
   buildCoaCsvRows,
   COA_CSV_COLUMNS,
+  formatDecimal,
   type CoaCsvRow,
 } from "@/lib/accounting/coa-csv";
 import {
@@ -276,6 +277,38 @@ describe("parseCoaCsv — row errors", () => {
     const res = parseCoaCsv("");
     expect(res.rows).toEqual([]);
     expect(res.errors[0].message).toMatch(/empty/i);
+  });
+});
+
+// ─────────────── formatDecimal ───────────────
+
+describe("formatDecimal — Zoho-parity decimal-format option for export", () => {
+  it("'1234567.89' format: period decimal, no thousand separator", () => {
+    expect(formatDecimal(1234567.89, "1234567.89")).toBe("1234567.89");
+    expect(formatDecimal(1000, "1234567.89")).toBe("1000.00");
+    expect(formatDecimal(0, "1234567.89")).toBe("0.00");
+  });
+
+  it("'1,234,567.89' format: period decimal + comma thousands", () => {
+    expect(formatDecimal(1234567.89, "1,234,567.89")).toBe("1,234,567.89");
+    expect(formatDecimal(1000, "1,234,567.89")).toBe("1,000.00");
+    expect(formatDecimal(1234, "1,234,567.89")).toBe("1,234.00");
+  });
+
+  it("'1.234.567,89' format: comma decimal + period thousands (EU)", () => {
+    expect(formatDecimal(1234567.89, "1.234.567,89")).toBe("1.234.567,89");
+    expect(formatDecimal(1000, "1.234.567,89")).toBe("1.000,00");
+  });
+
+  it("handles negatives across all three formats", () => {
+    expect(formatDecimal(-500.25, "1234567.89")).toBe("-500.25");
+    expect(formatDecimal(-1234.5, "1,234,567.89")).toBe("-1,234.50");
+    expect(formatDecimal(-1234.5, "1.234.567,89")).toBe("-1.234,50");
+  });
+
+  it("returns empty string for non-finite numbers (defensive)", () => {
+    expect(formatDecimal(NaN, "1234567.89")).toBe("");
+    expect(formatDecimal(Infinity, "1234567.89")).toBe("");
   });
 });
 

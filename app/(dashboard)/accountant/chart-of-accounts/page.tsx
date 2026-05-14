@@ -137,7 +137,7 @@ export default async function ChartOfAccountsPage({
           <NewAccountDialog />
           <CoaActionsMenu
             currentSort={searchParams?.sort ?? null}
-            exportHref={`/accountant/chart-of-accounts/export${
+            exportScope={
               [
                 status !== "active" ? `status=${status}` : "",
                 q ? `q=${encodeURIComponent(q)}` : "",
@@ -151,7 +151,7 @@ export default async function ChartOfAccountsPage({
                     .filter(Boolean)
                     .join("&")}`
                 : ""
-            }`}
+            }
           />
         </div>
       </div>
