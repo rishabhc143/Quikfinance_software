@@ -128,6 +128,7 @@ model Organization {
   journalEntries        JournalEntry[]
   manualJournals        ManualJournal[]
   recurringManualJournals RecurringManualJournal[]
+  currencyAdjustments   CurrencyAdjustment[]
   chartOfAccounts       ChartOfAccount[]
   taxes                 Tax[]
   projects              Project[]
@@ -1786,6 +1787,29 @@ model ManualJournal {
   @@unique([organizationId, number])
   @@index([organizationId, status], name: "ManualJournal_org_status_idx")
   @@index([recurringManualJournalId])
+}
+
+/// ACCT-C — Currency Adjustment header. Each adjustment posts a
+/// JE under reference `CADJ:<id>` with lines that offset against
+/// SYS-FX-GAIN or SYS-FX-LOSS. v1 is manual entry; auto-balance
+/// computation from per-line FC amounts ships in ACCT-C.2.
+model CurrencyAdjustment {
+  id             String       @id @default(cuid())
+  organizationId String
+  number         String
+  date           DateTime     @db.Date
+  /// 3-letter ISO; the foreign currency being revalued.
+  currency       String
+  /// Optional, informational — the rate the accountant cited when
+  /// computing the adjustment. The ledger gets the absolute
+  /// gain/loss amounts in org-default currency, not a rate.
+  exchangeRate   Decimal?     @db.Decimal(18, 6)
+  notes          String?
+  createdAt      DateTime     @default(now())
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, number])
+  @@index([organizationId, date])
 }
 
 /// ACCT-A.3.c — Mirrors CreditNoteAttachment. Data-URL based for
