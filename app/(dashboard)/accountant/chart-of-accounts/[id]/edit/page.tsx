@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { COA_SUBTYPES_BY_TYPE } from "@/lib/accounting/coa-subtypes";
 import { updateAccountAction } from "../../actions";
 
 export const metadata = { title: "Edit Account" };
@@ -44,6 +45,21 @@ export default async function EditChartOfAccountPage({
   if (!account) notFound();
 
   const isSystemAccount = account.code?.startsWith("SYS-") ?? false;
+
+  // Load same-type accounts (other than this one) as potential
+  // parents. The action validator also enforces the type match.
+  const parentCandidates = await db.chartOfAccount.findMany({
+    where: {
+      organizationId: organization.id,
+      type: account.type,
+      id: { not: account.id },
+      isActive: true,
+    },
+    select: { id: true, code: true, name: true },
+    orderBy: [{ code: "asc" }, { name: "asc" }],
+  });
+
+  const validSubTypes = COA_SUBTYPES_BY_TYPE[account.type] ?? [];
 
   // Bind the id so the server action can be passed to <form action={...}>.
   const onSubmit = updateAccountAction.bind(null, account.id);
@@ -121,17 +137,56 @@ export default async function EditChartOfAccountPage({
               </div>
             </div>
 
-            <div>
-              <Label>Type</Label>
-              <div className="flex items-center gap-2 rounded-md border bg-muted/40 px-3 py-2">
-                <Lock className="h-3.5 w-3.5 text-muted-foreground" />
-                <span className="text-sm">
-                  {TYPE_LABEL[account.type] ?? account.type}
-                </span>
+            <div className="grid gap-3 md:grid-cols-2">
+              <div>
+                <Label>Type</Label>
+                <div className="flex items-center gap-2 rounded-md border bg-muted/40 px-3 py-2">
+                  <Lock className="h-3.5 w-3.5 text-muted-foreground" />
+                  <span className="text-sm">
+                    {TYPE_LABEL[account.type] ?? account.type}
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Type is fixed. Archive + recreate to change.
+                </p>
               </div>
+              <div>
+                <Label>Sub-type</Label>
+                <select
+                  name="subType"
+                  defaultValue={account.subType ?? ""}
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                >
+                  <option value="">— (use broad type)</option>
+                  {validSubTypes.map((s) => (
+                    <option key={s} value={s}>
+                      {s}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Granular label (e.g. &quot;Cash&quot;, &quot;Fixed Asset&quot;).
+                </p>
+              </div>
+            </div>
+
+            <div>
+              <Label>Parent Account</Label>
+              <select
+                name="parentId"
+                defaultValue={account.parentId ?? ""}
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+              >
+                <option value="">— (top level)</option>
+                {parentCandidates.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.code ? `${a.code} · ` : ""}
+                    {a.name}
+                  </option>
+                ))}
+              </select>
               <p className="text-xs text-muted-foreground mt-1">
-                Type can&apos;t be changed once saved. To use a different
-                type, archive this account and create a new one.
+                Optional. Must share the same type as this account.
               </p>
             </div>
 
