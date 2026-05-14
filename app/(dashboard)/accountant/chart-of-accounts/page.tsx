@@ -1,14 +1,12 @@
-import Link from "next/link";
-import { MoreHorizontal } from "lucide-react";
 import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
-import { Button } from "@/components/ui/button";
 import { seedDefaultCoaIfEmpty } from "@/lib/accounting/seed-default-coa";
 import { CoaTable } from "./coa-table";
 import { StatusSwitcher } from "./status-switcher";
 import { CoaSearchBox } from "./search-box";
 import { NewAccountDialog } from "./new-account-dialog";
+import { CoaActionsMenu } from "./actions-menu";
 
 export const metadata = { title: "Chart of Accounts" };
 
@@ -16,6 +14,38 @@ type Status = "active" | "all" | "archived";
 
 function parseStatus(s: string | undefined): Status {
   return s === "all" || s === "archived" ? s : "active";
+}
+
+type SortKey = "name" | "code" | "type";
+type SortDir = "asc" | "desc";
+
+function parseSort(s: string | undefined): { key: SortKey; dir: SortDir } {
+  if (!s) return { key: "type", dir: "asc" };
+  const [rawKey, rawDir] = s.split(":");
+  const key: SortKey =
+    rawKey === "name" || rawKey === "code" || rawKey === "type"
+      ? rawKey
+      : "type";
+  const dir: SortDir = rawDir === "desc" ? "desc" : "asc";
+  return { key, dir };
+}
+
+function sortToPrismaOrder(
+  key: SortKey,
+  dir: SortDir
+): Prisma.ChartOfAccountOrderByWithRelationInput[] {
+  // Secondary sorts keep ties stable.
+  switch (key) {
+    case "name":
+      return [{ name: dir }, { code: "asc" }];
+    case "code":
+      // NULL codes sort last in asc / first in desc — Prisma quirk
+      // is acceptable; the secondary sort by name keeps it readable.
+      return [{ code: dir }, { name: "asc" }];
+    case "type":
+    default:
+      return [{ type: dir }, { code: "asc" }, { name: "asc" }];
+  }
 }
 
 /**
@@ -35,11 +65,12 @@ function parseStatus(s: string | undefined): Status {
 export default async function ChartOfAccountsPage({
   searchParams,
 }: {
-  searchParams?: { status?: string; q?: string };
+  searchParams?: { status?: string; q?: string; sort?: string };
 }) {
   const { organization } = await requireOrganization();
   const status = parseStatus(searchParams?.status);
   const q = (searchParams?.q ?? "").trim();
+  const sort = parseSort(searchParams?.sort);
 
   // Seed the Zoho-parity defaults the first time an org lands here.
   await seedDefaultCoaIfEmpty(organization.id);
@@ -65,7 +96,7 @@ export default async function ChartOfAccountsPage({
   const [accounts, totalActive, totalArchived] = await Promise.all([
     db.chartOfAccount.findMany({
       where,
-      orderBy: [{ type: "asc" }, { code: "asc" }, { name: "asc" }],
+      orderBy: sortToPrismaOrder(sort.key, sort.dir),
       include: {
         parent: { select: { name: true, code: true } },
       },
@@ -104,23 +135,24 @@ export default async function ChartOfAccountsPage({
         <div className="ml-auto flex items-center gap-2">
           <CoaSearchBox initial={q} />
           <NewAccountDialog />
-          <Button
-            asChild
-            variant="outline"
-            size="icon"
-            aria-label="More actions"
-          >
-            {/* Reserved for future bulk-import / export / settings.
-                Renders as a passthrough link to a "More" page that
-                doesn't exist yet → coming in a follow-up. */}
-            <Link
-              href="/accountant/chart-of-accounts"
-              aria-disabled
-              className="pointer-events-none opacity-50"
-            >
-              <MoreHorizontal className="h-4 w-4" />
-            </Link>
-          </Button>
+          <CoaActionsMenu
+            currentSort={searchParams?.sort ?? null}
+            exportHref={`/accountant/chart-of-accounts/export${
+              [
+                status !== "active" ? `status=${status}` : "",
+                q ? `q=${encodeURIComponent(q)}` : "",
+              ]
+                .filter(Boolean)
+                .join("&")
+                ? `?${[
+                    status !== "active" ? `status=${status}` : "",
+                    q ? `q=${encodeURIComponent(q)}` : "",
+                  ]
+                    .filter(Boolean)
+                    .join("&")}`
+                : ""
+            }`}
+          />
         </div>
       </div>
 
