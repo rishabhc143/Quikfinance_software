@@ -1808,6 +1808,12 @@ model Budget {
   /// Fiscal year number — e.g. 2026 + Organization.fiscalYearStart=4
   /// → buckets cover 2026-04-01 through 2027-03-31.
   fiscalYear     Int
+  /// ACCT-D.2 — Bucket granularity for this budget.
+  ///   MONTHLY   = 12 BudgetLine rows per account
+  ///   QUARTERLY = 4 BudgetLine rows per account
+  ///   YEARLY    = 1 BudgetLine row per account
+  /// Existing budgets default to MONTHLY (matches their data shape).
+  budgetPeriod   String       @default("MONTHLY")
   /// ACTIVE | ARCHIVED. v1 only flips on delete (which is a hard
   /// delete); the column is here for the v1.1 archive flow.
   status         String       @default("ACTIVE")

@@ -2,69 +2,108 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, Plus, Trash2, Info } from "lucide-react";
+import { Loader2, Plus, X } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { formatMoney } from "@/lib/money";
-import { toast } from "sonner";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import type { BudgetPeriod } from "@/lib/accounting/budgets";
 import {
   createBudgetAndRedirectAction,
   type BudgetInput,
 } from "../actions";
 
-type PnLAccount = {
+type Account = {
   id: string;
   name: string;
   code: string | null;
   type: string;
 };
 
-type Line = {
-  accountId: string;
-  annualAmount: number;
-};
+type Bucket = "INCOME" | "EXPENSE" | "ASSET" | "LIABILITY" | "EQUITY";
 
 /**
- * ACCT-D — Create-Budget form. One annual value per account; the
- * server distributes it evenly across 12 month buckets. A future
- * ACCT-D.2 will add per-month edit, so this form keeps the
- * "one annual cell per account" shape intentionally simple.
+ * ACCT-D.2 — Zoho-parity New Budget form.
+ *
+ *   Name *
+ *   Fiscal Year * (3-option dropdown — prev FY / current / next)
+ *   Budget Period * (Monthly / Quarterly / Yearly)
+ *   ─ INCOME AND EXPENSE ACCOUNTS ─
+ *   Income Accounts   [ + Add Accounts ]
+ *   Expense Accounts  [ + Add Accounts ]
+ *   ⊕ Include Asset, Liability, and Equity Accounts in Budget
+ *     (when expanded, three more pickers appear)
+ *
+ *   [Create Budget]  [Cancel]
+ *
+ * The form deliberately does NOT capture per-account amounts.
+ * The action creates the budget with zero amounts and redirects
+ * to the detail page, where the user enters amounts directly into
+ * an editable grid.
  */
 export function BudgetForm({
-  accounts,
-  currency,
+  income,
+  expense,
+  asset,
+  liability,
+  equity,
+  fiscalYearOptions,
   defaultFiscalYear,
 }: {
-  accounts: PnLAccount[];
-  currency: string;
+  income: Account[];
+  expense: Account[];
+  asset: Account[];
+  liability: Account[];
+  equity: Account[];
+  fiscalYearOptions: Array<{ value: number; label: string }>;
   defaultFiscalYear: number;
 }) {
   const router = useRouter();
 
   const [name, setName] = React.useState("");
   const [fiscalYear, setFiscalYear] = React.useState<number>(defaultFiscalYear);
-  const [lines, setLines] = React.useState<Line[]>([
-    { accountId: "", annualAmount: 0 },
-  ]);
+  const [budgetPeriod, setBudgetPeriod] =
+    React.useState<BudgetPeriod>("MONTHLY");
+
+  const [includeBalanceSheet, setIncludeBalanceSheet] = React.useState(false);
+  const [picked, setPicked] = React.useState<Record<Bucket, Set<string>>>({
+    INCOME: new Set(),
+    EXPENSE: new Set(),
+    ASSET: new Set(),
+    LIABILITY: new Set(),
+    EQUITY: new Set(),
+  });
   const [busy, setBusy] = React.useState(false);
 
-  const totalAnnual = lines.reduce(
-    (s, l) =>
-      s + (Number.isFinite(l.annualAmount) ? l.annualAmount : 0),
-    0
-  );
+  function toggle(bucket: Bucket, id: string) {
+    setPicked((prev) => {
+      const next = new Set(prev[bucket]);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return { ...prev, [bucket]: next };
+    });
+  }
 
-  function setLine(i: number, patch: Partial<Line>) {
-    setLines((s) => s.map((l, idx) => (idx === i ? { ...l, ...patch } : l)));
+  function remove(bucket: Bucket, id: string) {
+    setPicked((prev) => {
+      const next = new Set(prev[bucket]);
+      next.delete(id);
+      return { ...prev, [bucket]: next };
+    });
   }
-  function addLine() {
-    setLines((s) => [...s, { accountId: "", annualAmount: 0 }]);
-  }
-  function removeLine(i: number) {
-    if (lines.length > 1) setLines((s) => s.filter((_, idx) => idx !== i));
-  }
+
+  const allPickedIds = React.useMemo(() => {
+    const all: string[] = [];
+    for (const b of ["INCOME", "EXPENSE", "ASSET", "LIABILITY", "EQUITY"] as Bucket[]) {
+      all.push(...Array.from(picked[b]));
+    }
+    return all;
+  }, [picked]);
 
   async function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -72,13 +111,8 @@ export function BudgetForm({
       toast.error("Name the budget");
       return;
     }
-    if (lines.some((l) => !l.accountId)) {
-      toast.error("Pick an account on every line");
-      return;
-    }
-    const picked = new Set(lines.map((l) => l.accountId));
-    if (picked.size !== lines.length) {
-      toast.error("Each account can only appear once");
+    if (allPickedIds.length === 0) {
+      toast.error("Pick at least one account");
       return;
     }
     setBusy(true);
@@ -86,10 +120,8 @@ export function BudgetForm({
       const input: BudgetInput = {
         name: name.trim(),
         fiscalYear,
-        lines: lines.map((l) => ({
-          accountId: l.accountId,
-          annualAmount: l.annualAmount,
-        })),
+        budgetPeriod,
+        accountIds: allPickedIds,
       };
       await createBudgetAndRedirectAction(input);
     } catch (err) {
@@ -101,131 +133,122 @@ export function BudgetForm({
   }
 
   return (
-    <form onSubmit={submit} className="space-y-5">
-      <Card>
-        <CardContent className="pt-6 space-y-4">
-          <div className="grid gap-3 md:grid-cols-2">
-            <div>
-              <Label>
-                Name <span className="text-destructive">*</span>
-              </Label>
-              <Input
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="e.g. FY26 Operating Plan"
-                maxLength={160}
-                required
-              />
-            </div>
-            <div>
-              <Label className="inline-flex items-center gap-1">
-                Fiscal year <span className="text-destructive">*</span>
-                <span title="The year number; the month-1 of the budget follows your org's fiscal-year start (set in Settings).">
-                  <Info className="h-3 w-3 text-muted-foreground" />
-                </span>
-              </Label>
-              <Input
-                type="number"
-                min={2000}
-                max={2100}
-                value={fiscalYear}
-                onChange={(e) =>
-                  setFiscalYear(Number(e.target.value) || defaultFiscalYear)
-                }
-                required
-              />
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+    <form onSubmit={submit} className="space-y-6">
+      {/* ── Name (top band — coloured background per screenshot) ── */}
+      <section className="bg-muted/30 -mx-6 px-6 py-5 grid gap-4 md:grid-cols-[10rem_1fr] items-center">
+        <Label className="text-destructive">
+          Name<span aria-hidden>*</span>
+        </Label>
+        <Input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          maxLength={160}
+          autoFocus
+          required
+          className="max-w-md"
+        />
+      </section>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">
-            Accounts
-            <span className="text-xs text-muted-foreground font-normal ml-2">
-              Annual amount auto-distributes evenly across the 12 months.
-            </span>
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="p-0">
-          <table className="w-full text-sm">
-            <thead className="bg-muted/30 text-xs uppercase tracking-wider text-muted-foreground">
-              <tr>
-                <th className="text-left p-3">Account</th>
-                <th className="text-right p-3 w-44">Annual amount</th>
-                <th className="w-8" />
-              </tr>
-            </thead>
-            <tbody className="divide-y">
-              {lines.map((l, i) => (
-                <tr key={i}>
-                  <td className="p-2">
-                    <select
-                      value={l.accountId}
-                      onChange={(e) => setLine(i, { accountId: e.target.value })}
-                      className="flex h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
-                      required
-                    >
-                      <option value="">Select…</option>
-                      {accounts.map((a) => (
-                        <option key={a.id} value={a.id}>
-                          {a.code ? `${a.code} · ` : ""}
-                          {a.name} ({a.type.toLowerCase().replace("_", " ")})
-                        </option>
-                      ))}
-                    </select>
-                  </td>
-                  <td className="p-2">
-                    <Input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      value={l.annualAmount || ""}
-                      onChange={(e) =>
-                        setLine(i, { annualAmount: Number(e.target.value) })
-                      }
-                      className="h-9 text-right"
-                    />
-                  </td>
-                  <td className="p-2">
-                    {lines.length > 1 && (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => removeLine(i)}
-                      >
-                        <Trash2 className="h-3.5 w-3.5 text-destructive" />
-                      </Button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-            <tfoot className="bg-muted/20 text-sm">
-              <tr>
-                <td className="p-3 text-right">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={addLine}
-                  >
-                    <Plus className="h-3.5 w-3.5 mr-1" /> Add account
-                  </Button>
-                </td>
-                <td className="p-3 text-right tabular-nums font-semibold">
-                  Total {formatMoney(totalAnnual, currency)}
-                </td>
-                <td />
-              </tr>
-            </tfoot>
-          </table>
-        </CardContent>
-      </Card>
+      <section className="grid gap-4 md:grid-cols-[10rem_1fr] items-center">
+        <Label className="text-destructive">
+          Fiscal Year<span aria-hidden>*</span>
+        </Label>
+        <select
+          value={fiscalYear}
+          onChange={(e) => setFiscalYear(Number(e.target.value))}
+          className="flex h-10 w-full max-w-md rounded-md border border-input bg-background px-3 text-sm"
+          required
+        >
+          {fiscalYearOptions.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </select>
 
-      <div className="flex justify-end gap-2 pt-2 border-t">
+        <Label className="text-destructive">
+          Budget Period<span aria-hidden>*</span>
+        </Label>
+        <select
+          value={budgetPeriod}
+          onChange={(e) =>
+            setBudgetPeriod(e.target.value as BudgetPeriod)
+          }
+          className="flex h-10 w-full max-w-md rounded-md border border-input bg-background px-3 text-sm"
+          required
+        >
+          <option value="MONTHLY">Monthly</option>
+          <option value="QUARTERLY">Quarterly</option>
+          <option value="YEARLY">Yearly</option>
+        </select>
+      </section>
+
+      <div className="text-xs font-medium uppercase tracking-wider text-muted-foreground pt-2">
+        Income and Expense Accounts
+      </div>
+
+      <AccountPickerRow
+        label="Income Accounts"
+        bucket="INCOME"
+        options={income}
+        picked={picked.INCOME}
+        onToggle={(id) => toggle("INCOME", id)}
+        onRemove={(id) => remove("INCOME", id)}
+      />
+      <AccountPickerRow
+        label="Expense Accounts"
+        bucket="EXPENSE"
+        options={expense}
+        picked={picked.EXPENSE}
+        onToggle={(id) => toggle("EXPENSE", id)}
+        onRemove={(id) => remove("EXPENSE", id)}
+      />
+
+      {!includeBalanceSheet ? (
+        <button
+          type="button"
+          onClick={() => setIncludeBalanceSheet(true)}
+          className="inline-flex items-center gap-2 text-sm text-primary hover:underline"
+        >
+          <span className="inline-flex items-center justify-center h-5 w-5 rounded-full bg-primary/10 text-primary">
+            <Plus className="h-3 w-3" />
+          </span>
+          Include Asset, Liability, and Equity Accounts in Budget
+        </button>
+      ) : (
+        <>
+          <AccountPickerRow
+            label="Asset Accounts"
+            bucket="ASSET"
+            options={asset}
+            picked={picked.ASSET}
+            onToggle={(id) => toggle("ASSET", id)}
+            onRemove={(id) => remove("ASSET", id)}
+          />
+          <AccountPickerRow
+            label="Liability Accounts"
+            bucket="LIABILITY"
+            options={liability}
+            picked={picked.LIABILITY}
+            onToggle={(id) => toggle("LIABILITY", id)}
+            onRemove={(id) => remove("LIABILITY", id)}
+          />
+          <AccountPickerRow
+            label="Equity Accounts"
+            bucket="EQUITY"
+            options={equity}
+            picked={picked.EQUITY}
+            onToggle={(id) => toggle("EQUITY", id)}
+            onRemove={(id) => remove("EQUITY", id)}
+          />
+        </>
+      )}
+
+      <div className="flex items-center gap-2 pt-6 border-t">
+        <Button type="submit" disabled={busy}>
+          {busy && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+          Create Budget
+        </Button>
         <Button
           type="button"
           variant="outline"
@@ -234,11 +257,120 @@ export function BudgetForm({
         >
           Cancel
         </Button>
-        <Button type="submit" disabled={busy}>
-          {busy && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-          Create Budget
-        </Button>
       </div>
     </form>
+  );
+}
+
+/**
+ * One row inside the form: label on the left, an "Add Accounts"
+ * popover on the right that toggles checkboxes against `options`.
+ * Each picked account shows as a removable chip below the trigger.
+ */
+function AccountPickerRow({
+  label,
+  bucket,
+  options,
+  picked,
+  onToggle,
+  onRemove,
+}: {
+  label: string;
+  bucket: Bucket;
+  options: Account[];
+  picked: Set<string>;
+  onToggle: (id: string) => void;
+  onRemove: (id: string) => void;
+}) {
+  const pickedList = React.useMemo(
+    () => options.filter((o) => picked.has(o.id)),
+    [options, picked]
+  );
+
+  return (
+    <div className="grid gap-2 md:grid-cols-[10rem_1fr] md:items-start">
+      <Label className="md:pt-2 text-foreground">{label}</Label>
+      <div className="space-y-2">
+        <Popover>
+          <PopoverTrigger asChild>
+            <button
+              type="button"
+              className="block w-full max-w-2xl rounded-md border border-dashed border-input bg-background py-2.5 text-left text-sm text-primary hover:bg-muted/40"
+            >
+              <span className="px-3">
+                {picked.size === 0
+                  ? "Add Accounts"
+                  : `Add Accounts (${picked.size} selected)`}
+              </span>
+            </button>
+          </PopoverTrigger>
+          <PopoverContent
+            className="w-[28rem] p-0"
+            align="start"
+            sideOffset={4}
+          >
+            {options.length === 0 ? (
+              <div className="p-4 text-xs text-muted-foreground">
+                No {label.toLowerCase()} exist yet — create one in Chart of
+                Accounts first.
+              </div>
+            ) : (
+              <div className="max-h-72 overflow-y-auto py-1">
+                {options.map((o) => {
+                  const checked = picked.has(o.id);
+                  return (
+                    <label
+                      key={o.id}
+                      className="flex items-center gap-3 px-3 py-2 text-sm hover:bg-muted/40 cursor-pointer"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => onToggle(o.id)}
+                        className="h-4 w-4"
+                      />
+                      <span className="flex-1 truncate">
+                        {o.code ? (
+                          <span className="font-mono text-xs text-muted-foreground mr-1.5">
+                            {o.code}
+                          </span>
+                        ) : null}
+                        {o.name}
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+            )}
+          </PopoverContent>
+        </Popover>
+
+        {pickedList.length > 0 ? (
+          <div className="flex flex-wrap gap-1.5">
+            {pickedList.map((o) => (
+              <span
+                key={o.id}
+                className="inline-flex items-center gap-1 rounded-full bg-secondary text-secondary-foreground text-xs px-2 py-0.5"
+              >
+                {o.code ? (
+                  <span className="font-mono text-[10px] text-muted-foreground">
+                    {o.code}
+                  </span>
+                ) : null}
+                {o.name}
+                <button
+                  type="button"
+                  onClick={() => onRemove(o.id)}
+                  className="hover:text-destructive"
+                  aria-label={`Remove ${o.name} from ${bucket.toLowerCase()} accounts`}
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </span>
+            ))}
+          </div>
+        ) : null}
+      </div>
+    </div>
   );
 }

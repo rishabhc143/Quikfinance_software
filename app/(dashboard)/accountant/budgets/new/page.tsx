@@ -1,17 +1,24 @@
 import Link from "next/link";
-import { ArrowLeft, Target } from "lucide-react";
+import { ArrowLeft, X } from "lucide-react";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
 import { Button } from "@/components/ui/button";
-import { BUDGETABLE_ACCOUNT_TYPES } from "@/lib/accounting/budgets";
+import {
+  BUDGETABLE_ACCOUNT_TYPES,
+  fiscalYearLabel,
+} from "@/lib/accounting/budgets";
 import { BudgetForm } from "./form";
 
 export const metadata = { title: "New Budget" };
 
 /**
- * ACCT-D — Server wrapper for the New Budget form. Loads the org's
- * active P&L accounts (the only ones a budget can target in v1) +
- * computes the default fiscal year off the org's fiscalYearStart.
+ * ACCT-D.2 — Server wrapper for the Zoho-parity New Budget form.
+ *
+ * Fetches all org accounts whose type is in the budget-able set,
+ * then partitions them into the five buckets the form needs
+ * (Income / Expense / Asset / Liability / Equity). Computes the
+ * three Fiscal Year dropdown options (prev / current / next FY)
+ * honoring the org's `fiscalYearStart`.
  */
 export default async function NewBudgetPage() {
   const { organization } = await requireOrganization();
@@ -26,24 +33,52 @@ export default async function NewBudgetPage() {
     orderBy: [{ type: "asc" }, { code: "asc" }, { name: "asc" }],
   });
 
-  // Default fiscal year = today's year, rolling over if we're past
-  // the org's fiscalYearStart month into the next FY.
+  const income = accounts.filter(
+    (a) => a.type === "INCOME" || a.type === "OTHER_INCOME"
+  );
+  const expense = accounts.filter(
+    (a) =>
+      a.type === "EXPENSE" ||
+      a.type === "OTHER_EXPENSE" ||
+      a.type === "COST_OF_GOODS_SOLD"
+  );
+  const asset = accounts.filter((a) => a.type === "ASSET");
+  const liability = accounts.filter((a) => a.type === "LIABILITY");
+  const equity = accounts.filter((a) => a.type === "EQUITY");
+
+  // Default fiscal year — today's year unless we're past the org's
+  // fiscalYearStart month into the next FY.
   const now = new Date();
   const defaultFiscalYear =
     now.getUTCMonth() + 1 >= organization.fiscalYearStart
       ? now.getUTCFullYear()
       : now.getUTCFullYear() - 1;
 
+  // Dropdown options: prev FY / current / next.
+  const fiscalYearOptions = [-1, 0, 1].map((delta) => {
+    const value = defaultFiscalYear + delta;
+    return {
+      value,
+      label: fiscalYearLabel(value, organization.fiscalYearStart),
+    };
+  });
+
   return (
-    <div className="p-6 max-w-4xl mx-auto space-y-4">
-      <div className="flex items-center gap-2">
-        <Button asChild variant="ghost" size="icon">
+    <div className="p-6 max-w-4xl mx-auto space-y-6">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Button asChild variant="ghost" size="icon" aria-label="Back">
+            <Link href="/accountant/budgets">
+              <ArrowLeft className="h-4 w-4" />
+            </Link>
+          </Button>
+          <h1 className="text-xl font-semibold">New Budget</h1>
+        </div>
+        <Button asChild variant="ghost" size="icon" aria-label="Close">
           <Link href="/accountant/budgets">
-            <ArrowLeft className="h-4 w-4" />
+            <X className="h-4 w-4" />
           </Link>
         </Button>
-        <Target className="h-5 w-5 text-muted-foreground" />
-        <h1 className="text-xl font-semibold">New Budget</h1>
       </div>
       {accounts.length === 0 ? (
         <p className="text-sm text-muted-foreground">
@@ -58,8 +93,12 @@ export default async function NewBudgetPage() {
         </p>
       ) : (
         <BudgetForm
-          accounts={accounts}
-          currency={organization.currency}
+          income={income}
+          expense={expense}
+          asset={asset}
+          liability={liability}
+          equity={equity}
+          fiscalYearOptions={fiscalYearOptions}
           defaultFiscalYear={defaultFiscalYear}
         />
       )}
