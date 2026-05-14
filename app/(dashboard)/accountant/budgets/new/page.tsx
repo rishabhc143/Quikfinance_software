@@ -54,8 +54,10 @@ export default async function NewBudgetPage() {
       ? now.getUTCFullYear()
       : now.getUTCFullYear() - 1;
 
-  // Dropdown options: prev FY / current / next.
-  const fiscalYearOptions = [-1, 0, 1].map((delta) => {
+  // Dropdown options: 1 previous FY + current + 4 future FYs.
+  // Matches Zoho's screenshot — accountants budget forward more
+  // than backward, so the range is asymmetric.
+  const fiscalYearOptions = [-1, 0, 1, 2, 3, 4].map((delta) => {
     const value = defaultFiscalYear + delta;
     return {
       value,
