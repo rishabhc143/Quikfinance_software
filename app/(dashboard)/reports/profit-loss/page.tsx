@@ -19,8 +19,19 @@ import {
 } from "@/lib/reports/ledger-aggregation";
 import {
   buildProfitAndLoss,
+  mergePnlWithCompare,
   type PnlSection,
+  type PnlSectionWithCompare,
+  type ProfitAndLossWithCompare,
 } from "@/lib/reports/profit-loss";
+import {
+  parseCompareMode,
+  computeCompareRange,
+  pctChange,
+  formatPctChange,
+  compareRangeLabel,
+  COMPARE_LABEL,
+} from "@/lib/reports/compare";
 import { getRecentReportActivity } from "@/lib/reports/activity";
 import { getExistingSchedule } from "@/lib/reports/scheduled";
 import { formatMoney } from "@/lib/money";
@@ -58,6 +69,7 @@ export default async function ProfitLossPage({
     defaultPreset: "this-month",
   });
   const basis = parseReportBasis(searchParams);
+  const compareMode = parseCompareMode(searchParams);
 
   const jeLines = await db.journalEntryLine.findMany({
     where: {
@@ -101,6 +113,54 @@ export default async function ProfitLossPage({
 
   const pnl = buildProfitAndLoss(ledgerRows);
   const cur = organization.currency;
+
+  // ── Compare-period fetch + merge (no DB calls when mode=none).
+  let pnlCompare: ProfitAndLossWithCompare | null = null;
+  let compareRangeText: string | null = null;
+  if (compareMode !== "none") {
+    const prevRange = computeCompareRange(range, compareMode);
+    const prevJeLines = await db.journalEntryLine.findMany({
+      where: {
+        journalEntry: {
+          organizationId: organization.id,
+          date: { gte: prevRange.start, lte: prevRange.end },
+        },
+        account: {
+          type: {
+            in: [
+              "INCOME",
+              "OTHER_INCOME",
+              "EXPENSE",
+              "COST_OF_GOODS_SOLD",
+              "OTHER_EXPENSE",
+            ],
+          },
+        },
+      },
+      select: {
+        debit: true,
+        credit: true,
+        account: {
+          select: { id: true, name: true, code: true, type: true },
+        },
+      },
+    });
+    const prevLedger = aggregateLedgerLines(
+      prevJeLines.map((l) => ({
+        account: {
+          id: l.account.id,
+          name: l.account.name,
+          code: l.account.code,
+          type: l.account.type as AccountBucket,
+        },
+        debit: Number(l.debit),
+        credit: Number(l.credit),
+      }))
+    );
+    const prevPnl = buildProfitAndLoss(prevLedger);
+    pnlCompare = mergePnlWithCompare(pnl, prevPnl);
+    compareRangeText = compareRangeLabel(compareMode, prevRange);
+  }
 
   // Pre-fetch the Report Activity timeline so the toolbar's drawer
   // opens instantly (no client-side fetch round-trip).
@@ -187,38 +247,83 @@ export default async function ProfitLossPage({
           </div>
         </div>
 
-        {/* Section table */}
-        <table className="w-full text-sm">
-          <thead className="bg-muted/30 text-xs uppercase tracking-wider text-muted-foreground">
-            <tr>
-              <th className="text-left px-6 py-3 font-medium">Account</th>
-              <th className="text-right px-6 py-3 font-medium w-48">Total</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y">
-            <SectionRows section={pnl.operatingIncome} currency={cur} />
-            <SectionRows section={pnl.costOfGoodsSold} currency={cur} />
-            <SubtotalRow
-              label="Gross Profit"
-              amount={pnl.grossProfit}
-              currency={cur}
-            />
-            <SectionRows section={pnl.operatingExpense} currency={cur} />
-            <SubtotalRow
-              label="Operating Profit"
-              amount={pnl.operatingProfit}
-              currency={cur}
-            />
-            <SectionRows section={pnl.nonOperatingIncome} currency={cur} />
-            <SectionRows section={pnl.nonOperatingExpense} currency={cur} />
-            <SubtotalRow
-              label="Net Profit/Loss"
-              amount={pnl.netProfitLoss}
-              currency={cur}
-              emphasize
-            />
-          </tbody>
-        </table>
+        {/* Section table — switches between single-period and
+            compare layout based on the URL ?compare= param. */}
+        {pnlCompare ? (
+          <table className="w-full text-sm">
+            <thead className="bg-muted/30 text-xs uppercase tracking-wider text-muted-foreground">
+              <tr>
+                <th className="text-left px-6 py-3 font-medium">Account</th>
+                <th className="text-right px-6 py-3 font-medium w-40">
+                  {dateRangeText.replace(/^From |To.*$/g, "")}
+                </th>
+                <th className="text-right px-6 py-3 font-medium w-40">
+                  {compareRangeText ?? COMPARE_LABEL[compareMode]}
+                </th>
+                <th className="text-right px-6 py-3 font-medium w-28">
+                  Change
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              <SectionRowsCompare section={pnlCompare.operatingIncome} />
+              <SectionRowsCompare section={pnlCompare.costOfGoodsSold} />
+              <SubtotalRowCompare
+                label="Gross Profit"
+                amount={pnlCompare.grossProfit}
+                previousAmount={pnlCompare.previousGrossProfit}
+              />
+              <SectionRowsCompare section={pnlCompare.operatingExpense} />
+              <SubtotalRowCompare
+                label="Operating Profit"
+                amount={pnlCompare.operatingProfit}
+                previousAmount={pnlCompare.previousOperatingProfit}
+              />
+              <SectionRowsCompare section={pnlCompare.nonOperatingIncome} />
+              <SectionRowsCompare section={pnlCompare.nonOperatingExpense} />
+              <SubtotalRowCompare
+                label="Net Profit/Loss"
+                amount={pnlCompare.netProfitLoss}
+                previousAmount={pnlCompare.previousNetProfitLoss}
+                emphasize
+              />
+            </tbody>
+          </table>
+        ) : (
+          <table className="w-full text-sm">
+            <thead className="bg-muted/30 text-xs uppercase tracking-wider text-muted-foreground">
+              <tr>
+                <th className="text-left px-6 py-3 font-medium">Account</th>
+                <th className="text-right px-6 py-3 font-medium w-48">
+                  Total
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              <SectionRows section={pnl.operatingIncome} currency={cur} />
+              <SectionRows section={pnl.costOfGoodsSold} currency={cur} />
+              <SubtotalRow
+                label="Gross Profit"
+                amount={pnl.grossProfit}
+                currency={cur}
+              />
+              <SectionRows section={pnl.operatingExpense} currency={cur} />
+              <SubtotalRow
+                label="Operating Profit"
+                amount={pnl.operatingProfit}
+                currency={cur}
+              />
+              <SectionRows section={pnl.nonOperatingIncome} currency={cur} />
+              <SectionRows section={pnl.nonOperatingExpense} currency={cur} />
+              <SubtotalRow
+                label="Net Profit/Loss"
+                amount={pnl.netProfitLoss}
+                currency={cur}
+                emphasize
+              />
+            </tbody>
+          </table>
+        )}
 
         {/* Currency footnote */}
         <div className="text-xs text-muted-foreground px-6 py-4 flex items-center gap-2">
@@ -323,3 +428,112 @@ function formatPnlAmount(n: number, currency: string): string {
 /** Keep the import used (formatMoney) actually referenced for future
  *  drill-down / per-account hover tooltips. */
 void formatMoney;
+
+// ─── Compare-period table renderers ──────────────────────────────
+
+function SectionRowsCompare({ section }: { section: PnlSectionWithCompare }) {
+  return (
+    <>
+      <tr>
+        <td className="px-6 py-3 font-semibold" colSpan={4}>
+          {section.label}
+        </td>
+      </tr>
+      {section.accounts.map((a) => (
+        <tr key={a.accountId} className="hover:bg-muted/20">
+          <td className="px-6 py-2.5 pl-10">
+            {a.accountCode ? (
+              <span className="font-mono text-xs text-muted-foreground mr-2">
+                {a.accountCode}
+              </span>
+            ) : null}
+            {a.accountName}
+          </td>
+          <td className="px-6 py-2.5 text-right tabular-nums">
+            {formatPnlAmount(a.amount, "")}
+          </td>
+          <td className="px-6 py-2.5 text-right tabular-nums text-muted-foreground">
+            {formatPnlAmount(a.previousAmount, "")}
+          </td>
+          <PctChangeCell current={a.amount} previous={a.previousAmount} />
+        </tr>
+      ))}
+      <tr>
+        <td className="px-6 py-2.5 pl-10 font-semibold">
+          Total for {section.label}
+        </td>
+        <td className="px-6 py-2.5 text-right tabular-nums font-semibold">
+          {formatPnlAmount(section.total, "")}
+        </td>
+        <td className="px-6 py-2.5 text-right tabular-nums font-semibold text-muted-foreground">
+          {formatPnlAmount(section.previousTotal, "")}
+        </td>
+        <PctChangeCell
+          current={section.total}
+          previous={section.previousTotal}
+          bold
+        />
+      </tr>
+    </>
+  );
+}
+
+function SubtotalRowCompare({
+  label,
+  amount,
+  previousAmount,
+  emphasize,
+}: {
+  label: string;
+  amount: number;
+  previousAmount: number;
+  emphasize?: boolean;
+}) {
+  return (
+    <tr className={emphasize ? "bg-muted/40" : ""}>
+      <td className="px-6 py-3 font-semibold">{label}</td>
+      <td
+        className={
+          "px-6 py-3 text-right tabular-nums font-semibold " +
+          (amount < 0 ? "text-destructive" : "")
+        }
+      >
+        {formatPnlAmount(amount, "")}
+      </td>
+      <td className="px-6 py-3 text-right tabular-nums font-semibold text-muted-foreground">
+        {formatPnlAmount(previousAmount, "")}
+      </td>
+      <PctChangeCell current={amount} previous={previousAmount} bold />
+    </tr>
+  );
+}
+
+function PctChangeCell({
+  current,
+  previous,
+  bold,
+}: {
+  current: number;
+  previous: number;
+  bold?: boolean;
+}) {
+  const p = pctChange(current, previous);
+  const label = formatPctChange(p);
+  const colorCls =
+    p === null
+      ? "text-muted-foreground"
+      : p >= 0
+        ? "text-emerald-600"
+        : "text-destructive";
+  return (
+    <td
+      className={
+        "px-6 py-2.5 text-right tabular-nums " +
+        colorCls +
+        (bold ? " font-semibold" : "")
+      }
+    >
+      {label}
+    </td>
+  );
+}

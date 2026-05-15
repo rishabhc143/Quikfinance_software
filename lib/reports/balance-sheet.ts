@@ -336,3 +336,106 @@ export function cashAndEquivalentsChildren(
   const withChildren = leaf as BsLeafGroup & { children?: BsLeafGroup[] };
   return withChildren.children ?? null;
 }
+
+// ─── Compare-period support ──────────────────────────────────────
+
+export type BsAccountRowWithCompare = BsAccountRow & {
+  previousAmount: number;
+};
+export type BsLeafGroupWithCompare = {
+  label: string;
+  accounts: BsAccountRowWithCompare[];
+  total: number;
+  previousTotal: number;
+};
+export type BsMidGroupWithCompare = {
+  label: string;
+  leaves: BsLeafGroupWithCompare[];
+  accounts: BsAccountRowWithCompare[];
+  total: number;
+  previousTotal: number;
+};
+export type BsTopGroupWithCompare = {
+  label: string;
+  groups: BsMidGroupWithCompare[];
+  total: number;
+  previousTotal: number;
+};
+
+export type BalanceSheetWithCompare = {
+  assets: BsTopGroupWithCompare;
+  liabilities: BsTopGroupWithCompare;
+  equities: BsMidGroupWithCompare;
+  liabilitiesAndEquitiesTotal: number;
+  previousLiabilitiesAndEquitiesTotal: number;
+};
+
+export function mergeBalanceSheetWithCompare(
+  current: BalanceSheet,
+  previous: BalanceSheet
+): BalanceSheetWithCompare {
+  function mergeAccounts(
+    cur: BsAccountRow[],
+    prev: BsAccountRow[]
+  ): BsAccountRowWithCompare[] {
+    const prevById = new Map(prev.map((a) => [a.accountId, a.amount]));
+    const seen = new Set<string>();
+    const out: BsAccountRowWithCompare[] = [];
+    for (const a of cur) {
+      out.push({ ...a, previousAmount: prevById.get(a.accountId) ?? 0 });
+      seen.add(a.accountId);
+    }
+    for (const a of prev) {
+      if (seen.has(a.accountId)) continue;
+      out.push({ ...a, amount: 0, previousAmount: a.amount });
+    }
+    return out;
+  }
+  function mergeLeaf(
+    cur: BsLeafGroup,
+    prev: BsLeafGroup | undefined
+  ): BsLeafGroupWithCompare {
+    return {
+      label: cur.label,
+      accounts: mergeAccounts(cur.accounts, prev?.accounts ?? []),
+      total: cur.total,
+      previousTotal: prev?.total ?? 0,
+    };
+  }
+  function mergeMid(
+    cur: BsMidGroup,
+    prev: BsMidGroup | undefined
+  ): BsMidGroupWithCompare {
+    // Match leaves by label (stable across periods since labels come
+    // from the static bucketing logic).
+    const prevLeaves = new Map(
+      (prev?.leaves ?? []).map((l) => [l.label, l])
+    );
+    return {
+      label: cur.label,
+      leaves: cur.leaves.map((l) => mergeLeaf(l, prevLeaves.get(l.label))),
+      accounts: mergeAccounts(cur.accounts, prev?.accounts ?? []),
+      total: cur.total,
+      previousTotal: prev?.total ?? 0,
+    };
+  }
+  function mergeTop(
+    cur: BsTopGroup,
+    prev: BsTopGroup
+  ): BsTopGroupWithCompare {
+    const prevGroups = new Map(prev.groups.map((g) => [g.label, g]));
+    return {
+      label: cur.label,
+      groups: cur.groups.map((g) => mergeMid(g, prevGroups.get(g.label))),
+      total: cur.total,
+      previousTotal: prev.total,
+    };
+  }
+  return {
+    assets: mergeTop(current.assets, previous.assets),
+    liabilities: mergeTop(current.liabilities, previous.liabilities),
+    equities: mergeMid(current.equities, previous.equities),
+    liabilitiesAndEquitiesTotal: current.liabilitiesAndEquitiesTotal,
+    previousLiabilitiesAndEquitiesTotal: previous.liabilitiesAndEquitiesTotal,
+  };
+}
