@@ -1,4 +1,5 @@
 import { format } from "date-fns";
+import ExcelJS from "exceljs";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
 import {
@@ -16,13 +17,6 @@ import {
   csvDateSuffix,
   type CsvRow,
 } from "@/lib/reports/csv-export";
-import {
-  toXlsx,
-  xlsxResponse,
-  XLSX_FMT,
-  type XlsxRow,
-  type XlsxColumn,
-} from "@/lib/reports/xlsx-export";
 import { parseRangeFromSearchParams } from "@/lib/reports/date-range";
 
 /**
@@ -32,6 +26,9 @@ import { parseRangeFromSearchParams } from "@/lib/reports/date-range";
  *   - `?format=csv` (default) or `?format=xlsx`
  *   - Same `?preset=…&from=…&to=…` shape the page reads, so the
  *     export window always matches what the user just looked at.
+ *
+ * The XLSX layout matches Zoho's downloaded P&L 1:1 — see
+ * `buildXlsxZohoStyle` for the exact cell-by-cell spec.
  *
  * Filename: `profit-and-loss-{yyyymmdd}-to-{yyyymmdd}.csv` (or .xlsx).
  */
@@ -90,126 +87,276 @@ export async function GET(req: Request) {
   const filenameStub = `profit-and-loss-${csvDateSuffix(range.start)}-to-${csvDateSuffix(range.end)}`;
 
   if (fmt === "xlsx") {
-    return buildXlsx(organization.name, organization.currency, range, pnl, filenameStub);
+    return buildXlsxZohoStyle(
+      organization.name,
+      range,
+      pnl,
+      filenameStub
+    );
   }
   return buildCsv(pnl, filenameStub);
 }
 
-/**
- * Flatten the P&L structure into a row list shared by both export
- * formats. Each row carries a `section` label (for grouping in CSV)
- * and an `account` + `amount` pair. Subtotal rows use a sentinel
- * `kind: "subtotal"` so the XLSX builder can bold them.
- */
-type FlatRow = {
-  section: string;
-  account: string;
-  amount: number;
-  kind: "header" | "account" | "section-total" | "subtotal";
-};
+// ─── CSV (back-compat — flat 3-column dump) ───────────────────────
 
-function flatten(pnl: ProfitAndLoss): FlatRow[] {
-  const out: FlatRow[] = [];
-
+function buildCsv(pnl: ProfitAndLoss, filenameStub: string): Response {
+  const rows: CsvRow[] = [];
   function pushSection(s: PnlSection) {
-    out.push({
-      section: s.label,
-      account: s.label,
-      amount: 0,
-      kind: "header",
-    });
+    rows.push({ section: s.label, account: s.label, amount: "" });
     for (const a of s.accounts) {
-      out.push({
+      rows.push({
         section: s.label,
-        account: a.accountCode ? `${a.accountCode} · ${a.accountName}` : a.accountName,
+        account: a.accountCode
+          ? `${a.accountCode} · ${a.accountName}`
+          : a.accountName,
         amount: a.amount,
-        kind: "account",
       });
     }
-    out.push({
+    rows.push({
       section: s.label,
       account: `Total for ${s.label}`,
       amount: s.total,
-      kind: "section-total",
     });
   }
-
   pushSection(pnl.operatingIncome);
   pushSection(pnl.costOfGoodsSold);
-  out.push({
-    section: "Subtotal",
-    account: "Gross Profit",
-    amount: pnl.grossProfit,
-    kind: "subtotal",
-  });
+  rows.push({ section: "Subtotal", account: "Gross Profit", amount: pnl.grossProfit });
   pushSection(pnl.operatingExpense);
-  out.push({
-    section: "Subtotal",
-    account: "Operating Profit",
-    amount: pnl.operatingProfit,
-    kind: "subtotal",
-  });
+  rows.push({ section: "Subtotal", account: "Operating Profit", amount: pnl.operatingProfit });
   pushSection(pnl.nonOperatingIncome);
   pushSection(pnl.nonOperatingExpense);
-  out.push({
-    section: "Subtotal",
-    account: "Net Profit/Loss",
-    amount: pnl.netProfitLoss,
-    kind: "subtotal",
-  });
+  rows.push({ section: "Subtotal", account: "Net Profit/Loss", amount: pnl.netProfitLoss });
 
-  return out;
-}
-
-function buildCsv(pnl: ProfitAndLoss, filenameStub: string): Response {
-  // CSV keeps it simple — section / account / amount. Header rows
-  // get an empty amount so spreadsheets don't sum them by accident.
-  const rows: CsvRow[] = flatten(pnl).map((r) => ({
-    section: r.section,
-    account: r.account,
-    amount: r.kind === "header" ? "" : r.amount,
-  }));
   const csv = toCsv(rows, ["section", "account", "amount"]);
   return csvResponse(filenameStub, csv);
 }
 
-async function buildXlsx(
+// ─── XLSX — Zoho-1:1 layout ───────────────────────────────────────
+
+/**
+ * Build the .xlsx file matching Zoho's downloaded P&L pixel-for-
+ * pixel. The user's template (`Profit and Loss.xlsx`) is the
+ * source-of-truth — fills, borders, column widths, the merged top +
+ * bottom banners, and the **live Excel formulas** for Gross Profit /
+ * Operating Profit / Net Profit/Loss are all faithful to it.
+ *
+ * Formulas reference the section-total rows by row number. Because
+ * those rows can shift when accounts are listed under their section
+ * header, we track each total's actual row number as we emit and
+ * splice it back into the formula strings.
+ */
+async function buildXlsxZohoStyle(
   orgName: string,
-  currency: string,
   range: { start: Date; end: Date },
   pnl: ProfitAndLoss,
   filenameStub: string
 ): Promise<Response> {
-  const columns: XlsxColumn[] = [
-    { key: "section", header: "Section", width: 24 },
-    { key: "account", header: "Account", width: 44 },
-    { key: "amount", header: `Amount (${currency})`, width: 18, numFmt: XLSX_FMT.moneyZeroDash },
+  const wb = new ExcelJS.Workbook();
+  wb.creator = "Quikfinance";
+  wb.created = new Date();
+  const ws = wb.addWorksheet("Profit and Loss");
+
+  // Two columns, both ~39 chars wide (matches the template).
+  ws.columns = [
+    { key: "account", width: 39.0625 },
+    { key: "total", width: 39.0625 },
   ];
 
-  // Prepend a few context rows above the data so the file opens
-  // self-describing (org / report / period / basis).
-  const flat = flatten(pnl);
-  const rows: XlsxRow[] = [
-    { section: "", account: orgName, amount: null },
-    { section: "", account: "Profit and Loss", amount: null },
-    { section: "", account: `Basis: Accrual`, amount: null },
-    {
-      section: "",
-      account: `From ${format(range.start, "dd/MM/yyyy")} To ${format(range.end, "dd/MM/yyyy")}`,
-      amount: null,
+  // ── Common style atoms ───────────────────────────────────────────
+  const thin = { style: "thin" as const };
+  const allBorders = {
+    top: thin,
+    bottom: thin,
+    left: thin,
+    right: thin,
+  };
+  const bannerFill = {
+    type: "pattern" as const,
+    pattern: "solid" as const,
+    fgColor: { argb: "FFEEEEEE" },
+  };
+  const totalFill = {
+    type: "pattern" as const,
+    pattern: "solid" as const,
+    fgColor: { argb: "FFF5F5F5" },
+  };
+  const sectionHeaderFill = {
+    type: "pattern" as const,
+    pattern: "solid" as const,
+    fgColor: { argb: "FFFFFFFF" },
+  };
+
+  // ── Row 1: merged banner with org / title / basis / dates ───────
+  ws.mergeCells("A1:B1");
+  const banner = ws.getCell("A1");
+  banner.value =
+    `${orgName}\n` +
+    `            Profit and Loss\n` +
+    `            Basis: Accrual\n` +
+    `                        From ${format(range.start, "dd/MM/yyyy")} To ${format(range.end, "dd/MM/yyyy")}`;
+  banner.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+  banner.fill = bannerFill;
+  banner.border = allBorders;
+  banner.font = { size: 11, color: { argb: "FF000000" } };
+  ws.getRow(1).height = 75;
+
+  // ── Row 2: column headers ───────────────────────────────────────
+  const h1 = ws.getCell("A2");
+  const h2 = ws.getCell("B2");
+  h1.value = "Account ";
+  h2.value = "Total ";
+  for (const c of [h1, h2]) {
+    c.fill = totalFill;
+    c.border = allBorders;
+    c.font = { color: { argb: "FF000000" } };
+  }
+  h1.alignment = { horizontal: "left" };
+  h2.alignment = { horizontal: "right" };
+
+  // Cursor starts on row 3 (the blank row above Operating Income
+  // section header per the template). We'll always leave one blank
+  // row between sections to match Zoho's spacing.
+  let row = 3;
+  ws.getRow(row).height = 8; // thin spacer
+  row += 1;
+
+  // Returns the row number of the "Total for <section>" line, which
+  // the formulas reference.
+  function emitSection(section: PnlSection): number {
+    // Section header row.
+    const headerRow = ws.getRow(row);
+    const a = headerRow.getCell(1);
+    const b = headerRow.getCell(2);
+    a.value = section.label;
+    b.value = "";
+    for (const c of [a, b]) {
+      c.fill = sectionHeaderFill;
+      c.border = allBorders;
+      c.font = { color: { argb: "FF000000" } };
+    }
+    a.alignment = { horizontal: "left" };
+    row += 1;
+
+    // Account rows (one per non-zero account in this section).
+    for (const acct of section.accounts) {
+      const accRow = ws.getRow(row);
+      const ac = accRow.getCell(1);
+      const am = accRow.getCell(2);
+      ac.value = acct.accountCode
+        ? `${acct.accountCode} · ${acct.accountName}`
+        : acct.accountName;
+      am.value = acct.amount;
+      for (const c of [ac, am]) {
+        c.fill = sectionHeaderFill;
+        c.border = allBorders;
+        c.font = { color: { argb: "FF000000" } };
+      }
+      ac.alignment = { horizontal: "left", indent: 1 };
+      am.alignment = { horizontal: "right" };
+      am.numFmt = "#,##0.00;-#,##0.00;0.00";
+      row += 1;
+    }
+
+    // "Total for X" row — bold, gray, size 12.
+    const totalRow = ws.getRow(row);
+    const ta = totalRow.getCell(1);
+    const tb = totalRow.getCell(2);
+    ta.value = `Total for ${section.label}`;
+    tb.value = section.total;
+    for (const c of [ta, tb]) {
+      c.fill = totalFill;
+      c.border = allBorders;
+      c.font = { bold: true, size: 12, color: { argb: "FF000000" } };
+    }
+    ta.alignment = { horizontal: "left" };
+    tb.alignment = { horizontal: "right" };
+    tb.numFmt = "#,##0.00;-#,##0.00;0.00";
+    const totalRowNumber = row;
+    row += 1;
+
+    // One blank spacer row between sections.
+    ws.getRow(row).height = 8;
+    row += 1;
+
+    return totalRowNumber;
+  }
+
+  // Emit sections + track their total-row numbers so the subtotal
+  // formulas reference them correctly.
+  const opIncomeTotalRow = emitSection(pnl.operatingIncome);
+  const cogsTotalRow = emitSection(pnl.costOfGoodsSold);
+
+  // Gross Profit subtotal — formula uses the tracked rows.
+  emitSubtotal(
+    "Gross Profit",
+    `=(B${opIncomeTotalRow}-B${cogsTotalRow})`,
+    pnl.grossProfit
+  );
+
+  const opExpenseTotalRow = emitSection(pnl.operatingExpense);
+
+  // Operating Profit subtotal.
+  emitSubtotal(
+    "Operating Profit",
+    `=((B${opIncomeTotalRow}-B${cogsTotalRow})-B${opExpenseTotalRow})`,
+    pnl.operatingProfit
+  );
+
+  const nonOpIncomeTotalRow = emitSection(pnl.nonOperatingIncome);
+  const nonOpExpenseTotalRow = emitSection(pnl.nonOperatingExpense);
+
+  // Net Profit/Loss — full formula.
+  emitSubtotal(
+    "Net Profit/Loss",
+    `=(((B${opIncomeTotalRow}-B${cogsTotalRow})-B${opExpenseTotalRow})+B${nonOpIncomeTotalRow}-B${nonOpExpenseTotalRow})`,
+    pnl.netProfitLoss
+  );
+
+  // Final merged banner row (matches the template's A24:B24 row).
+  ws.mergeCells(`A${row}:B${row}`);
+  const footer = ws.getCell(`A${row}`);
+  footer.value = "";
+  footer.fill = bannerFill;
+  footer.border = allBorders;
+  footer.alignment = { horizontal: "center" };
+  ws.getRow(row).height = 8;
+
+  function emitSubtotal(label: string, formula: string, value: number) {
+    const subRow = ws.getRow(row);
+    const a = subRow.getCell(1);
+    const b = subRow.getCell(2);
+    a.value = label;
+    // exceljs accepts an object for formula cells. Provide `result`
+    // so the file opens with the right pre-computed display value
+    // (otherwise Excel might show 0 until the user hits "calculate").
+    b.value = { formula: formula.replace(/^=/, ""), result: value };
+    for (const c of [a, b]) {
+      c.fill = totalFill;
+      c.border = allBorders;
+      c.font = { bold: true, size: 12, color: { argb: "FF000000" } };
+    }
+    a.alignment = { horizontal: "right" };
+    b.alignment = { horizontal: "right" };
+    b.numFmt = "#,##0.00;-#,##0.00;0.00";
+    row += 1;
+
+    // Spacer row between subtotals + the next section.
+    ws.getRow(row).height = 8;
+    row += 1;
+  }
+
+  // ─── Serialize + respond ────────────────────────────────────────
+  const arrayBuffer = await wb.xlsx.writeBuffer();
+  const buf = Buffer.from(arrayBuffer);
+  const safe = filenameStub.replace(/[^A-Za-z0-9._-]/g, "_");
+  return new Response(buf as unknown as BodyInit, {
+    status: 200,
+    headers: {
+      "Content-Type":
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "Content-Disposition": `attachment; filename="${safe}.xlsx"`,
+      "Cache-Control": "no-store",
+      "Content-Length": String(buf.byteLength),
     },
-    { section: "", account: "", amount: null },
-    ...flat.map((r) => ({
-      section: r.section,
-      account: r.account,
-      amount: r.kind === "header" ? null : r.amount,
-    })),
-  ];
-
-  const buf = await toXlsx({
-    sheetName: "Profit and Loss",
-    columns,
-    rows,
   });
-  return xlsxResponse(filenameStub, buf);
 }
