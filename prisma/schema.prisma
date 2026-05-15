@@ -2485,6 +2485,50 @@ model UserReportFavorite {
   @@index([userId, organizationId])
 }
 
+/// REPORTS — Recurring scheduled report. One row per user-defined
+/// "send me this report by email every Monday at 9am" rule. The
+/// cron worker (app/api/cron/scheduled-reports/route.ts) picks up
+/// rows where status=ACTIVE AND nextSendAt <= now(), renders the
+/// report in the chosen format (PDF/XLSX/CSV), emails to recipients
+/// via Resend, records a ScheduledReportRun, then advances
+/// nextSendAt. FK cascade at SQL level only.
+model ScheduledReport {
+  id             String    @id @default(cuid())
+  organizationId String
+  userId         String
+  reportKey      String
+  reportTitle    String
+  frequency      String    @default("WEEKLY")
+  format         String    @default("PDF")
+  status         String    @default("ACTIVE")
+  startDate      DateTime
+  nextSendAt     DateTime
+  lastSentAt     DateTime?
+  recipients     String
+  reportParams   Json?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @default(now()) @updatedAt
+
+  @@index([organizationId, reportKey])
+  @@index([status, nextSendAt])
+  @@index([userId])
+}
+
+/// REPORTS — One row per scheduled-report send attempt. Powers the
+/// "Schedule History" tab on the Schedule Report drawer.
+model ScheduledReportRun {
+  id                String   @id @default(cuid())
+  scheduledReportId String
+  organizationId    String
+  sentAt            DateTime @default(now())
+  status            String
+  recipients        String
+  errorMessage      String?
+
+  @@index([scheduledReportId, sentAt(sort: Desc)])
+  @@index([organizationId, sentAt(sort: Desc)])
+}
+
 /// REPORTS — Per-report activity audit log. Captures export downloads,
 /// customize-run events, schedule create/edit (Phase B), and any other
 /// per-report user action worth surfacing in the Report Activity drawer.

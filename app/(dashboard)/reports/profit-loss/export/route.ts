@@ -19,6 +19,7 @@ import {
 } from "@/lib/reports/csv-export";
 import { parseRangeFromSearchParams } from "@/lib/reports/date-range";
 import { logReportActivity } from "@/lib/reports/activity";
+import { renderProfitLossPdf } from "@/lib/reports/pdf/profit-loss";
 
 /**
  * REPORTS — Export endpoint for the Zoho-style Profit and Loss page.
@@ -36,7 +37,9 @@ import { logReportActivity } from "@/lib/reports/activity";
 export async function GET(req: Request) {
   const { organization, user } = await requireOrganization();
   const url = new URL(req.url);
-  const fmt = url.searchParams.get("format") === "xlsx" ? "xlsx" : "csv";
+  const rawFmt = url.searchParams.get("format");
+  const fmt: "csv" | "xlsx" | "pdf" =
+    rawFmt === "pdf" ? "pdf" : rawFmt === "xlsx" ? "xlsx" : "csv";
 
   const params = Object.fromEntries(url.searchParams.entries());
   const { range } = parseRangeFromSearchParams(params, {
@@ -93,13 +96,33 @@ export async function GET(req: Request) {
     organizationId: organization.id,
     userId: user.id,
     reportKey: "profit-and-loss",
-    eventType: fmt === "xlsx" ? "EXPORT_XLSX" : "EXPORT_CSV",
+    eventType:
+      fmt === "pdf"
+        ? "EXPORT_PDF"
+        : fmt === "xlsx"
+          ? "EXPORT_XLSX"
+          : "EXPORT_CSV",
     eventData: {
-      format: fmt === "xlsx" ? "XLSX" : "CSV",
+      format: fmt.toUpperCase() as "PDF" | "XLSX" | "CSV",
       filename: `${filenameStub}.${fmt}`,
     },
   });
 
+  if (fmt === "pdf") {
+    const dateRangeText = `From ${format(range.start, "dd/MM/yyyy")} To ${format(range.end, "dd/MM/yyyy")}`;
+    const buf = await renderProfitLossPdf({
+      organizationName: organization.name,
+      dateRangeText,
+      pnl,
+      currency: organization.currency,
+    });
+    return new Response(new Uint8Array(buf), {
+      headers: {
+        "Content-Type": "application/pdf",
+        "Content-Disposition": `attachment; filename="${filenameStub}.pdf"`,
+      },
+    });
+  }
   if (fmt === "xlsx") {
     return buildXlsxZohoStyle(
       organization.name,

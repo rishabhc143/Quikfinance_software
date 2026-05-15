@@ -16,6 +16,7 @@ import {
   type PnlSection,
 } from "@/lib/reports/profit-loss";
 import { getRecentReportActivity } from "@/lib/reports/activity";
+import { getExistingSchedule } from "@/lib/reports/scheduled";
 import { formatMoney } from "@/lib/money";
 
 export const metadata = { title: "Profit and Loss" };
@@ -45,7 +46,7 @@ export default async function ProfitLossPage({
 }: {
   searchParams: Record<string, string>;
 }) {
-  const { organization } = await requireOrganization();
+  const { organization, user } = await requireOrganization();
   const { range, preset } = parseRangeFromSearchParams(searchParams, {
     fiscalYearStartMonth: organization.fiscalYearStart,
     defaultPreset: "this-month",
@@ -102,6 +103,13 @@ export default async function ProfitLossPage({
     20
   );
 
+  // Pre-fetch any existing scheduled-report row for this user.
+  const existingSchedule = await getExistingSchedule({
+    organizationId: organization.id,
+    userId: user.id,
+    reportKey: "profit-and-loss",
+  });
+
   const dateRangeText = `From ${format(range.start, "dd/MM/yyyy")} To ${format(
     range.end,
     "dd/MM/yyyy"
@@ -143,6 +151,7 @@ export default async function ProfitLossPage({
             { key: "showCode", label: "Account Code", defaultEnabled: true },
           ]}
           activityRows={activityRows}
+          existingSchedule={existingSchedule}
         />
       }
     >

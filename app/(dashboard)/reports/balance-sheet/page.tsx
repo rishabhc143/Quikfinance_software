@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ReportToolbar } from "@/components/reports/report-toolbar";
 import { getRecentReportActivity } from "@/lib/reports/activity";
+import { getExistingSchedule } from "@/lib/reports/scheduled";
 import { ReportShell } from "@/components/reports/report-shell";
 import {
   aggregateLedgerLines,
@@ -61,7 +62,7 @@ export default async function BalanceSheetPage({
 }: {
   searchParams: Record<string, string>;
 }) {
-  const { organization } = await requireOrganization();
+  const { organization, user } = await requireOrganization();
 
   const asOf = parseAsOfDate(searchParams.as_of) ?? endOfToday();
   const asOfText = format(asOf, "dd/MM/yyyy");
@@ -151,6 +152,11 @@ export default async function BalanceSheetPage({
     "balance-sheet",
     20
   );
+  const existingSchedule = await getExistingSchedule({
+    organizationId: organization.id,
+    userId: user.id,
+    reportKey: "balance-sheet",
+  });
 
   return (
     <ReportShell
@@ -173,6 +179,7 @@ export default async function BalanceSheetPage({
             { key: "showCode", label: "Account Code", defaultEnabled: true },
           ]}
           activityRows={activityRows}
+          existingSchedule={existingSchedule}
         />
       }
     >

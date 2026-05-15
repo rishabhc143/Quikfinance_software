@@ -26,6 +26,10 @@ import {
 } from "./customize-report-drawer";
 import { ReportActivityDrawer } from "./report-activity-drawer";
 import { PrintPreferenceDrawer } from "./print-preference-drawer";
+import {
+  ScheduleReportDrawer,
+  type ExistingScheduleSummary,
+} from "./schedule-report-drawer";
 import { triggerPrint } from "@/lib/reports/print";
 import type { ReportActivityRow } from "@/lib/reports/activity";
 
@@ -60,6 +64,8 @@ export type ReportToolbarProps = {
   columns?: CustomizeColumnDescriptor[];
   /** Pre-fetched activity rows for the Activity drawer. */
   activityRows: ReportActivityRow[];
+  /** Pre-fetched existing schedule (if any) for this user+org+report. */
+  existingSchedule?: ExistingScheduleSummary | null;
   /** Path to navigate back to. Defaults to /reports. */
   closeHref?: string;
 };
@@ -72,9 +78,11 @@ export function ReportToolbar({
   exportParams,
   columns = [],
   activityRows,
+  existingSchedule = null,
   closeHref = "/reports",
 }: ReportToolbarProps) {
   const [customizeOpen, setCustomizeOpen] = React.useState(false);
+  const [scheduleOpen, setScheduleOpen] = React.useState(false);
   const [activityOpen, setActivityOpen] = React.useState(false);
   const [printPrefOpen, setPrintPrefOpen] = React.useState(false);
 
@@ -101,22 +109,28 @@ export function ReportToolbar({
           <SlidersHorizontal className="h-4 w-4" />
         </Button>
 
-        {/* 2. Schedule (Phase B) */}
+        {/* 2. Schedule */}
         <div className="relative">
           <Button
             variant="outline"
             size="icon"
             aria-label="Schedule Report"
-            title="Schedule Report — coming in next release"
-            disabled
+            title={
+              existingSchedule
+                ? `Scheduled — ${existingSchedule.status}`
+                : "Schedule Report"
+            }
+            onClick={() => setScheduleOpen(true)}
           >
             <PlayCircle className="h-4 w-4" />
           </Button>
-          {/* Green dot badge mirroring the screenshot */}
-          <span
-            aria-hidden
-            className="absolute top-0.5 right-0.5 h-1.5 w-1.5 rounded-full bg-emerald-500 ring-1 ring-background"
-          />
+          {/* Green dot badge when an ACTIVE schedule exists */}
+          {existingSchedule?.status === "ACTIVE" ? (
+            <span
+              aria-hidden
+              className="absolute top-0.5 right-0.5 h-1.5 w-1.5 rounded-full bg-emerald-500 ring-1 ring-background"
+            />
+          ) : null}
         </div>
 
         {/* 3. Export dropdown */}
@@ -131,14 +145,11 @@ export function ReportToolbar({
             <DropdownMenuLabel className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">
               Export As
             </DropdownMenuLabel>
-            <DropdownMenuItem disabled title="PDF export ships in Phase B">
-              <span className="inline-flex items-center gap-2">
+            <DropdownMenuItem asChild>
+              <a href={buildExportUrl("pdf")} className="inline-flex items-center gap-2">
                 <Download className="h-3.5 w-3.5" />
                 PDF
-              </span>
-              <span className="ml-auto text-[10px] uppercase tracking-wider text-muted-foreground">
-                Soon
-              </span>
+              </a>
             </DropdownMenuItem>
             <DropdownMenuItem asChild>
               <a href={buildExportUrl("xlsx")}>XLSX (Microsoft Excel)</a>
@@ -194,6 +205,13 @@ export function ReportToolbar({
         reportKey={reportKey}
         fiscalYearStartMonth={fiscalYearStartMonth}
         columns={columns}
+      />
+      <ScheduleReportDrawer
+        open={scheduleOpen}
+        onOpenChange={setScheduleOpen}
+        reportKey={reportKey}
+        reportTitle={reportTitle}
+        existing={existingSchedule}
       />
       <ReportActivityDrawer
         open={activityOpen}
