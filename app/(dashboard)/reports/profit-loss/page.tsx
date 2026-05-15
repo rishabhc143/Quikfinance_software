@@ -6,6 +6,12 @@ import { Badge } from "@/components/ui/badge";
 import { ReportShell } from "@/components/reports/report-shell";
 import { DateRangePicker } from "@/components/reports/date-range-picker";
 import { ReportToolbar } from "@/components/reports/report-toolbar";
+import { ReportFilterStrip } from "@/components/reports/report-filter-strip";
+import {
+  ReportBasisDropdown,
+  parseReportBasis,
+  REPORT_BASIS_LABEL,
+} from "@/components/reports/report-basis-dropdown";
 import { parseRangeFromSearchParams } from "@/lib/reports/date-range";
 import {
   aggregateLedgerLines,
@@ -51,6 +57,7 @@ export default async function ProfitLossPage({
     fiscalYearStartMonth: organization.fiscalYearStart,
     defaultPreset: "this-month",
   });
+  const basis = parseReportBasis(searchParams);
 
   const jeLines = await db.journalEntryLine.findMany({
     where: {
@@ -134,11 +141,14 @@ export default async function ProfitLossPage({
         </span>
       }
       range={
-        <DateRangePicker
-          activePreset={preset}
-          activeRange={range}
-          fiscalYearStartMonth={organization.fiscalYearStart}
-        />
+        <ReportFilterStrip>
+          <DateRangePicker
+            activePreset={preset}
+            activeRange={range}
+            fiscalYearStartMonth={organization.fiscalYearStart}
+          />
+          <ReportBasisDropdown defaultBasis={basis} />
+        </ReportFilterStrip>
       }
       actions={
         <ReportToolbar
@@ -165,7 +175,12 @@ export default async function ProfitLossPage({
           <div className="text-sm">
             <span className="text-muted-foreground">Basis</span>
             <span className="mx-1.5">:</span>
-            <span>Accrual</span>
+            <span>{REPORT_BASIS_LABEL[basis]}</span>
+            {basis === "cash" ? (
+              <span className="ml-2 text-[10px] uppercase tracking-wider text-amber-600">
+                beta — same data as accrual for now
+              </span>
+            ) : null}
           </div>
           <div className="text-sm text-muted-foreground tabular-nums">
             {dateRangeText}

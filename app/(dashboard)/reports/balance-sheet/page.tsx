@@ -1,13 +1,16 @@
 import { format } from "date-fns";
-import { Filter } from "lucide-react";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
-import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { ReportToolbar } from "@/components/reports/report-toolbar";
+import { ReportFilterStrip } from "@/components/reports/report-filter-strip";
+import { BalanceSheetAsOfPill } from "@/components/reports/balance-sheet-as-of-pill";
+import {
+  ReportBasisDropdown,
+  parseReportBasis,
+  REPORT_BASIS_LABEL,
+} from "@/components/reports/report-basis-dropdown";
 import { getRecentReportActivity } from "@/lib/reports/activity";
 import { getExistingSchedule } from "@/lib/reports/scheduled";
 import { ReportShell } from "@/components/reports/report-shell";
@@ -66,6 +69,7 @@ export default async function BalanceSheetPage({
 
   const asOf = parseAsOfDate(searchParams.as_of) ?? endOfToday();
   const asOfText = format(asOf, "dd/MM/yyyy");
+  const basis = parseReportBasis(searchParams);
 
   // Pull every ChartOfAccount on this org (so empty buckets surface
   // as 0.00 in the table per Zoho's empty state).
@@ -183,40 +187,11 @@ export default async function BalanceSheetPage({
         />
       }
     >
-      {/* Filter strip — Zoho-style pills + Run Report button. */}
-      <form
-        action="/reports/balance-sheet"
-        method="GET"
-        className="flex items-end gap-3 flex-wrap"
-      >
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <Filter className="h-3 w-3" />
-          <span className="uppercase tracking-wider">Filters :</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <Label className="text-xs text-muted-foreground">As of :</Label>
-          <Input
-            type="date"
-            name="as_of"
-            defaultValue={format(asOf, "yyyy-MM-dd")}
-            className="h-9 w-40 text-xs"
-          />
-        </div>
-        <div className="flex items-center gap-1.5">
-          <Label className="text-xs text-muted-foreground">
-            Report Basis :
-          </Label>
-          <Badge variant="outline" className="text-xs">
-            Accrual
-          </Badge>
-        </div>
-        <Button type="button" variant="outline" size="sm" disabled>
-          + More Filters
-        </Button>
-        <Button type="submit" size="sm">
-          Run Report
-        </Button>
-      </form>
+      {/* Filter strip — Zoho-aligned pills */}
+      <ReportFilterStrip>
+        <BalanceSheetAsOfPill defaultValue={format(asOf, "yyyy-MM-dd")} />
+        <ReportBasisDropdown defaultBasis={basis} />
+      </ReportFilterStrip>
 
       <Card className="p-0 overflow-hidden">
         {/* Centered report header */}
@@ -228,7 +203,12 @@ export default async function BalanceSheetPage({
           <div className="text-sm">
             <span className="text-muted-foreground">Basis</span>
             <span className="mx-1.5">:</span>
-            <span>Accrual</span>
+            <span>{REPORT_BASIS_LABEL[basis]}</span>
+            {basis === "cash" ? (
+              <span className="ml-2 text-[10px] uppercase tracking-wider text-amber-600">
+                beta — same data as accrual for now
+              </span>
+            ) : null}
           </div>
           <div className="text-sm text-muted-foreground tabular-nums">
             As of {asOfText}
