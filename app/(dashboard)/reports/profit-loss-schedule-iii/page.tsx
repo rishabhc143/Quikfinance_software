@@ -54,16 +54,36 @@ export default async function ProfitLossScheduleIIIPage({
   const prevRangeEnd = endOfMonth(subMonths(range.end, 1));
 
   // Fetch both periods' P&L ledger entries in parallel.
-  const [currentLines, previousLines] = await Promise.all([
-    fetchPnlLines(organization.id, range.start, range.end),
-    fetchPnlLines(organization.id, prevRangeStart, prevRangeEnd),
-  ]);
-
-  const currentLedger = aggregateLedgerLines(currentLines);
-  const previousLedger = aggregateLedgerLines(previousLines);
-
-  const currentPnl = buildScheduleIIIPnl(currentLedger);
-  const previousPnl = buildScheduleIIIPnl(previousLedger);
+  // Wrapped in a try/catch so DB failures surface as a structured
+  // log entry (visible in Vercel function logs) rather than an
+  // opaque Server Components render error.
+  let currentPnl;
+  let previousPnl;
+  try {
+    const [currentLines, previousLines] = await Promise.all([
+      fetchPnlLines(organization.id, range.start, range.end),
+      fetchPnlLines(organization.id, prevRangeStart, prevRangeEnd),
+    ]);
+    const currentLedger = aggregateLedgerLines(currentLines);
+    const previousLedger = aggregateLedgerLines(previousLines);
+    currentPnl = buildScheduleIIIPnl(currentLedger);
+    previousPnl = buildScheduleIIIPnl(previousLedger);
+  } catch (err) {
+    console.error(
+      "[reports/profit-loss-schedule-iii] failed to fetch/build ledger data",
+      {
+        orgId: organization.id,
+        currentRange: { start: range.start.toISOString(), end: range.end.toISOString() },
+        prevRange: {
+          start: prevRangeStart.toISOString(),
+          end: prevRangeEnd.toISOString(),
+        },
+        error: err instanceof Error ? err.message : String(err),
+        stack: err instanceof Error ? err.stack : undefined,
+      }
+    );
+    throw err;
+  }
   const cur = organization.currency;
 
   // Activity timeline + existing schedule for the toolbar.
