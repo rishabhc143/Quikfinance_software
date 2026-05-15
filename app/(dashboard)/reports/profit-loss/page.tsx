@@ -1,90 +1,94 @@
-import Link from "next/link";
-import { ArrowLeft, Download } from "lucide-react";
+import { format } from "date-fns";
+import {
+  Download,
+  Filter,
+  RefreshCw,
+  SlidersHorizontal,
+} from "lucide-react";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { formatMoney } from "@/lib/money";
-import { startOfYear, endOfYear, format } from "date-fns";
+import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from "@/components/ui/dropdown-menu";
+import { ReportShell } from "@/components/reports/report-shell";
+import { DateRangePicker } from "@/components/reports/date-range-picker";
+import { parseRangeFromSearchParams } from "@/lib/reports/date-range";
 import {
   aggregateLedgerLines,
-  sumByBucket,
   type AccountBucket,
 } from "@/lib/reports/ledger-aggregation";
+import {
+  buildProfitAndLoss,
+  type PnlSection,
+} from "@/lib/reports/profit-loss";
+import { formatMoney } from "@/lib/money";
 
-export const metadata = { title: "Profit & Loss" };
+export const metadata = { title: "Profit and Loss" };
 
-export default async function ProfitLossPage({ searchParams }: { searchParams: Record<string, string> }) {
+/**
+ * Zoho-style Profit and Loss report.
+ *
+ *   Outer (ReportShell) header:
+ *     "Business Overview · Profit and Loss · From DD/MM/YYYY To DD/MM/YYYY"
+ *     with the date-range picker + Export dropdown + Refresh button.
+ *
+ *   Inner (centered card):
+ *     Organization name · "Profit and Loss" title · Basis: Accrual ·
+ *     Date range, then the hierarchical section table:
+ *
+ *     Operating Income       (INCOME accounts)
+ *     Cost of Goods Sold     (COST_OF_GOODS_SOLD accounts)
+ *     Gross Profit           (subtotal)
+ *     Operating Expense      (EXPENSE accounts)
+ *     Operating Profit       (subtotal)
+ *     Non Operating Income   (OTHER_INCOME accounts)
+ *     Non Operating Expense  (OTHER_EXPENSE accounts)
+ *     Net Profit/Loss        (subtotal)
+ */
+export default async function ProfitLossPage({
+  searchParams,
+}: {
+  searchParams: Record<string, string>;
+}) {
   const { organization } = await requireOrganization();
-  const cur = organization.currency;
-  const now = new Date();
-  const from = searchParams.from ? new Date(searchParams.from) : startOfYear(now);
-  const to = searchParams.to ? new Date(searchParams.to) : endOfYear(now);
+  const { range, preset } = parseRangeFromSearchParams(searchParams, {
+    fiscalYearStartMonth: organization.fiscalYearStart,
+    defaultPreset: "this-month",
+  });
 
-  const [paidInvoices, expenses, openInvoices, jeLines] = await Promise.all([
-    db.invoice.aggregate({
-      where: {
-        organizationId: organization.id, deletedAt: null, status: "PAID",
-        issueDate: { gte: from, lte: to },
+  const jeLines = await db.journalEntryLine.findMany({
+    where: {
+      journalEntry: {
+        organizationId: organization.id,
+        date: { gte: range.start, lte: range.end },
       },
-      _sum: { total: true }, _count: true,
-    }),
-    db.expense.findMany({
-      where: { organizationId: organization.id, date: { gte: from, lte: to }, deletedAt: null },
-      select: { category: true, amount: true },
-    }),
-    db.invoice.aggregate({
-      where: {
-        organizationId: organization.id, deletedAt: null,
-        status: { in: ["SENT", "PARTIALLY_PAID", "OVERDUE"] },
-        issueDate: { gte: from, lte: to },
-      },
-      _sum: { total: true, amountPaid: true },
-    }),
-    // RPT-A — JournalEntryLine rows in the period whose account is an
-    // income or expense bucket. Captures BNK-D Money In Categorise +
-    // BNK-E rule fires + any Manual Journals.
-    db.journalEntryLine.findMany({
-      where: {
-        journalEntry: {
-          organizationId: organization.id,
-          date: { gte: from, lte: to },
-        },
-        account: {
-          type: {
-            in: [
-              "INCOME",
-              "OTHER_INCOME",
-              "EXPENSE",
-              "COST_OF_GOODS_SOLD",
-              "OTHER_EXPENSE",
-            ],
-          },
+      account: {
+        type: {
+          in: [
+            "INCOME",
+            "OTHER_INCOME",
+            "EXPENSE",
+            "COST_OF_GOODS_SOLD",
+            "OTHER_EXPENSE",
+          ],
         },
       },
-      select: {
-        debit: true,
-        credit: true,
-        account: { select: { id: true, name: true, code: true, type: true } },
+    },
+    select: {
+      debit: true,
+      credit: true,
+      account: {
+        select: { id: true, name: true, code: true, type: true },
       },
-    }),
-  ]);
+    },
+  });
 
-  const revenue = Number(paidInvoices._sum.total ?? 0);
-  const accruedRevenue = Number(openInvoices._sum.total ?? 0);
-
-  const expenseByCategory = expenses.reduce<Record<string, number>>((acc, e) => {
-    acc[e.category] = (acc[e.category] ?? 0) + Number(e.amount);
-    return acc;
-  }, {});
-  const totalExpensesFromTable = Object.values(expenseByCategory).reduce(
-    (s, n) => s + n,
-    0
-  );
-
-  // RPT-A — aggregate the JE lines into bucket totals. Income buckets
-  // contribute their CR side to revenue; expense buckets contribute
-  // their DR side (less any reversing CRs).
   const ledgerRows = aggregateLedgerLines(
     jeLines.map((l) => ({
       account: {
@@ -97,120 +101,247 @@ export default async function ProfitLossPage({ searchParams }: { searchParams: R
       credit: Number(l.credit),
     }))
   );
-  const buckets = sumByBucket(ledgerRows);
-  const ledgerIncome =
-    buckets.INCOME.totalCredit -
-    buckets.INCOME.totalDebit +
-    (buckets.OTHER_INCOME.totalCredit - buckets.OTHER_INCOME.totalDebit);
-  const ledgerExpense =
-    buckets.EXPENSE.totalDebit -
-    buckets.EXPENSE.totalCredit +
-    (buckets.COST_OF_GOODS_SOLD.totalDebit -
-      buckets.COST_OF_GOODS_SOLD.totalCredit) +
-    (buckets.OTHER_EXPENSE.totalDebit - buckets.OTHER_EXPENSE.totalCredit);
 
-  const totalExpenses = totalExpensesFromTable + ledgerExpense;
-  const netCash = revenue + ledgerIncome - totalExpenses;
-  const netAccrual = revenue + accruedRevenue + ledgerIncome - totalExpenses;
+  const pnl = buildProfitAndLoss(ledgerRows);
+  const cur = organization.currency;
+
+  const dateRangeText = `From ${format(range.start, "dd/MM/yyyy")} To ${format(
+    range.end,
+    "dd/MM/yyyy"
+  )}`;
+
+  // Preserve preset/from/to for the export route so the user gets
+  // the same window in their download.
+  const exportParams = new URLSearchParams({ preset });
+  if (preset === "custom") {
+    exportParams.set("from", format(range.start, "yyyy-MM-dd"));
+    exportParams.set("to", format(range.end, "yyyy-MM-dd"));
+  }
 
   return (
-    <div className="p-6 max-w-4xl mx-auto space-y-4">
-      <div className="flex items-center gap-2">
-        <Button asChild variant="ghost" size="icon"><Link href="/reports"><ArrowLeft className="h-4 w-4" /></Link></Button>
-        <div>
-          <h1 className="text-xl font-semibold">Profit &amp; Loss</h1>
-          <p className="text-sm text-muted-foreground">{format(from, "dd MMM yyyy")} → {format(to, "dd MMM yyyy")}</p>
-        </div>
-        <div className="ml-auto">
-          <Button asChild variant="outline" size="sm" className="gap-1">
-            <a
-              href={`/reports/profit-loss/export?from=${format(from, "yyyy-MM-dd")}&to=${format(to, "yyyy-MM-dd")}`}
-            >
-              <Download className="h-4 w-4" /> Download CSV
+    <ReportShell
+      title="Profit and Loss"
+      subtitle={
+        <span className="flex items-center gap-1.5">
+          <span className="text-muted-foreground">Business Overview</span>
+          <span className="text-muted-foreground">•</span>
+          <span>{dateRangeText}</span>
+        </span>
+      }
+      range={
+        <DateRangePicker
+          activePreset={preset}
+          activeRange={range}
+          fiscalYearStartMonth={organization.fiscalYearStart}
+        />
+      }
+      actions={
+        <>
+          <Button
+            variant="outline"
+            size="icon"
+            disabled
+            title="Advanced filters — coming soon"
+            aria-label="Filters"
+          >
+            <Filter className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="outline"
+            size="icon"
+            disabled
+            title="Customize columns — coming soon"
+            aria-label="Customize columns"
+          >
+            <SlidersHorizontal className="h-4 w-4" />
+          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button size="sm" className="gap-1">
+                <Download className="h-3.5 w-3.5" />
+                Export
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-40">
+              <DropdownMenuItem asChild>
+                <a
+                  href={`/reports/profit-loss/export?format=csv&${exportParams.toString()}`}
+                >
+                  CSV
+                </a>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <a
+                  href={`/reports/profit-loss/export?format=xlsx&${exportParams.toString()}`}
+                >
+                  XLSX (Excel)
+                </a>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <Button
+            variant="outline"
+            size="icon"
+            asChild
+            aria-label="Refresh"
+          >
+            <a href={`/reports/profit-loss?${exportParams.toString()}`}>
+              <RefreshCw className="h-4 w-4" />
             </a>
           </Button>
-        </div>
-      </div>
-
-      <form className="flex items-center gap-2 text-sm" action="/reports/profit-loss">
-        <label>From <input type="date" name="from" defaultValue={format(from, "yyyy-MM-dd")} className="ml-1 h-9 rounded-md border border-input bg-background px-3 text-sm" /></label>
-        <label>To <input type="date" name="to" defaultValue={format(to, "yyyy-MM-dd")} className="ml-1 h-9 rounded-md border border-input bg-background px-3 text-sm" /></label>
-        <Button type="submit" size="sm" variant="outline">Apply</Button>
-      </form>
-
-      <div className="grid gap-3 md:grid-cols-3">
-        <Card><CardContent className="pt-6"><div className="text-xs text-muted-foreground">Revenue (paid)</div><div className="text-2xl font-semibold mt-1 tabular-nums">{formatMoney(revenue, cur)}</div><div className="text-xs text-muted-foreground mt-1">{paidInvoices._count} invoices</div></CardContent></Card>
-        <Card><CardContent className="pt-6"><div className="text-xs text-muted-foreground">Total expenses</div><div className="text-2xl font-semibold mt-1 tabular-nums">{formatMoney(totalExpenses, cur)}</div></CardContent></Card>
-        <Card><CardContent className="pt-6"><div className="text-xs text-muted-foreground">Net (cash basis)</div><div className={"text-2xl font-semibold mt-1 tabular-nums " + (netCash >= 0 ? "text-emerald-600" : "text-destructive")}>{formatMoney(netCash, cur)}</div></CardContent></Card>
-      </div>
-
-      <Card>
-        <CardHeader><CardTitle className="text-base">Revenue</CardTitle></CardHeader>
-        <CardContent className="p-0">
-          <table className="w-full text-sm">
-            <tbody className="divide-y">
-              <tr><td className="p-3">Invoiced and paid</td><td className="p-3 text-right tabular-nums">{formatMoney(revenue, cur)}</td></tr>
-              <tr><td className="p-3 text-muted-foreground">Invoiced but unpaid (accrual)</td><td className="p-3 text-right tabular-nums text-muted-foreground">{formatMoney(accruedRevenue, cur)}</td></tr>
-              <tr>
-                <td className="p-3">
-                  Bank-categorised income
-                  <span className="text-[11px] text-muted-foreground ml-1">
-                    (BNK-D + Manual Journal credits to INCOME/Other Income)
-                  </span>
-                </td>
-                <td className="p-3 text-right tabular-nums">
-                  {formatMoney(ledgerIncome, cur)}
-                </td>
-              </tr>
-            </tbody>
-            <tfoot className="bg-muted/30">
-              <tr><td className="p-3 font-medium">Total revenue (accrual basis)</td><td className="p-3 text-right tabular-nums font-semibold">{formatMoney(revenue + accruedRevenue + ledgerIncome, cur)}</td></tr>
-            </tfoot>
-          </table>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader><CardTitle className="text-base">Expenses by category</CardTitle></CardHeader>
-        <CardContent className="p-0">
-          {Object.keys(expenseByCategory).length === 0 && ledgerExpense === 0 ? (
-            <div className="p-6 text-sm text-center text-muted-foreground">No expenses recorded in this period.</div>
-          ) : (
-            <table className="w-full text-sm">
-              <tbody className="divide-y">
-                {Object.entries(expenseByCategory).sort((a, b) => b[1] - a[1]).map(([cat, amt]) => (
-                  <tr key={cat}><td className="p-3">{cat}</td><td className="p-3 text-right tabular-nums">{formatMoney(amt, cur)}</td></tr>
-                ))}
-                {ledgerExpense !== 0 ? (
-                  <tr>
-                    <td className="p-3">
-                      Journal-entry expenses
-                      <span className="text-[11px] text-muted-foreground ml-1">
-                        (Manual Journal debits to Expense / COGS / Other Expense)
-                      </span>
-                    </td>
-                    <td className="p-3 text-right tabular-nums">
-                      {formatMoney(ledgerExpense, cur)}
-                    </td>
-                  </tr>
-                ) : null}
-              </tbody>
-              <tfoot className="bg-muted/30">
-                <tr><td className="p-3 font-medium">Total expenses</td><td className="p-3 text-right tabular-nums font-semibold">{formatMoney(totalExpenses, cur)}</td></tr>
-              </tfoot>
-            </table>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardContent className="pt-6">
-          <div className="flex items-center justify-between">
-            <span className="font-medium">Net profit (accrual basis)</span>
-            <span className={"text-xl font-semibold tabular-nums " + (netAccrual >= 0 ? "text-emerald-600" : "text-destructive")}>{formatMoney(netAccrual, cur)}</span>
+        </>
+      }
+    >
+      <Card className="p-0 overflow-hidden">
+        {/* Centered report header (org / title / basis / date range) */}
+        <div className="text-center space-y-1 pt-8 pb-6">
+          <div className="text-sm text-muted-foreground">
+            {organization.name}
           </div>
-        </CardContent>
+          <h2 className="text-xl font-semibold">Profit and Loss</h2>
+          <div className="text-sm">
+            <span className="text-muted-foreground">Basis</span>
+            <span className="mx-1.5">:</span>
+            <span>Accrual</span>
+          </div>
+          <div className="text-sm text-muted-foreground tabular-nums">
+            {dateRangeText}
+          </div>
+        </div>
+
+        {/* Section table */}
+        <table className="w-full text-sm">
+          <thead className="bg-muted/30 text-xs uppercase tracking-wider text-muted-foreground">
+            <tr>
+              <th className="text-left px-6 py-3 font-medium">Account</th>
+              <th className="text-right px-6 py-3 font-medium w-48">Total</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y">
+            <SectionRows section={pnl.operatingIncome} currency={cur} />
+            <SectionRows section={pnl.costOfGoodsSold} currency={cur} />
+            <SubtotalRow
+              label="Gross Profit"
+              amount={pnl.grossProfit}
+              currency={cur}
+            />
+            <SectionRows section={pnl.operatingExpense} currency={cur} />
+            <SubtotalRow
+              label="Operating Profit"
+              amount={pnl.operatingProfit}
+              currency={cur}
+            />
+            <SectionRows section={pnl.nonOperatingIncome} currency={cur} />
+            <SectionRows section={pnl.nonOperatingExpense} currency={cur} />
+            <SubtotalRow
+              label="Net Profit/Loss"
+              amount={pnl.netProfitLoss}
+              currency={cur}
+              emphasize
+            />
+          </tbody>
+        </table>
+
+        {/* Currency footnote */}
+        <div className="text-xs text-muted-foreground px-6 py-4 flex items-center gap-2">
+          ** Amount is displayed in your base currency
+          <Badge className="bg-emerald-600 hover:bg-emerald-600 text-[10px] uppercase tracking-wider">
+            {cur}
+          </Badge>
+        </div>
       </Card>
-    </div>
+    </ReportShell>
   );
 }
+
+/**
+ * Render one report section: a bolded "Operating Income"-style group
+ * header, one row per non-zero account beneath, then a "Total for X"
+ * subtotal row. Matches Zoho's structure even when the section has
+ * zero accounts (the total row still appears with 0.00).
+ */
+function SectionRows({
+  section,
+  currency,
+}: {
+  section: PnlSection;
+  currency: string;
+}) {
+  return (
+    <>
+      <tr>
+        <td className="px-6 py-3 font-semibold" colSpan={2}>
+          {section.label}
+        </td>
+      </tr>
+      {section.accounts.map((a) => (
+        <tr key={a.accountId} className="hover:bg-muted/20">
+          <td className="px-6 py-2.5 pl-10">
+            {a.accountCode ? (
+              <span className="font-mono text-xs text-muted-foreground mr-2">
+                {a.accountCode}
+              </span>
+            ) : null}
+            {a.accountName}
+          </td>
+          <td className="px-6 py-2.5 text-right tabular-nums">
+            {formatPnlAmount(a.amount, currency)}
+          </td>
+        </tr>
+      ))}
+      <tr>
+        <td className="px-6 py-2.5 pl-10 font-semibold">
+          Total for {section.label}
+        </td>
+        <td className="px-6 py-2.5 text-right tabular-nums font-semibold">
+          {formatPnlAmount(section.total, currency)}
+        </td>
+      </tr>
+    </>
+  );
+}
+
+/** Subtotal rows (Gross Profit / Operating Profit / Net Profit/Loss). */
+function SubtotalRow({
+  label,
+  amount,
+  currency,
+  emphasize,
+}: {
+  label: string;
+  amount: number;
+  currency: string;
+  emphasize?: boolean;
+}) {
+  return (
+    <tr className={emphasize ? "bg-muted/40" : ""}>
+      <td className="px-6 py-3 font-semibold">{label}</td>
+      <td
+        className={
+          "px-6 py-3 text-right tabular-nums font-semibold " +
+          (amount < 0 ? "text-destructive" : "")
+        }
+      >
+        {formatPnlAmount(amount, currency)}
+      </td>
+    </tr>
+  );
+}
+
+/** P&L number formatter — always 2 decimals, negatives as -123.45. */
+function formatPnlAmount(n: number, currency: string): string {
+  // Strip the currency symbol so the column reads as a pure
+  // number — the badge in the footnote tells the reader the
+  // currency. Matches Zoho's table style.
+  void currency;
+  if (Math.abs(n) < 0.005) return "0.00";
+  const abs = Math.abs(n).toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+  return n < 0 ? `-${abs}` : abs;
+}
+
+/** Keep the import used (formatMoney) actually referenced for future
+ *  drill-down / per-account hover tooltips. */
+void formatMoney;
