@@ -1,98 +1,77 @@
-import { startOfYear, endOfYear } from "date-fns";
+import { format } from "date-fns";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
 import {
   aggregateLedgerLines,
-  sumByBucket,
   type AccountBucket,
 } from "@/lib/reports/ledger-aggregation";
+import {
+  buildProfitAndLoss,
+  type ProfitAndLoss,
+  type PnlSection,
+} from "@/lib/reports/profit-loss";
 import {
   toCsv,
   csvResponse,
   csvDateSuffix,
   type CsvRow,
 } from "@/lib/reports/csv-export";
+import {
+  toXlsx,
+  xlsxResponse,
+  XLSX_FMT,
+  type XlsxRow,
+  type XlsxColumn,
+} from "@/lib/reports/xlsx-export";
+import { parseRangeFromSearchParams } from "@/lib/reports/date-range";
 
 /**
- * RPT-A — CSV export for the Profit & Loss report. Same queries as
- * the page, returned as a flat row list rather than nested tables.
+ * REPORTS — Export endpoint for the Zoho-style Profit and Loss page.
  *
- * Filename: profit-loss-{from}-{to}.csv
+ * Accepts:
+ *   - `?format=csv` (default) or `?format=xlsx`
+ *   - Same `?preset=…&from=…&to=…` shape the page reads, so the
+ *     export window always matches what the user just looked at.
+ *
+ * Filename: `profit-and-loss-{yyyymmdd}-to-{yyyymmdd}.csv` (or .xlsx).
  */
 export async function GET(req: Request) {
   const { organization } = await requireOrganization();
   const url = new URL(req.url);
-  const now = new Date();
-  const from = url.searchParams.get("from")
-    ? new Date(url.searchParams.get("from")!)
-    : startOfYear(now);
-  const to = url.searchParams.get("to")
-    ? new Date(url.searchParams.get("to")!)
-    : endOfYear(now);
+  const fmt = url.searchParams.get("format") === "xlsx" ? "xlsx" : "csv";
 
-  const [paidInvoices, expenses, openInvoices, jeLines] = await Promise.all([
-    db.invoice.aggregate({
-      where: {
+  const params = Object.fromEntries(url.searchParams.entries());
+  const { range } = parseRangeFromSearchParams(params, {
+    fiscalYearStartMonth: organization.fiscalYearStart,
+    defaultPreset: "this-month",
+  });
+
+  const jeLines = await db.journalEntryLine.findMany({
+    where: {
+      journalEntry: {
         organizationId: organization.id,
-        deletedAt: null,
-        status: "PAID",
-        issueDate: { gte: from, lte: to },
+        date: { gte: range.start, lte: range.end },
       },
-      _sum: { total: true },
-    }),
-    db.expense.findMany({
-      where: {
-        organizationId: organization.id,
-        date: { gte: from, lte: to },
-        deletedAt: null,
-      },
-      select: { category: true, amount: true },
-    }),
-    db.invoice.aggregate({
-      where: {
-        organizationId: organization.id,
-        deletedAt: null,
-        status: { in: ["SENT", "PARTIALLY_PAID", "OVERDUE"] },
-        issueDate: { gte: from, lte: to },
-      },
-      _sum: { total: true },
-    }),
-    db.journalEntryLine.findMany({
-      where: {
-        journalEntry: {
-          organizationId: organization.id,
-          date: { gte: from, lte: to },
-        },
-        account: {
-          type: {
-            in: [
-              "INCOME",
-              "OTHER_INCOME",
-              "EXPENSE",
-              "COST_OF_GOODS_SOLD",
-              "OTHER_EXPENSE",
-            ],
-          },
+      account: {
+        type: {
+          in: [
+            "INCOME",
+            "OTHER_INCOME",
+            "EXPENSE",
+            "COST_OF_GOODS_SOLD",
+            "OTHER_EXPENSE",
+          ],
         },
       },
-      select: {
-        debit: true,
-        credit: true,
-        account: { select: { id: true, name: true, code: true, type: true } },
-      },
-    }),
-  ]);
-
-  const revenue = Number(paidInvoices._sum.total ?? 0);
-  const accruedRevenue = Number(openInvoices._sum.total ?? 0);
-
-  const expenseByCategory = expenses.reduce<Record<string, number>>(
-    (acc, e) => {
-      acc[e.category] = (acc[e.category] ?? 0) + Number(e.amount);
-      return acc;
     },
-    {}
-  );
+    select: {
+      debit: true,
+      credit: true,
+      account: {
+        select: { id: true, name: true, code: true, type: true },
+      },
+    },
+  });
 
   const ledgerRows = aggregateLedgerLines(
     jeLines.map((l) => ({
@@ -106,58 +85,131 @@ export async function GET(req: Request) {
       credit: Number(l.credit),
     }))
   );
-  const buckets = sumByBucket(ledgerRows);
-  const ledgerIncome =
-    buckets.INCOME.totalCredit -
-    buckets.INCOME.totalDebit +
-    (buckets.OTHER_INCOME.totalCredit - buckets.OTHER_INCOME.totalDebit);
-  const ledgerExpense =
-    buckets.EXPENSE.totalDebit -
-    buckets.EXPENSE.totalCredit +
-    (buckets.COST_OF_GOODS_SOLD.totalDebit -
-      buckets.COST_OF_GOODS_SOLD.totalCredit) +
-    (buckets.OTHER_EXPENSE.totalDebit - buckets.OTHER_EXPENSE.totalCredit);
 
-  const totalExpensesFromTable = Object.values(expenseByCategory).reduce(
-    (s, n) => s + n,
-    0
-  );
-  const totalExpenses = totalExpensesFromTable + ledgerExpense;
-  const totalRevenue = revenue + accruedRevenue + ledgerIncome;
-  const netAccrual = totalRevenue - totalExpenses;
+  const pnl = buildProfitAndLoss(ledgerRows);
+  const filenameStub = `profit-and-loss-${csvDateSuffix(range.start)}-to-${csvDateSuffix(range.end)}`;
 
-  const rows: CsvRow[] = [
-    { section: "Revenue", line: "Invoiced and paid", amount: revenue },
-    {
-      section: "Revenue",
-      line: "Invoiced but unpaid (accrual)",
-      amount: accruedRevenue,
-    },
-    {
-      section: "Revenue",
-      line: "Bank-categorised income (BNK-D + JE credits)",
-      amount: ledgerIncome,
-    },
-    { section: "Revenue", line: "Total revenue", amount: totalRevenue },
-    ...Object.entries(expenseByCategory).map(([cat, amt]) => ({
-      section: "Expenses",
-      line: cat,
-      amount: amt,
-    })),
-    ...(ledgerExpense !== 0
-      ? [
-          {
-            section: "Expenses",
-            line: "Journal-entry expenses",
-            amount: ledgerExpense,
-          },
-        ]
-      : []),
-    { section: "Expenses", line: "Total expenses", amount: totalExpenses },
-    { section: "Summary", line: "Net (accrual basis)", amount: netAccrual },
+  if (fmt === "xlsx") {
+    return buildXlsx(organization.name, organization.currency, range, pnl, filenameStub);
+  }
+  return buildCsv(pnl, filenameStub);
+}
+
+/**
+ * Flatten the P&L structure into a row list shared by both export
+ * formats. Each row carries a `section` label (for grouping in CSV)
+ * and an `account` + `amount` pair. Subtotal rows use a sentinel
+ * `kind: "subtotal"` so the XLSX builder can bold them.
+ */
+type FlatRow = {
+  section: string;
+  account: string;
+  amount: number;
+  kind: "header" | "account" | "section-total" | "subtotal";
+};
+
+function flatten(pnl: ProfitAndLoss): FlatRow[] {
+  const out: FlatRow[] = [];
+
+  function pushSection(s: PnlSection) {
+    out.push({
+      section: s.label,
+      account: s.label,
+      amount: 0,
+      kind: "header",
+    });
+    for (const a of s.accounts) {
+      out.push({
+        section: s.label,
+        account: a.accountCode ? `${a.accountCode} · ${a.accountName}` : a.accountName,
+        amount: a.amount,
+        kind: "account",
+      });
+    }
+    out.push({
+      section: s.label,
+      account: `Total for ${s.label}`,
+      amount: s.total,
+      kind: "section-total",
+    });
+  }
+
+  pushSection(pnl.operatingIncome);
+  pushSection(pnl.costOfGoodsSold);
+  out.push({
+    section: "Subtotal",
+    account: "Gross Profit",
+    amount: pnl.grossProfit,
+    kind: "subtotal",
+  });
+  pushSection(pnl.operatingExpense);
+  out.push({
+    section: "Subtotal",
+    account: "Operating Profit",
+    amount: pnl.operatingProfit,
+    kind: "subtotal",
+  });
+  pushSection(pnl.nonOperatingIncome);
+  pushSection(pnl.nonOperatingExpense);
+  out.push({
+    section: "Subtotal",
+    account: "Net Profit/Loss",
+    amount: pnl.netProfitLoss,
+    kind: "subtotal",
+  });
+
+  return out;
+}
+
+function buildCsv(pnl: ProfitAndLoss, filenameStub: string): Response {
+  // CSV keeps it simple — section / account / amount. Header rows
+  // get an empty amount so spreadsheets don't sum them by accident.
+  const rows: CsvRow[] = flatten(pnl).map((r) => ({
+    section: r.section,
+    account: r.account,
+    amount: r.kind === "header" ? "" : r.amount,
+  }));
+  const csv = toCsv(rows, ["section", "account", "amount"]);
+  return csvResponse(filenameStub, csv);
+}
+
+async function buildXlsx(
+  orgName: string,
+  currency: string,
+  range: { start: Date; end: Date },
+  pnl: ProfitAndLoss,
+  filenameStub: string
+): Promise<Response> {
+  const columns: XlsxColumn[] = [
+    { key: "section", header: "Section", width: 24 },
+    { key: "account", header: "Account", width: 44 },
+    { key: "amount", header: `Amount (${currency})`, width: 18, numFmt: XLSX_FMT.moneyZeroDash },
   ];
 
-  const csv = toCsv(rows, ["section", "line", "amount"]);
-  const filename = `profit-loss-${csvDateSuffix(from)}-${csvDateSuffix(to)}`;
-  return csvResponse(filename, csv);
+  // Prepend a few context rows above the data so the file opens
+  // self-describing (org / report / period / basis).
+  const flat = flatten(pnl);
+  const rows: XlsxRow[] = [
+    { section: "", account: orgName, amount: null },
+    { section: "", account: "Profit and Loss", amount: null },
+    { section: "", account: `Basis: Accrual`, amount: null },
+    {
+      section: "",
+      account: `From ${format(range.start, "dd/MM/yyyy")} To ${format(range.end, "dd/MM/yyyy")}`,
+      amount: null,
+    },
+    { section: "", account: "", amount: null },
+    ...flat.map((r) => ({
+      section: r.section,
+      account: r.account,
+      amount: r.kind === "header" ? null : r.amount,
+    })),
+  ];
+
+  const buf = await toXlsx({
+    sheetName: "Profit and Loss",
+    columns,
+    rows,
+  });
+  return xlsxResponse(filenameStub, buf);
 }
