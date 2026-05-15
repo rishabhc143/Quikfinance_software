@@ -43,7 +43,13 @@ export async function sendReportEmail(
   args: SendReportEmailArgs
 ): Promise<SendReportEmailResult> {
   const apiKey = process.env.RESEND_API_KEY;
-  const from = process.env.RESEND_FROM_EMAIL?.trim() || FROM_FALLBACK;
+  // Prefer the dedicated REPORTS-from variable; fall back to the
+  // app-wide EMAIL_FROM (already configured in prod for invoices /
+  // password resets); finally Resend's testing address.
+  const from =
+    process.env.RESEND_FROM_EMAIL?.trim() ||
+    process.env.EMAIL_FROM?.trim() ||
+    FROM_FALLBACK;
 
   // Graceful local-dev / staging mode: no API key configured.
   // Log the call and pretend it succeeded so the worker logic
