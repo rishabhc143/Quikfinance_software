@@ -50,15 +50,18 @@ describe("REPORTS catalog", () => {
     }
   });
 
-  it("at least 10 reports are available (matches what we've built)", () => {
+  it("at least 7 reports are available (matches the user's spec from 2026-05-14)", () => {
     const available = REPORTS.filter((r) => r.available);
-    expect(available.length).toBeGreaterThanOrEqual(10);
+    expect(available.length).toBeGreaterThanOrEqual(7);
   });
 
   it("known anchor reports are present + available", () => {
     // These are the routes our existing code links to. If any goes
-    // missing, every existing link out of the Reports Center
-    // silently 404s.
+    // missing, the link out of the Reports Center silently 404s.
+    // Tax Summary, GSTR-1, and Stock Valuation are intentionally
+    // NOT in the catalog per the user's 80-report spec from
+    // 2026-05-14 — their routes still work as direct URLs but
+    // they're unlinked from the Reports Center table.
     const mustExistAndBeAvailable = [
       "profit-and-loss",
       "cash-flow-statement",
@@ -66,15 +69,27 @@ describe("REPORTS catalog", () => {
       "sales-summary",
       "ar-aging-summary",
       "ap-aging-summary",
-      "tax-summary",
-      "gstr-1",
       "trial-balance",
-      "stock-valuation",
     ];
     for (const key of mustExistAndBeAvailable) {
       const r = findReport(key);
       expect(r, `${key} missing from catalog`).toBeDefined();
       expect(r!.available, `${key} should be marked available`).toBe(true);
+    }
+  });
+
+  it("intentionally-unlinked routes are NOT in the catalog", () => {
+    // These routes still exist in the app but the user opted to
+    // remove them from the Reports Center's catalog. Listing them
+    // here pins the intent so a future refactor that re-adds them
+    // would surface this test failure as a deliberate flag.
+    const intentionallyAbsent = [
+      "tax-summary",
+      "gstr-1",
+      "stock-valuation",
+    ];
+    for (const key of intentionallyAbsent) {
+      expect(findReport(key), `${key} should not be in the catalog`).toBeUndefined();
     }
   });
 });

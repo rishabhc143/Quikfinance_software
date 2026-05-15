@@ -13,6 +13,13 @@
  *
  * Categories follow Zoho Books exactly — 15 categories, ordered the
  * same way they appear in Zoho's left sidebar.
+ *
+ * The 80 reports below match the screenshots the user shared on
+ * 2026-05-14 turn-by-turn. Internal routes that exist in the app
+ * but aren't in this catalog (/reports/tax-summary, /reports/gstr1,
+ * /reports/stock-valuation) still work as direct URLs but won't
+ * surface in the table — they're kept alive for any external link
+ * that points at them.
  */
 
 export const REPORT_CATEGORIES = [
@@ -208,7 +215,7 @@ export const REPORTS: ReadonlyArray<ReportEntry> = [
     available: false,
   },
 
-  // ─── Payments Received (3) ─────────────────────────────────────
+  // ─── Payments Received (4) ─────────────────────────────────────
   {
     key: "payments-received",
     name: "Payments Received",
@@ -222,27 +229,45 @@ export const REPORTS: ReadonlyArray<ReportEntry> = [
     available: false,
   },
   {
-    key: "refund-history",
+    key: "credit-note-details",
+    name: "Credit Note Details",
+    category: "Payments Received",
+    available: false,
+  },
+  {
+    key: "refund-history-payments-received",
     name: "Refund History",
     category: "Payments Received",
     available: false,
   },
 
-  // ─── Recurring Invoices (2) ────────────────────────────────────
+  // ─── Recurring Invoices (1) ────────────────────────────────────
   {
     key: "recurring-invoice-details",
     name: "Recurring Invoice Details",
     category: "Recurring Invoices",
     available: false,
   },
+
+  // ─── Payables (11) ─────────────────────────────────────────────
   {
-    key: "projected-revenue",
-    name: "Projected Revenue",
-    category: "Recurring Invoices",
+    key: "payable-summary",
+    name: "Payable Summary",
+    category: "Payables",
     available: false,
   },
-
-  // ─── Payables (8) ──────────────────────────────────────────────
+  {
+    key: "payable-details",
+    name: "Payable Details",
+    category: "Payables",
+    available: false,
+  },
+  {
+    key: "vendor-balance-summary",
+    name: "Vendor Balance Summary",
+    category: "Payables",
+    available: false,
+  },
   {
     key: "ap-aging-summary",
     name: "AP Aging Summary",
@@ -263,20 +288,8 @@ export const REPORTS: ReadonlyArray<ReportEntry> = [
     available: false,
   },
   {
-    key: "vendor-balance-summary",
-    name: "Vendor Balance Summary",
-    category: "Payables",
-    available: false,
-  },
-  {
-    key: "payable-summary",
-    name: "Payable Summary",
-    category: "Payables",
-    available: false,
-  },
-  {
-    key: "payable-details",
-    name: "Payable Details",
+    key: "vendor-credit-details",
+    name: "Vendor Credit Details",
     category: "Payables",
     available: false,
   },
@@ -287,13 +300,25 @@ export const REPORTS: ReadonlyArray<ReportEntry> = [
     available: false,
   },
   {
-    key: "vendor-credits-details",
-    name: "Vendor Credits Details",
+    key: "refund-history-payables",
+    name: "Refund History",
+    category: "Payables",
+    available: false,
+  },
+  {
+    key: "purchase-order-details",
+    name: "Purchase Order Details",
+    category: "Payables",
+    available: false,
+  },
+  {
+    key: "purchase-orders-by-vendor",
+    name: "Purchase Orders by Vendor",
     category: "Payables",
     available: false,
   },
 
-  // ─── Purchases and Expenses (7) ────────────────────────────────
+  // ─── Purchases and Expenses (8) ────────────────────────────────
   {
     key: "purchases-by-vendor",
     name: "Purchases by Vendor",
@@ -303,18 +328,6 @@ export const REPORTS: ReadonlyArray<ReportEntry> = [
   {
     key: "purchases-by-item",
     name: "Purchases by Item",
-    category: "Purchases and Expenses",
-    available: false,
-  },
-  {
-    key: "purchase-order-details",
-    name: "Purchase Order Details",
-    category: "Purchases and Expenses",
-    available: false,
-  },
-  {
-    key: "purchase-order-by-vendor",
-    name: "Purchase Order by Vendor",
     category: "Purchases and Expenses",
     available: false,
   },
@@ -331,39 +344,31 @@ export const REPORTS: ReadonlyArray<ReportEntry> = [
     available: false,
   },
   {
+    key: "expenses-by-customer",
+    name: "Expenses by Customer",
+    category: "Purchases and Expenses",
+    available: false,
+  },
+  {
+    key: "expenses-by-project",
+    name: "Expenses by Project",
+    category: "Purchases and Expenses",
+    available: false,
+  },
+  {
+    key: "expenses-by-employee",
+    name: "Expenses by Employee",
+    category: "Purchases and Expenses",
+    available: false,
+  },
+  {
     key: "billable-expense-details",
     name: "Billable Expense Details",
     category: "Purchases and Expenses",
     available: false,
   },
 
-  // ─── Taxes (6) ─────────────────────────────────────────────────
-  {
-    key: "tax-summary",
-    name: "Tax Summary",
-    category: "Taxes",
-    available: true,
-    href: "/reports/tax-summary",
-  },
-  {
-    key: "gstr-1",
-    name: "GSTR-1",
-    category: "Taxes",
-    available: true,
-    href: "/reports/gstr1",
-  },
-  {
-    key: "gstr-2a-2b",
-    name: "GSTR-2A / 2B",
-    category: "Taxes",
-    available: false,
-  },
-  {
-    key: "gstr-3b",
-    name: "GSTR-3B",
-    category: "Taxes",
-    available: false,
-  },
+  // ─── Taxes (3) ─────────────────────────────────────────────────
   {
     key: "tds-summary",
     name: "TDS Summary",
@@ -371,99 +376,74 @@ export const REPORTS: ReadonlyArray<ReportEntry> = [
     available: false,
   },
   {
-    key: "tcs-summary",
-    name: "TCS Summary",
+    key: "tds-receivable-summary",
+    name: "TDS Receivable Summary",
+    category: "Taxes",
+    available: false,
+  },
+  {
+    key: "tcs-payable-summary-form-27eq",
+    name: "TCS Payable Summary (Form No. 27EQ)",
     category: "Taxes",
     available: false,
   },
 
-  // ─── Banking (4) ───────────────────────────────────────────────
+  // ─── Banking (1) ───────────────────────────────────────────────
   {
-    key: "account-transactions",
-    name: "Account Transactions",
-    category: "Banking",
-    available: false,
-  },
-  {
-    key: "bank-reconciliation-statement",
-    name: "Bank Reconciliation Statement",
-    category: "Banking",
-    available: false,
-  },
-  {
-    key: "uncategorised-transactions",
-    name: "Uncategorised Transactions",
-    category: "Banking",
-    available: false,
-  },
-  {
-    key: "matched-transactions",
-    name: "Matched Transactions",
+    key: "reconciliation-status",
+    name: "Reconciliation Status",
     category: "Banking",
     available: false,
   },
 
-  // ─── Projects and Timesheet (5) ────────────────────────────────
+  // ─── Projects and Timesheet (7) ────────────────────────────────
   {
-    key: "project-profitability",
-    name: "Project Profitability",
+    key: "timesheet-details",
+    name: "Timesheet Details",
     category: "Projects and Timesheet",
     available: false,
   },
   {
-    key: "time-entry-details",
-    name: "Time Entry Details",
+    key: "timesheet-profitability-summary",
+    name: "Timesheet Profitability Summary",
     category: "Projects and Timesheet",
     available: false,
   },
   {
-    key: "timesheet-summary",
-    name: "Timesheet Summary",
+    key: "project-summary",
+    name: "Project Summary",
     category: "Projects and Timesheet",
     available: false,
   },
   {
-    key: "project-budget-vs-actuals",
-    name: "Project Budget vs Actuals",
+    key: "project-details",
+    name: "Project Details",
     category: "Projects and Timesheet",
     available: false,
   },
   {
-    key: "unbilled-time",
-    name: "Unbilled Time",
+    key: "projects-cost-summary",
+    name: "Projects Cost Summary",
+    category: "Projects and Timesheet",
+    available: false,
+  },
+  {
+    key: "projects-revenue-summary",
+    name: "Projects Revenue Summary",
+    category: "Projects and Timesheet",
+    available: false,
+  },
+  {
+    key: "projects-performance-summary",
+    name: "Projects Performance Summary",
     category: "Projects and Timesheet",
     available: false,
   },
 
-  // ─── Accountant (10) ───────────────────────────────────────────
-  {
-    key: "trial-balance",
-    name: "Trial Balance",
-    category: "Accountant",
-    available: true,
-    href: "/reports/trial-balance",
-  },
+  // ─── Accountant (8) ────────────────────────────────────────────
   {
     key: "general-ledger",
     name: "General Ledger",
-    category: "Accountant",
-    available: false,
-  },
-  {
-    key: "journal-report",
-    name: "Journal Report",
-    category: "Accountant",
-    available: false,
-  },
-  {
-    key: "account-type-summary",
-    name: "Account Type Summary",
-    category: "Accountant",
-    available: false,
-  },
-  {
-    key: "account-transactions-accountant",
-    name: "Account Transactions",
     category: "Accountant",
     available: false,
   },
@@ -474,101 +454,125 @@ export const REPORTS: ReadonlyArray<ReportEntry> = [
     available: false,
   },
   {
-    key: "manual-journals-report",
-    name: "Manual Journals",
+    key: "journal-report",
+    name: "Journal Report",
     category: "Accountant",
     available: false,
   },
   {
-    key: "depreciation-schedule",
-    name: "Depreciation Schedule",
-    category: "Accountant",
-    available: false,
-  },
-  {
-    key: "stock-valuation",
-    name: "Stock Valuation",
+    key: "trial-balance",
+    name: "Trial Balance",
     category: "Accountant",
     available: true,
-    href: "/reports/stock-valuation",
+    href: "/reports/trial-balance",
   },
   {
-    key: "fixed-asset-summary",
-    name: "Fixed Asset Summary",
+    key: "account-transactions",
+    name: "Account Transactions",
+    category: "Accountant",
+    available: false,
+  },
+  {
+    key: "account-type-summary",
+    name: "Account Type Summary",
+    category: "Accountant",
+    available: false,
+  },
+  {
+    key: "account-type-transactions",
+    name: "Account Type Transactions",
+    category: "Accountant",
+    available: false,
+  },
+  {
+    key: "day-book",
+    name: "Day Book",
     category: "Accountant",
     available: false,
   },
 
-  // ─── Budgets (2) ───────────────────────────────────────────────
+  // ─── Budgets (1) ───────────────────────────────────────────────
   {
     key: "budget-vs-actuals",
-    name: "Budget vs Actuals",
-    category: "Budgets",
-    available: false,
-  },
-  {
-    key: "monthly-budget-variance",
-    name: "Monthly Budget Variance",
+    name: "Budget Vs Actuals",
     category: "Budgets",
     available: false,
   },
 
-  // ─── Currency (3) ──────────────────────────────────────────────
+  // ─── Currency (2) ──────────────────────────────────────────────
   {
-    key: "realised-gain-loss",
-    name: "Realised Gain or Loss",
+    key: "realized-gain-or-loss",
+    name: "Realized Gain or Loss",
     category: "Currency",
     available: false,
   },
   {
-    key: "unrealised-gain-loss",
-    name: "Unrealised Gain or Loss",
-    category: "Currency",
-    available: false,
-  },
-  {
-    key: "currency-exchange-history",
-    name: "Currency Exchange History",
+    key: "unrealized-gain-or-loss",
+    name: "Unrealized Gain or Loss",
     category: "Currency",
     available: false,
   },
 
-  // ─── Activity (3) ──────────────────────────────────────────────
+  // ─── Activity (7) ──────────────────────────────────────────────
   {
-    key: "user-log",
-    name: "User Log",
+    key: "system-mails",
+    name: "System Mails",
     category: "Activity",
     available: false,
   },
   {
-    key: "activity-log",
-    name: "Activity Log",
+    key: "activity-logs-audit-trail",
+    name: "Activity Logs & Audit Trail",
     category: "Activity",
     available: false,
   },
   {
-    key: "audit-trail",
-    name: "Audit Trail",
+    key: "exception-report",
+    name: "Exception Report",
+    category: "Activity",
+    available: false,
+  },
+  {
+    key: "portal-activities",
+    name: "Portal Activities",
+    category: "Activity",
+    available: false,
+  },
+  {
+    key: "customer-reviews",
+    name: "Customer Reviews",
+    category: "Activity",
+    available: false,
+  },
+  {
+    key: "api-usage",
+    name: "API Usage",
+    category: "Activity",
+    available: false,
+  },
+  {
+    key: "pending-inventory-valuations",
+    name: "Pending Inventory Valuations",
     category: "Activity",
     available: false,
   },
 
   // ─── Automation (3) ────────────────────────────────────────────
   {
-    key: "workflow-rules-log",
-    name: "Workflow Rules Log",
+    key: "scheduled-date-based-workflow-rules",
+    name: "Scheduled Date Based Workflow Rules",
     category: "Automation",
     available: false,
   },
   {
-    key: "email-history",
-    name: "Email History",
+    key: "scheduled-time-based-workflow-actions",
+    name: "Scheduled Time Based Workflow Actions",
     category: "Automation",
     available: false,
   },
   {
-    key: "scheduled-reports-log",
-    name: "Scheduled Reports Log",
+    key: "workflow-execution-logs",
+    name: "Workflow Execution Logs",
     category: "Automation",
     available: false,
   },
