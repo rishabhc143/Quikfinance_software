@@ -2466,6 +2466,25 @@ model UserPreference {
   @@unique([userId, organizationId, key])
 }
 
+/// REPORTS-CENTER — Per-user favorite report keys, scoped to an org.
+/// Powers the ☆ star toggle in the Reports Center sidebar's Favorites
+/// tab. reportKey is the catalog key from lib/reports/catalog.ts
+/// (e.g. "profit-and-loss"), free-form so adding new reports later
+/// doesn't need a migration. Mirrors UserPreference's lightweight
+/// pattern — FK cascade is enforced at the SQL level by the
+/// migration, not as a Prisma relation, so the User + Organization
+/// models stay unchanged.
+model UserReportFavorite {
+  id             String   @id @default(cuid())
+  userId         String
+  organizationId String
+  reportKey      String
+  createdAt      DateTime @default(now())
+
+  @@unique([userId, organizationId, reportKey])
+  @@index([userId, organizationId])
+}
+
 // Customer-facing Debit Note (seller-issued). Increases the customer's
 // receivable — Indian accounting convention. Distinct from CreditNote.
 // Schema scaffolded; full UI is a follow-up.
