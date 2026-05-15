@@ -113,21 +113,15 @@ const NAV: NavItem[] = [
     ],
   },
   {
+    // Single entry point — clicking "Reports" lands on the
+    // Reports Center (`/reports`) which lists all 80 reports
+    // grouped by category with search + favorites. We used to
+    // expose 10 hardcoded children here but they were noisy and
+    // duplicated the Center's table; the Center is the canonical
+    // surface now.
     label: "Reports",
     href: "/reports",
     icon: BarChart3,
-    children: [
-      { label: "Profit & Loss", href: "/reports/profit-loss" },
-      { label: "Trial Balance", href: "/reports/trial-balance" },
-      { label: "Balance Sheet", href: "/reports/balance-sheet" },
-      { label: "Cash Flow", href: "/reports/cash-flow" },
-      { label: "Sales Summary", href: "/reports/sales-summary" },
-      { label: "Tax Summary", href: "/reports/tax-summary" },
-      { label: "AR Aging", href: "/reports/ar-aging" },
-      { label: "AP Aging", href: "/reports/ap-aging" },
-      { label: "Stock Valuation", href: "/reports/stock-valuation" },
-      { label: "GSTR-1 Export", href: "/reports/gstr1" },
-    ],
   },
   { label: "Documents", href: "/documents", icon: FolderOpen },
   { label: "Payroll", href: "/payroll", icon: BadgeIndianRupee },
