@@ -86,47 +86,64 @@ export async function logReportActivity(args: {
  * Fetch the most-recent activity rows for one (org, report). Joined
  * to User so the drawer can show a display name without a follow-up
  * query.
+ *
+ * **Fail-open**: wraps the Prisma calls in try/catch. If the
+ * `ReportActivity` table doesn't exist yet (migration hasn't been
+ * applied) or any other DB error, returns `[]` so the report page
+ * still renders with an empty Activity drawer. Without this guard,
+ * a missing-table error would crash the entire report page.
  */
 export async function getRecentReportActivity(
   organizationId: string,
   reportKey: string,
   limit = 20
 ): Promise<ReportActivityRow[]> {
-  const rows = await db.reportActivity.findMany({
-    where: { organizationId, reportKey },
-    orderBy: { createdAt: "desc" },
-    take: limit,
-  });
+  try {
+    const rows = await db.reportActivity.findMany({
+      where: { organizationId, reportKey },
+      orderBy: { createdAt: "desc" },
+      take: limit,
+    });
 
-  if (rows.length === 0) return [];
+    if (rows.length === 0) return [];
 
-  // Join to User in a single follow-up; keeps the main query
-  // independent of any cross-schema Prisma relation on ReportActivity.
-  const userIds = Array.from(new Set(rows.map((r) => r.userId)));
-  const users = await db.user.findMany({
-    where: { id: { in: userIds } },
-    select: { id: true, name: true, email: true },
-  });
-  const byId = new Map(users.map((u) => [u.id, u]));
+    // Join to User in a single follow-up; keeps the main query
+    // independent of any cross-schema Prisma relation on ReportActivity.
+    const userIds = Array.from(new Set(rows.map((r) => r.userId)));
+    const users = await db.user.findMany({
+      where: { id: { in: userIds } },
+      select: { id: true, name: true, email: true },
+    });
+    const byId = new Map(users.map((u) => [u.id, u]));
 
-  return rows.map((r) => {
-    const u = byId.get(r.userId);
-    const displayName =
-      u?.name?.trim() ||
-      // Fall back to local-part of email if no name (matches Zoho's
-      // screenshot which shows "purvansh.bhor").
-      (u?.email ? u.email.split("@")[0] : "Unknown user");
-    return {
-      id: r.id,
-      organizationId: r.organizationId,
-      userId: r.userId,
-      userDisplayName: displayName,
-      reportKey: r.reportKey,
-      eventType: r.eventType as ReportActivityEventType,
-      eventData: (r.eventData ?? null) as ReportActivityEventData | null,
-      createdAt: r.createdAt,
-    };
-  });
+    return rows.map((r) => {
+      const u = byId.get(r.userId);
+      const displayName =
+        u?.name?.trim() ||
+        // Fall back to local-part of email if no name (matches Zoho's
+        // screenshot which shows "purvansh.bhor").
+        (u?.email ? u.email.split("@")[0] : "Unknown user");
+      return {
+        id: r.id,
+        organizationId: r.organizationId,
+        userId: r.userId,
+        userDisplayName: displayName,
+        reportKey: r.reportKey,
+        eventType: r.eventType as ReportActivityEventType,
+        eventData: (r.eventData ?? null) as ReportActivityEventData | null,
+        createdAt: r.createdAt,
+      };
+    });
+  } catch (err) {
+    // Most likely the ReportActivity migration hasn't been applied
+    // yet on this environment. Don't crash the report page — return
+    // empty timeline and let the user keep using everything else.
+    console.error(
+      "[reports/activity] getRecentReportActivity failed (returning empty)",
+      err
+    );
+    return [];
+  }
 }
 
 /**
