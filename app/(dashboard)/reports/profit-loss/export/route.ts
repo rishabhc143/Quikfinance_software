@@ -18,6 +18,7 @@ import {
   type CsvRow,
 } from "@/lib/reports/csv-export";
 import { parseRangeFromSearchParams } from "@/lib/reports/date-range";
+import { logReportActivity } from "@/lib/reports/activity";
 
 /**
  * REPORTS — Export endpoint for the Zoho-style Profit and Loss page.
@@ -33,7 +34,7 @@ import { parseRangeFromSearchParams } from "@/lib/reports/date-range";
  * Filename: `profit-and-loss-{yyyymmdd}-to-{yyyymmdd}.csv` (or .xlsx).
  */
 export async function GET(req: Request) {
-  const { organization } = await requireOrganization();
+  const { organization, user } = await requireOrganization();
   const url = new URL(req.url);
   const fmt = url.searchParams.get("format") === "xlsx" ? "xlsx" : "csv";
 
@@ -85,6 +86,19 @@ export async function GET(req: Request) {
 
   const pnl = buildProfitAndLoss(ledgerRows);
   const filenameStub = `profit-and-loss-${csvDateSuffix(range.start)}-to-${csvDateSuffix(range.end)}`;
+
+  // Best-effort audit trail. Fire-and-forget — the helper swallows
+  // its own errors, so a slow audit insert never blocks the download.
+  void logReportActivity({
+    organizationId: organization.id,
+    userId: user.id,
+    reportKey: "profit-and-loss",
+    eventType: fmt === "xlsx" ? "EXPORT_XLSX" : "EXPORT_CSV",
+    eventData: {
+      format: fmt === "xlsx" ? "XLSX" : "CSV",
+      filename: `${filenameStub}.${fmt}`,
+    },
+  });
 
   if (fmt === "xlsx") {
     return buildXlsxZohoStyle(

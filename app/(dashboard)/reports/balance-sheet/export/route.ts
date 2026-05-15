@@ -20,6 +20,7 @@ import {
   csvDateSuffix,
   type CsvRow,
 } from "@/lib/reports/csv-export";
+import { logReportActivity } from "@/lib/reports/activity";
 
 /**
  * REPORTS — Export endpoint for the Zoho-style Balance Sheet page.
@@ -34,7 +35,7 @@ import {
  * Filename: balance-sheet-as-of-{yyyymmdd}.csv (or .xlsx).
  */
 export async function GET(req: Request) {
-  const { organization } = await requireOrganization();
+  const { organization, user } = await requireOrganization();
   const url = new URL(req.url);
   const fmt = url.searchParams.get("format") === "xlsx" ? "xlsx" : "csv";
 
@@ -100,6 +101,17 @@ export async function GET(req: Request) {
   });
   const bs = buildBalanceSheet(inputs);
   const filenameStub = `balance-sheet-as-of-${csvDateSuffix(asOf)}`;
+
+  void logReportActivity({
+    organizationId: organization.id,
+    userId: user.id,
+    reportKey: "balance-sheet",
+    eventType: fmt === "xlsx" ? "EXPORT_XLSX" : "EXPORT_CSV",
+    eventData: {
+      format: fmt === "xlsx" ? "XLSX" : "CSV",
+      filename: `${filenameStub}.${fmt}`,
+    },
+  });
 
   if (fmt === "xlsx") {
     return buildXlsx(organization.name, asOf, bs, filenameStub);

@@ -1,24 +1,14 @@
 import Link from "next/link";
 import { format } from "date-fns";
-import {
-  Download,
-  Filter,
-  RefreshCw,
-  SlidersHorizontal,
-} from "lucide-react";
+import { Filter } from "lucide-react";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import {
-  DropdownMenu,
-  DropdownMenuTrigger,
-  DropdownMenuContent,
-  DropdownMenuItem,
-} from "@/components/ui/dropdown-menu";
 import { ReportShell } from "@/components/reports/report-shell";
 import { DateRangePicker } from "@/components/reports/date-range-picker";
+import { ReportToolbar } from "@/components/reports/report-toolbar";
 import { parseRangeFromSearchParams } from "@/lib/reports/date-range";
 import {
   aggregateLedgerLines,
@@ -29,6 +19,7 @@ import {
   isCashAccount,
   type CashFlowAccountDelta,
 } from "@/lib/reports/cash-flow";
+import { getRecentReportActivity } from "@/lib/reports/activity";
 
 export const metadata = { title: "Cash Flow Statement" };
 
@@ -203,6 +194,13 @@ export default async function CashFlowPage({
     exportParams.set("to", format(range.end, "yyyy-MM-dd"));
   }
 
+  // Pre-fetch the Report Activity timeline for the toolbar's drawer.
+  const activityRows = await getRecentReportActivity(
+    organization.id,
+    "cash-flow-statement",
+    20
+  );
+
   return (
     <ReportShell
       title="Cash Flow Statement"
@@ -214,55 +212,14 @@ export default async function CashFlowPage({
         </span>
       }
       actions={
-        <>
-          <Button
-            variant="outline"
-            size="icon"
-            disabled
-            title="Advanced filters — coming soon"
-            aria-label="Filters"
-          >
-            <Filter className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="outline"
-            size="icon"
-            disabled
-            title="Customize columns — coming soon"
-            aria-label="Customize columns"
-          >
-            <SlidersHorizontal className="h-4 w-4" />
-          </Button>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button size="sm" className="gap-1">
-                <Download className="h-3.5 w-3.5" />
-                Export
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-40">
-              <DropdownMenuItem asChild>
-                <a
-                  href={`/reports/cash-flow/export?format=csv&${exportParams.toString()}`}
-                >
-                  CSV
-                </a>
-              </DropdownMenuItem>
-              <DropdownMenuItem asChild>
-                <a
-                  href={`/reports/cash-flow/export?format=xlsx&${exportParams.toString()}`}
-                >
-                  XLSX (Excel)
-                </a>
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-          <Button variant="outline" size="icon" asChild aria-label="Refresh">
-            <a href={`/reports/cash-flow?${exportParams.toString()}`}>
-              <RefreshCw className="h-4 w-4" />
-            </a>
-          </Button>
-        </>
+        <ReportToolbar
+          reportKey="cash-flow-statement"
+          reportTitle="Cash Flow Statement"
+          fiscalYearStartMonth={organization.fiscalYearStart}
+          exportBaseUrl="/reports/cash-flow/export"
+          exportParams={exportParams.toString()}
+          activityRows={activityRows}
+        />
       }
     >
       <div className="flex items-end gap-3 flex-wrap">
