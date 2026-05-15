@@ -105,7 +105,8 @@ export const REPORTS: ReadonlyArray<ReportEntry> = [
     key: "balance-sheet-schedule-iii",
     name: "Balance Sheet (Schedule III)",
     category: "Business Overview",
-    available: false,
+    available: true,
+    href: "/reports/balance-sheet-schedule-iii",
   },
   {
     key: "business-performance-ratios",
