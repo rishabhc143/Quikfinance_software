@@ -7,11 +7,11 @@ import { ReportShell } from "@/components/reports/report-shell";
 import { ReportToolbar } from "@/components/reports/report-toolbar";
 import { ReportFilterStrip } from "@/components/reports/report-filter-strip";
 import { BalanceSheetAsOfPill } from "@/components/reports/balance-sheet-as-of-pill";
+import { ReportBasisDropdown } from "@/components/reports/report-basis-dropdown";
 import {
-  ReportBasisDropdown,
   parseReportBasis,
   REPORT_BASIS_LABEL,
-} from "@/components/reports/report-basis-dropdown";
+} from "@/lib/reports/report-basis";
 import {
   aggregateLedgerLines,
   type AccountBucket,

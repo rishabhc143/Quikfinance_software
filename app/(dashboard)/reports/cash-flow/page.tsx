@@ -8,11 +8,11 @@ import { ReportShell } from "@/components/reports/report-shell";
 import { DateRangePicker } from "@/components/reports/date-range-picker";
 import { ReportToolbar } from "@/components/reports/report-toolbar";
 import { ReportFilterStrip } from "@/components/reports/report-filter-strip";
+import { ReportBasisDropdown } from "@/components/reports/report-basis-dropdown";
 import {
-  ReportBasisDropdown,
   parseReportBasis,
   REPORT_BASIS_LABEL,
-} from "@/components/reports/report-basis-dropdown";
+} from "@/lib/reports/report-basis";
 import { parseRangeFromSearchParams } from "@/lib/reports/date-range";
 import {
   aggregateLedgerLines,
