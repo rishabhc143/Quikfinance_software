@@ -1,23 +1,11 @@
 import { format } from "date-fns";
-import {
-  Download,
-  Filter,
-  RefreshCw,
-  SlidersHorizontal,
-} from "lucide-react";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
-import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import {
-  DropdownMenu,
-  DropdownMenuTrigger,
-  DropdownMenuContent,
-  DropdownMenuItem,
-} from "@/components/ui/dropdown-menu";
 import { ReportShell } from "@/components/reports/report-shell";
 import { DateRangePicker } from "@/components/reports/date-range-picker";
+import { ReportToolbar } from "@/components/reports/report-toolbar";
 import { parseRangeFromSearchParams } from "@/lib/reports/date-range";
 import {
   aggregateLedgerLines,
@@ -27,6 +15,7 @@ import {
   buildProfitAndLoss,
   type PnlSection,
 } from "@/lib/reports/profit-loss";
+import { getRecentReportActivity } from "@/lib/reports/activity";
 import { formatMoney } from "@/lib/money";
 
 export const metadata = { title: "Profit and Loss" };
@@ -105,6 +94,14 @@ export default async function ProfitLossPage({
   const pnl = buildProfitAndLoss(ledgerRows);
   const cur = organization.currency;
 
+  // Pre-fetch the Report Activity timeline so the toolbar's drawer
+  // opens instantly (no client-side fetch round-trip).
+  const activityRows = await getRecentReportActivity(
+    organization.id,
+    "profit-and-loss",
+    20
+  );
+
   const dateRangeText = `From ${format(range.start, "dd/MM/yyyy")} To ${format(
     range.end,
     "dd/MM/yyyy"
@@ -136,60 +133,17 @@ export default async function ProfitLossPage({
         />
       }
       actions={
-        <>
-          <Button
-            variant="outline"
-            size="icon"
-            disabled
-            title="Advanced filters — coming soon"
-            aria-label="Filters"
-          >
-            <Filter className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="outline"
-            size="icon"
-            disabled
-            title="Customize columns — coming soon"
-            aria-label="Customize columns"
-          >
-            <SlidersHorizontal className="h-4 w-4" />
-          </Button>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button size="sm" className="gap-1">
-                <Download className="h-3.5 w-3.5" />
-                Export
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-40">
-              <DropdownMenuItem asChild>
-                <a
-                  href={`/reports/profit-loss/export?format=csv&${exportParams.toString()}`}
-                >
-                  CSV
-                </a>
-              </DropdownMenuItem>
-              <DropdownMenuItem asChild>
-                <a
-                  href={`/reports/profit-loss/export?format=xlsx&${exportParams.toString()}`}
-                >
-                  XLSX (Excel)
-                </a>
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-          <Button
-            variant="outline"
-            size="icon"
-            asChild
-            aria-label="Refresh"
-          >
-            <a href={`/reports/profit-loss?${exportParams.toString()}`}>
-              <RefreshCw className="h-4 w-4" />
-            </a>
-          </Button>
-        </>
+        <ReportToolbar
+          reportKey="profit-and-loss"
+          reportTitle="Profit and Loss"
+          fiscalYearStartMonth={organization.fiscalYearStart}
+          exportBaseUrl="/reports/profit-loss/export"
+          exportParams={exportParams.toString()}
+          columns={[
+            { key: "showCode", label: "Account Code", defaultEnabled: true },
+          ]}
+          activityRows={activityRows}
+        />
       }
     >
       <Card className="p-0 overflow-hidden">

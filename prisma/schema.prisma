@@ -2485,6 +2485,26 @@ model UserReportFavorite {
   @@index([userId, organizationId])
 }
 
+/// REPORTS — Per-report activity audit log. Captures export downloads,
+/// customize-run events, schedule create/edit (Phase B), and any other
+/// per-report user action worth surfacing in the Report Activity drawer.
+/// eventType is free-form so new event kinds don't need a migration;
+/// eventData carries the payload (filename, format, recipients, etc.).
+/// FK cascade is enforced at the SQL level by the migration — keeps
+/// User + Organization models unchanged.
+model ReportActivity {
+  id             String   @id @default(cuid())
+  organizationId String
+  userId         String
+  reportKey      String
+  eventType      String
+  eventData      Json?
+  createdAt      DateTime @default(now())
+
+  @@index([organizationId, reportKey, createdAt(sort: Desc)])
+  @@index([userId, createdAt(sort: Desc)])
+}
+
 // Customer-facing Debit Note (seller-issued). Increases the customer's
 // receivable — Indian accounting convention. Distinct from CreditNote.
 // Schema scaffolded; full UI is a follow-up.

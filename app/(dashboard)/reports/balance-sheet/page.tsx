@@ -1,10 +1,5 @@
 import { format } from "date-fns";
-import {
-  Download,
-  Filter,
-  RefreshCw,
-  SlidersHorizontal,
-} from "lucide-react";
+import { Filter } from "lucide-react";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
 import { Button } from "@/components/ui/button";
@@ -12,12 +7,8 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  DropdownMenu,
-  DropdownMenuTrigger,
-  DropdownMenuContent,
-  DropdownMenuItem,
-} from "@/components/ui/dropdown-menu";
+import { ReportToolbar } from "@/components/reports/report-toolbar";
+import { getRecentReportActivity } from "@/lib/reports/activity";
 import { ReportShell } from "@/components/reports/report-shell";
 import {
   aggregateLedgerLines,
@@ -154,6 +145,13 @@ export default async function BalanceSheetPage({
     as_of: format(asOf, "yyyy-MM-dd"),
   });
 
+  // Pre-fetch the Report Activity timeline for the toolbar's drawer.
+  const activityRows = await getRecentReportActivity(
+    organization.id,
+    "balance-sheet",
+    20
+  );
+
   return (
     <ReportShell
       title="Balance Sheet"
@@ -165,60 +163,17 @@ export default async function BalanceSheetPage({
         </span>
       }
       actions={
-        <>
-          <Button
-            variant="outline"
-            size="icon"
-            disabled
-            title="Advanced filters — coming soon"
-            aria-label="Filters"
-          >
-            <Filter className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="outline"
-            size="icon"
-            disabled
-            title="Customize columns — coming soon"
-            aria-label="Customize columns"
-          >
-            <SlidersHorizontal className="h-4 w-4" />
-          </Button>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button size="sm" className="gap-1">
-                <Download className="h-3.5 w-3.5" />
-                Export
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-40">
-              <DropdownMenuItem asChild>
-                <a
-                  href={`/reports/balance-sheet/export?format=csv&${exportParams.toString()}`}
-                >
-                  CSV
-                </a>
-              </DropdownMenuItem>
-              <DropdownMenuItem asChild>
-                <a
-                  href={`/reports/balance-sheet/export?format=xlsx&${exportParams.toString()}`}
-                >
-                  XLSX (Excel)
-                </a>
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-          <Button
-            variant="outline"
-            size="icon"
-            asChild
-            aria-label="Refresh"
-          >
-            <a href={`/reports/balance-sheet?${exportParams.toString()}`}>
-              <RefreshCw className="h-4 w-4" />
-            </a>
-          </Button>
-        </>
+        <ReportToolbar
+          reportKey="balance-sheet"
+          reportTitle="Balance Sheet"
+          fiscalYearStartMonth={organization.fiscalYearStart}
+          exportBaseUrl="/reports/balance-sheet/export"
+          exportParams={exportParams.toString()}
+          columns={[
+            { key: "showCode", label: "Account Code", defaultEnabled: true },
+          ]}
+          activityRows={activityRows}
+        />
       }
     >
       {/* Filter strip — Zoho-style pills + Run Report button. */}

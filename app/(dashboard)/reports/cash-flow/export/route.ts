@@ -19,6 +19,7 @@ import {
   type CsvRow,
 } from "@/lib/reports/csv-export";
 import { parseRangeFromSearchParams } from "@/lib/reports/date-range";
+import { logReportActivity } from "@/lib/reports/activity";
 
 /**
  * REPORTS — Export endpoint for the Zoho-style Cash Flow Statement.
@@ -32,7 +33,7 @@ import { parseRangeFromSearchParams } from "@/lib/reports/date-range";
  * Filename: cash-flow-{yyyymmdd}-to-{yyyymmdd}.csv (or .xlsx).
  */
 export async function GET(req: Request) {
-  const { organization } = await requireOrganization();
+  const { organization, user } = await requireOrganization();
   const url = new URL(req.url);
   const fmt = url.searchParams.get("format") === "xlsx" ? "xlsx" : "csv";
 
@@ -162,6 +163,17 @@ export async function GET(req: Request) {
     nonCashDeltas,
   });
   const filenameStub = `cash-flow-${csvDateSuffix(range.start)}-to-${csvDateSuffix(range.end)}`;
+
+  void logReportActivity({
+    organizationId: organization.id,
+    userId: user.id,
+    reportKey: "cash-flow-statement",
+    eventType: fmt === "xlsx" ? "EXPORT_XLSX" : "EXPORT_CSV",
+    eventData: {
+      format: fmt === "xlsx" ? "XLSX" : "CSV",
+      filename: `${filenameStub}.${fmt}`,
+    },
+  });
 
   if (fmt === "xlsx") {
     return buildXlsx(organization.name, range, cf, filenameStub);
