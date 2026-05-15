@@ -20,6 +20,7 @@ import {
   type CashFlowAccountDelta,
 } from "@/lib/reports/cash-flow";
 import { getRecentReportActivity } from "@/lib/reports/activity";
+import { getExistingSchedule } from "@/lib/reports/scheduled";
 
 export const metadata = { title: "Cash Flow Statement" };
 
@@ -59,7 +60,7 @@ export default async function CashFlowPage({
 }: {
   searchParams: Record<string, string>;
 }) {
-  const { organization } = await requireOrganization();
+  const { organization, user } = await requireOrganization();
   const { range, preset } = parseRangeFromSearchParams(searchParams, {
     fiscalYearStartMonth: organization.fiscalYearStart,
     defaultPreset: "this-month",
@@ -200,6 +201,11 @@ export default async function CashFlowPage({
     "cash-flow-statement",
     20
   );
+  const existingSchedule = await getExistingSchedule({
+    organizationId: organization.id,
+    userId: user.id,
+    reportKey: "cash-flow-statement",
+  });
 
   return (
     <ReportShell
@@ -219,6 +225,7 @@ export default async function CashFlowPage({
           exportBaseUrl="/reports/cash-flow/export"
           exportParams={exportParams.toString()}
           activityRows={activityRows}
+          existingSchedule={existingSchedule}
         />
       }
     >

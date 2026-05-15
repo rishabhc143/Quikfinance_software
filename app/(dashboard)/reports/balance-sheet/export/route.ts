@@ -21,6 +21,7 @@ import {
   type CsvRow,
 } from "@/lib/reports/csv-export";
 import { logReportActivity } from "@/lib/reports/activity";
+import { renderBalanceSheetPdf } from "@/lib/reports/pdf/balance-sheet";
 
 /**
  * REPORTS — Export endpoint for the Zoho-style Balance Sheet page.
@@ -37,7 +38,9 @@ import { logReportActivity } from "@/lib/reports/activity";
 export async function GET(req: Request) {
   const { organization, user } = await requireOrganization();
   const url = new URL(req.url);
-  const fmt = url.searchParams.get("format") === "xlsx" ? "xlsx" : "csv";
+  const rawFmt = url.searchParams.get("format");
+  const fmt: "csv" | "xlsx" | "pdf" =
+    rawFmt === "pdf" ? "pdf" : rawFmt === "xlsx" ? "xlsx" : "csv";
 
   const asOf = parseAsOf(url.searchParams.get("as_of")) ?? endOfToday();
 
@@ -106,13 +109,32 @@ export async function GET(req: Request) {
     organizationId: organization.id,
     userId: user.id,
     reportKey: "balance-sheet",
-    eventType: fmt === "xlsx" ? "EXPORT_XLSX" : "EXPORT_CSV",
+    eventType:
+      fmt === "pdf"
+        ? "EXPORT_PDF"
+        : fmt === "xlsx"
+          ? "EXPORT_XLSX"
+          : "EXPORT_CSV",
     eventData: {
-      format: fmt === "xlsx" ? "XLSX" : "CSV",
+      format: fmt.toUpperCase() as "PDF" | "XLSX" | "CSV",
       filename: `${filenameStub}.${fmt}`,
     },
   });
 
+  if (fmt === "pdf") {
+    const buf = await renderBalanceSheetPdf({
+      organizationName: organization.name,
+      asOfText: format(asOf, "dd/MM/yyyy"),
+      bs,
+      currency: organization.currency,
+    });
+    return new Response(new Uint8Array(buf), {
+      headers: {
+        "Content-Type": "application/pdf",
+        "Content-Disposition": `attachment; filename="${filenameStub}.pdf"`,
+      },
+    });
+  }
   if (fmt === "xlsx") {
     return buildXlsx(organization.name, asOf, bs, filenameStub);
   }

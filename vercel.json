@@ -6,6 +6,7 @@
     { "path": "/api/cron/recurring-expenses", "schedule": "30 2 * * *" },
     { "path": "/api/cron/bill-statuses", "schedule": "45 2 * * *" },
     { "path": "/api/cron/recurring-manual-journals", "schedule": "0 4 * * *" },
-    { "path": "/api/cron/email-job-retry", "schedule": "0 3 * * *" }
+    { "path": "/api/cron/email-job-retry", "schedule": "0 3 * * *" },
+    { "path": "/api/cron/scheduled-reports", "schedule": "30 3 * * *" }
   ]
 }
