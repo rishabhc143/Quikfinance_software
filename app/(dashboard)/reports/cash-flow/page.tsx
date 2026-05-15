@@ -1,14 +1,18 @@
 import Link from "next/link";
 import { format } from "date-fns";
-import { Filter } from "lucide-react";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
-import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ReportShell } from "@/components/reports/report-shell";
 import { DateRangePicker } from "@/components/reports/date-range-picker";
 import { ReportToolbar } from "@/components/reports/report-toolbar";
+import { ReportFilterStrip } from "@/components/reports/report-filter-strip";
+import {
+  ReportBasisDropdown,
+  parseReportBasis,
+  REPORT_BASIS_LABEL,
+} from "@/components/reports/report-basis-dropdown";
 import { parseRangeFromSearchParams } from "@/lib/reports/date-range";
 import {
   aggregateLedgerLines,
@@ -61,6 +65,7 @@ export default async function CashFlowPage({
   searchParams: Record<string, string>;
 }) {
   const { organization, user } = await requireOrganization();
+  const basis = parseReportBasis(searchParams);
   const { range, preset } = parseRangeFromSearchParams(searchParams, {
     fiscalYearStartMonth: organization.fiscalYearStart,
     defaultPreset: "this-month",
@@ -229,23 +234,14 @@ export default async function CashFlowPage({
         />
       }
     >
-      <div className="flex items-end gap-3 flex-wrap">
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <Filter className="h-3 w-3" />
-          <span className="uppercase tracking-wider">Filters :</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <span className="text-xs text-muted-foreground">Date Range :</span>
-          <DateRangePicker
-            activePreset={preset}
-            activeRange={range}
-            fiscalYearStartMonth={organization.fiscalYearStart}
-          />
-        </div>
-        <Button variant="outline" size="sm" disabled>
-          + More Filters
-        </Button>
-      </div>
+      <ReportFilterStrip>
+        <DateRangePicker
+          activePreset={preset}
+          activeRange={range}
+          fiscalYearStartMonth={organization.fiscalYearStart}
+        />
+        <ReportBasisDropdown defaultBasis={basis} />
+      </ReportFilterStrip>
 
       <Card className="p-0 overflow-hidden">
         <div className="text-center space-y-1 pt-8 pb-6">
@@ -253,6 +249,16 @@ export default async function CashFlowPage({
             {organization.name}
           </div>
           <h2 className="text-xl font-semibold">Cash Flow Statement</h2>
+          <div className="text-sm">
+            <span className="text-muted-foreground">Basis</span>
+            <span className="mx-1.5">:</span>
+            <span>{REPORT_BASIS_LABEL[basis]}</span>
+            {basis === "cash" ? (
+              <span className="ml-2 text-[10px] uppercase tracking-wider text-amber-600">
+                beta — same data as accrual for now
+              </span>
+            ) : null}
+          </div>
           <div className="text-sm text-muted-foreground tabular-nums">
             {dateRangeText}
           </div>
