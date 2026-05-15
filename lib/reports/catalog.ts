@@ -72,7 +72,8 @@ export const REPORTS: ReadonlyArray<ReportEntry> = [
     key: "profit-and-loss-schedule-iii",
     name: "Profit and Loss (Schedule III)",
     category: "Business Overview",
-    available: false,
+    available: true,
+    href: "/reports/profit-loss-schedule-iii",
   },
   {
     key: "horizontal-profit-and-loss",
