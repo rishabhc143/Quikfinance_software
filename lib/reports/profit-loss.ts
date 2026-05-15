@@ -124,3 +124,109 @@ export function buildProfitAndLoss(ledgerRows: LedgerRow[]): ProfitAndLoss {
     netProfitLoss,
   };
 }
+
+// ─── Compare-period support ──────────────────────────────────────
+
+export type PnlAccountRowWithCompare = PnlAccountRow & {
+  /** Same accountId resolved in the comparison range, or 0 if absent. */
+  previousAmount: number;
+};
+
+export type PnlSectionWithCompare = {
+  label: string;
+  accounts: PnlAccountRowWithCompare[];
+  total: number;
+  previousTotal: number;
+};
+
+export type ProfitAndLossWithCompare = {
+  operatingIncome: PnlSectionWithCompare;
+  costOfGoodsSold: PnlSectionWithCompare;
+  grossProfit: number;
+  previousGrossProfit: number;
+  operatingExpense: PnlSectionWithCompare;
+  operatingProfit: number;
+  previousOperatingProfit: number;
+  nonOperatingIncome: PnlSectionWithCompare;
+  nonOperatingExpense: PnlSectionWithCompare;
+  netProfitLoss: number;
+  previousNetProfitLoss: number;
+};
+
+/**
+ * Merge a current-period P&L with a previous-period P&L into a single
+ * structure that carries both amounts per row. Used by the page to
+ * render the side-by-side comparison columns.
+ *
+ * Accounts that exist in one period but not the other still appear
+ * (with 0 in the missing column). Sort order follows current period.
+ */
+export function mergePnlWithCompare(
+  current: ProfitAndLoss,
+  previous: ProfitAndLoss
+): ProfitAndLossWithCompare {
+  function mergeSection(
+    cur: PnlSection,
+    prev: PnlSection
+  ): PnlSectionWithCompare {
+    const prevByAccount = new Map(
+      prev.accounts.map((a) => [a.accountId, a.amount])
+    );
+    // Start with the union of accounts: current accounts first
+    // (preserves sort), then any prev-only accounts at the end.
+    const seen = new Set<string>();
+    const accounts: PnlAccountRowWithCompare[] = [];
+    for (const a of cur.accounts) {
+      accounts.push({
+        ...a,
+        previousAmount: prevByAccount.get(a.accountId) ?? 0,
+      });
+      seen.add(a.accountId);
+    }
+    for (const a of prev.accounts) {
+      if (seen.has(a.accountId)) continue;
+      accounts.push({
+        accountId: a.accountId,
+        accountName: a.accountName,
+        accountCode: a.accountCode,
+        amount: 0,
+        previousAmount: a.amount,
+      });
+    }
+    return {
+      label: cur.label,
+      accounts,
+      total: cur.total,
+      previousTotal: prev.total,
+    };
+  }
+
+  return {
+    operatingIncome: mergeSection(
+      current.operatingIncome,
+      previous.operatingIncome
+    ),
+    costOfGoodsSold: mergeSection(
+      current.costOfGoodsSold,
+      previous.costOfGoodsSold
+    ),
+    grossProfit: current.grossProfit,
+    previousGrossProfit: previous.grossProfit,
+    operatingExpense: mergeSection(
+      current.operatingExpense,
+      previous.operatingExpense
+    ),
+    operatingProfit: current.operatingProfit,
+    previousOperatingProfit: previous.operatingProfit,
+    nonOperatingIncome: mergeSection(
+      current.nonOperatingIncome,
+      previous.nonOperatingIncome
+    ),
+    nonOperatingExpense: mergeSection(
+      current.nonOperatingExpense,
+      previous.nonOperatingExpense
+    ),
+    netProfitLoss: current.netProfitLoss,
+    previousNetProfitLoss: previous.netProfitLoss,
+  };
+}

@@ -301,9 +301,11 @@ function GeneralTab(props: {
             <option value="previous-year">Previous Year</option>
           </select>
           {props.compare !== "none" ? (
-            <p className="text-xs text-amber-600 mt-1">
-              Comparison columns ship in the next release. Your selection
-              will be saved with the report URL.
+            <p className="text-xs text-muted-foreground mt-1">
+              Adds a second amount column showing the comparison period
+              and a % change column. Currently live on Profit and Loss;
+              Balance Sheet and Cash Flow Statement land in the next
+              release.
             </p>
           ) : null}
         </div>

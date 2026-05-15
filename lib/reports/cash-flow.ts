@@ -228,3 +228,98 @@ export function buildCashFlowStatement(args: {
 function deltaLabel(prefix: string, name: string): string {
   return `${prefix} ${name}`;
 }
+
+// ─── Compare-period support ──────────────────────────────────────
+
+export type CashFlowLineWithCompare = CashFlowLine & {
+  previousAmount: number;
+};
+
+export type CashFlowStatementWithCompare = {
+  beginningCashBalance: number;
+  previousBeginningCashBalance: number;
+  operating: {
+    netIncome: number;
+    previousNetIncome: number;
+    nonCashAdjustments: CashFlowLineWithCompare[];
+    nonCashAdjustmentsTotal: number;
+    previousNonCashAdjustmentsTotal: number;
+    netCashFromOperating: number;
+    previousNetCashFromOperating: number;
+  };
+  investing: {
+    items: CashFlowLineWithCompare[];
+    netCashFromInvesting: number;
+    previousNetCashFromInvesting: number;
+  };
+  financing: {
+    items: CashFlowLineWithCompare[];
+    netCashFromFinancing: number;
+    previousNetCashFromFinancing: number;
+  };
+  netChangeInCash: number;
+  previousNetChangeInCash: number;
+  endingCashBalance: number;
+  previousEndingCashBalance: number;
+};
+
+/**
+ * Merge two single-period cash-flow statements into a compare-ready
+ * structure. Line items are matched by label (since they're delta
+ * lines like "Δ Accounts Receivable" with stable labels across
+ * periods). Items in one period but not the other surface with
+ * zero in the missing column.
+ */
+export function mergeCashFlowWithCompare(
+  current: CashFlowStatement,
+  previous: CashFlowStatement
+): CashFlowStatementWithCompare {
+  function mergeLines(
+    cur: CashFlowLine[],
+    prev: CashFlowLine[]
+  ): CashFlowLineWithCompare[] {
+    const prevByLabel = new Map(prev.map((l) => [l.label, l.amount]));
+    const seen = new Set<string>();
+    const out: CashFlowLineWithCompare[] = [];
+    for (const l of cur) {
+      out.push({ ...l, previousAmount: prevByLabel.get(l.label) ?? 0 });
+      seen.add(l.label);
+    }
+    for (const l of prev) {
+      if (seen.has(l.label)) continue;
+      out.push({ ...l, amount: 0, previousAmount: l.amount });
+    }
+    return out;
+  }
+  return {
+    beginningCashBalance: current.beginningCashBalance,
+    previousBeginningCashBalance: previous.beginningCashBalance,
+    operating: {
+      netIncome: current.operating.netIncome,
+      previousNetIncome: previous.operating.netIncome,
+      nonCashAdjustments: mergeLines(
+        current.operating.nonCashAdjustments,
+        previous.operating.nonCashAdjustments
+      ),
+      nonCashAdjustmentsTotal: current.operating.nonCashAdjustmentsTotal,
+      previousNonCashAdjustmentsTotal:
+        previous.operating.nonCashAdjustmentsTotal,
+      netCashFromOperating: current.operating.netCashFromOperating,
+      previousNetCashFromOperating: previous.operating.netCashFromOperating,
+    },
+    investing: {
+      items: mergeLines(current.investing.items, previous.investing.items),
+      netCashFromInvesting: current.investing.netCashFromInvesting,
+      previousNetCashFromInvesting: previous.investing.netCashFromInvesting,
+    },
+    financing: {
+      items: mergeLines(current.financing.items, previous.financing.items),
+      netCashFromFinancing: current.financing.netCashFromFinancing,
+      previousNetCashFromFinancing: previous.financing.netCashFromFinancing,
+    },
+    netChangeInCash: current.netChangeInCash,
+    previousNetChangeInCash: previous.netChangeInCash,
+    endingCashBalance: current.endingCashBalance,
+    previousEndingCashBalance: previous.endingCashBalance,
+  };
+}
