@@ -6,7 +6,7 @@ import crypto from "node:crypto";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
 import { writeAuditLog } from "@/lib/audit";
-import { sendEmail } from "@/lib/email";
+import { sendEmail, EmailSendError } from "@/lib/email";
 import type { Role } from "@prisma/client";
 
 const inviteSchema = z.object({
@@ -54,13 +54,29 @@ export async function inviteUserAction(input: z.input<typeof inviteSchema>) {
   });
 
   const link = `${process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"}/signup?email=${encodeURIComponent(email)}&invite=${token}`;
-  await sendEmail({
-    to: email,
-    subject: `${me.name ?? me.email} invited you to ${organization.name} on Quikfinance`,
-    html: `<p>${me.name ?? me.email} invited you to join <strong>${organization.name}</strong> on Quikfinance.</p>
+
+  // If the email send fails (e.g. unverified domain, rate limit,
+  // bad EMAIL_FROM), we want the admin to know — surfacing a
+  // proper error instead of silently saying "Invitation sent".
+  // The placeholder user + membership + token rows stay behind
+  // so a retry just re-sends the same valid link.
+  try {
+    await sendEmail({
+      to: email,
+      subject: `${me.name ?? me.email} invited you to ${organization.name} on Quikfinance`,
+      html: `<p>${me.name ?? me.email} invited you to join <strong>${organization.name}</strong> on Quikfinance.</p>
 <p><a href="${link}">Accept invitation and create your account</a></p>
 <p>This link expires in 7 days.</p>`,
-  });
+    });
+  } catch (err) {
+    if (err instanceof EmailSendError) {
+      console.error("[invite] sendEmail failed for", email, err.message);
+      throw new Error(
+        `Invitation created, but the email failed to send: ${err.message}. Try again, or contact support if it keeps failing.`
+      );
+    }
+    throw err;
+  }
 
   await writeAuditLog({
     organizationId: organization.id, userId: me.id,
