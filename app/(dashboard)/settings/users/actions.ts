@@ -105,6 +105,115 @@ export async function changeRoleAction(membershipId: string, role: Role) {
   return { ok: true };
 }
 
+/**
+ * Resend the invitation email for a pending member (placeholder
+ * user with no passwordHash). Reuses the existing token if it
+ * hasn't expired; otherwise rotates a fresh one.
+ */
+export async function resendInvitationAction(membershipId: string) {
+  const { user: me, organization, membership } = await requireOrganization();
+  if (membership.role !== "ADMIN")
+    throw new Error("Only admins can resend invitations");
+
+  const target = await db.organizationMembership.findFirst({
+    where: { id: membershipId, organizationId: organization.id },
+    include: { user: true },
+  });
+  if (!target) throw new Error("Invitation not found");
+  if (target.user.passwordHash !== null) {
+    throw new Error("This user has already accepted — no need to resend");
+  }
+
+  // Reuse existing unexpired token if any; else rotate.
+  const existing = await db.emailVerificationToken.findFirst({
+    where: { userId: target.userId, expires: { gt: new Date() } },
+    orderBy: { expires: "desc" },
+  });
+  let token: string;
+  if (existing) {
+    token = existing.token;
+  } else {
+    token = crypto.randomBytes(32).toString("hex");
+    await db.emailVerificationToken.create({
+      data: {
+        userId: target.userId,
+        token,
+        expires: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      },
+    });
+  }
+
+  const link = `${process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"}/signup?email=${encodeURIComponent(target.user.email)}&invite=${token}`;
+  try {
+    await sendEmail({
+      to: target.user.email,
+      subject: `Reminder: ${me.name ?? me.email} invited you to ${organization.name} on Quikfinance`,
+      html: `<p>${me.name ?? me.email} invited you to join <strong>${organization.name}</strong> on Quikfinance.</p>
+<p><a href="${link}">Accept invitation and create your account</a></p>
+<p>This link expires in 7 days.</p>`,
+    });
+  } catch (err) {
+    if (err instanceof EmailSendError) {
+      console.error(
+        "[invite-resend] sendEmail failed for",
+        target.user.email,
+        err.message
+      );
+      throw new Error(`Couldn't resend the invitation: ${err.message}`);
+    }
+    throw err;
+  }
+  revalidatePath("/settings/users");
+  return { ok: true };
+}
+
+/**
+ * Cancel a pending invitation: remove the membership + the
+ * placeholder user (if they have no other memberships) + any
+ * outstanding tokens.
+ */
+export async function cancelInvitationAction(membershipId: string) {
+  const { user: me, organization, membership } = await requireOrganization();
+  if (membership.role !== "ADMIN")
+    throw new Error("Only admins can cancel invitations");
+
+  const target = await db.organizationMembership.findFirst({
+    where: { id: membershipId, organizationId: organization.id },
+    include: { user: true },
+  });
+  if (!target) throw new Error("Invitation not found");
+  if (target.user.passwordHash !== null) {
+    throw new Error(
+      "This user has already accepted — use Remove instead of Cancel"
+    );
+  }
+
+  await db.organizationMembership.delete({ where: { id: membershipId } });
+
+  // If the placeholder user has no other memberships, clean up
+  // the user record + outstanding tokens too.
+  const otherMemberships = await db.organizationMembership.count({
+    where: { userId: target.userId },
+  });
+  if (otherMemberships === 0) {
+    await db.emailVerificationToken.deleteMany({
+      where: { userId: target.userId },
+    });
+    await db.user.delete({ where: { id: target.userId } });
+  }
+
+  await writeAuditLog({
+    organizationId: organization.id,
+    userId: me.id,
+    action: "DELETE",
+    entityType: "Invitation",
+    entityId: membershipId,
+    before: { email: target.user.email, role: target.role },
+  });
+  revalidatePath("/settings/users");
+  return { ok: true };
+}
+
 export async function removeMemberAction(membershipId: string) {
   const { user: me, organization, membership } = await requireOrganization();
   if (membership.role !== "ADMIN") throw new Error("Only admins can remove members");
