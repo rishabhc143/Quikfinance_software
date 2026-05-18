@@ -28,7 +28,7 @@ export default async function DocumentsPage() {
         <Card>
           <CardContent className="py-12 text-center text-sm text-muted-foreground space-y-3">
             <p>Drop receipts, contracts, statements, and supporting files here.</p>
-            <p className="text-xs">Direct upload arrives with the UploadThing/S3 wiring in a future release; today you record the URL of an externally-hosted file.</p>
+            <p className="text-xs">Upload files directly (up to 10 MB) or paste a URL for files hosted elsewhere.</p>
             <Button asChild><Link href="/documents/new">+ Add your first document</Link></Button>
           </CardContent>
         </Card>
