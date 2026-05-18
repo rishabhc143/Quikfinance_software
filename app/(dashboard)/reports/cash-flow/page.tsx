@@ -21,8 +21,16 @@ import {
 import {
   buildCashFlowStatement,
   isCashAccount,
+  mergeCashFlowWithCompare,
   type CashFlowAccountDelta,
+  type CashFlowStatementWithCompare,
 } from "@/lib/reports/cash-flow";
+import {
+  parseCompareMode,
+  computeCompareRange,
+  COMPARE_LABEL,
+} from "@/lib/reports/compare";
+import { CashFlowCompareTable } from "@/components/reports/cash-flow-compare-table";
 import { getRecentReportActivity } from "@/lib/reports/activity";
 import { getExistingSchedule } from "@/lib/reports/scheduled";
 
@@ -66,6 +74,7 @@ export default async function CashFlowPage({
 }) {
   const { organization, user } = await requireOrganization();
   const basis = parseReportBasis(searchParams);
+  const compareMode = parseCompareMode(searchParams);
   const { range, preset } = parseRangeFromSearchParams(searchParams, {
     fiscalYearStartMonth: organization.fiscalYearStart,
     defaultPreset: "this-month",
@@ -192,12 +201,41 @@ export default async function CashFlowPage({
     nonCashDeltas,
   });
 
+  // ── Compare-period fetch + build (only when ?compare=… is set).
+  let cfCompare: CashFlowStatementWithCompare | null = null;
+  let prevDateRangeText: string | null = null;
+  if (compareMode !== "none") {
+    const prevRange = computeCompareRange(range, compareMode);
+    prevDateRangeText = `From ${format(prevRange.start, "dd/MM/yyyy")} To ${format(prevRange.end, "dd/MM/yyyy")}`;
+    const prevCf = await buildCashFlowForRange(
+      organization.id,
+      prevRange.start,
+      prevRange.end,
+      accounts,
+      accountById,
+      cashAccountIds
+    );
+    cfCompare = mergeCashFlowWithCompare(cf, prevCf);
+  }
+
   const cur = organization.currency;
   const dateRangeText = `From ${format(range.start, "dd/MM/yyyy")} To ${format(range.end, "dd/MM/yyyy")}`;
   const exportParams = new URLSearchParams({ preset });
   if (preset === "custom") {
     exportParams.set("from", format(range.start, "yyyy-MM-dd"));
     exportParams.set("to", format(range.end, "yyyy-MM-dd"));
+  }
+
+  // For the compare-mode link to the prior P&L (in the Net Income
+  // cell), build the matching range params.
+  let prevExportParams: URLSearchParams | null = null;
+  if (compareMode !== "none") {
+    const pr = computeCompareRange(range, compareMode);
+    prevExportParams = new URLSearchParams({
+      preset: "custom",
+      from: format(pr.start, "yyyy-MM-dd"),
+      to: format(pr.end, "yyyy-MM-dd"),
+    });
   }
 
   // Pre-fetch the Report Activity timeline for the toolbar's drawer.
@@ -261,9 +299,34 @@ export default async function CashFlowPage({
           </div>
           <div className="text-sm text-muted-foreground tabular-nums">
             {dateRangeText}
+            {cfCompare ? (
+              <span className="ml-2">
+                vs {prevDateRangeText}{" "}
+                <span className="text-xs uppercase tracking-wider text-emerald-600">
+                  · {COMPARE_LABEL[compareMode]}
+                </span>
+              </span>
+            ) : null}
           </div>
         </div>
 
+        {cfCompare ? (
+          <CashFlowCompareTable
+            cf={cfCompare}
+            currentLabel={dateRangeText.replace(/^From |To.*$/g, "")}
+            previousLabel={
+              prevDateRangeText
+                ? prevDateRangeText.replace(/^From |To.*$/g, "")
+                : ""
+            }
+            netIncomeHrefCurrent={`/reports/profit-loss?${exportParams.toString()}`}
+            netIncomeHrefPrevious={
+              prevExportParams
+                ? `/reports/profit-loss?${prevExportParams.toString()}`
+                : `/reports/profit-loss?${exportParams.toString()}`
+            }
+          />
+        ) : (
         <table className="w-full text-sm">
           <thead className="bg-muted/30 text-xs uppercase tracking-wider text-muted-foreground">
             <tr>
@@ -358,6 +421,7 @@ export default async function CashFlowPage({
             />
           </tbody>
         </table>
+        )}
 
         <div className="text-xs text-muted-foreground px-6 py-4 flex items-center gap-2">
           ** Amount is displayed in your base currency
@@ -431,4 +495,140 @@ function fmtAmount(n: number): string {
     maximumFractionDigits: 2,
   });
   return n < 0 ? `-${abs}` : abs;
+}
+
+/**
+ * Reusable cash-flow builder for one date range. Mirrors the inline
+ * fetch-and-aggregate the main page already does for the primary
+ * range; used by the compare-period branch to fetch the previous
+ * range's CashFlowStatement.
+ */
+async function buildCashFlowForRange(
+  organizationId: string,
+  start: Date,
+  end: Date,
+  accounts: Array<{
+    id: string;
+    name: string;
+    code: string | null;
+    type: string;
+    subType: string | null;
+  }>,
+  accountById: Map<
+    string,
+    {
+      id: string;
+      name: string;
+      code: string | null;
+      type: string;
+      subType: string | null;
+    }
+  >,
+  cashAccountIds: string[]
+) {
+  void accounts;
+  const [beforeLines, periodLines] = await Promise.all([
+    cashAccountIds.length > 0
+      ? db.journalEntryLine.findMany({
+          where: {
+            accountId: { in: cashAccountIds },
+            journalEntry: {
+              organizationId,
+              date: { lt: start },
+            },
+          },
+          select: { debit: true, credit: true, accountId: true },
+        })
+      : Promise.resolve(
+          [] as Array<{ debit: unknown; credit: unknown; accountId: string }>
+        ),
+    db.journalEntryLine.findMany({
+      where: {
+        journalEntry: {
+          organizationId,
+          date: { gte: start, lte: end },
+        },
+      },
+      select: {
+        debit: true,
+        credit: true,
+        account: {
+          select: { id: true, name: true, code: true, type: true },
+        },
+      },
+    }),
+  ]);
+
+  const beginningCashBalance = beforeLines.reduce(
+    (s, l) => s + Number(l.debit) - Number(l.credit),
+    0
+  );
+
+  const ledger = aggregateLedgerLines(
+    periodLines.map((l) => ({
+      account: {
+        id: l.account.id,
+        name: l.account.name,
+        code: l.account.code,
+        type: l.account.type as AccountBucket,
+      },
+      debit: Number(l.debit),
+      credit: Number(l.credit),
+    }))
+  );
+
+  let netIncome = 0;
+  for (const r of ledger) {
+    if (r.accountType === "INCOME" || r.accountType === "OTHER_INCOME") {
+      netIncome += r.totalCredit - r.totalDebit;
+    } else if (
+      r.accountType === "EXPENSE" ||
+      r.accountType === "COST_OF_GOODS_SOLD" ||
+      r.accountType === "OTHER_EXPENSE"
+    ) {
+      netIncome -= r.totalDebit - r.totalCredit;
+    }
+  }
+
+  const nonCashDeltas: CashFlowAccountDelta[] = ledger
+    .filter((r) => {
+      if (
+        r.accountType === "INCOME" ||
+        r.accountType === "OTHER_INCOME" ||
+        r.accountType === "EXPENSE" ||
+        r.accountType === "COST_OF_GOODS_SOLD" ||
+        r.accountType === "OTHER_EXPENSE"
+      ) {
+        return false;
+      }
+      const a = accountById.get(r.accountId);
+      if (!a) return false;
+      return !isCashAccount(a.type as AccountBucket, a.subType);
+    })
+    .map((r) => {
+      const a = accountById.get(r.accountId)!;
+      return {
+        accountId: r.accountId,
+        accountName: r.accountName,
+        accountCode: r.accountCode,
+        accountType: a.type as AccountBucket,
+        accountSubType: a.subType,
+        rawDelta: r.totalDebit - r.totalCredit,
+      };
+    });
+
+  const cashPeriodDelta = ledger
+    .filter((r) => {
+      const a = accountById.get(r.accountId);
+      return a ? isCashAccount(a.type as AccountBucket, a.subType) : false;
+    })
+    .reduce((s, r) => s + (r.totalDebit - r.totalCredit), 0);
+  const endingCashBalance = beginningCashBalance + cashPeriodDelta;
+
+  return buildCashFlowStatement({
+    beginningCashBalance,
+    endingCashBalance,
+    netIncome,
+    nonCashDeltas,
+  });
 }
