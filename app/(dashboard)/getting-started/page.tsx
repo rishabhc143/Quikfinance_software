@@ -11,37 +11,68 @@ import {
   Phone,
   Video,
   PlayCircle,
-  Circle,
-  ArrowRight,
 } from "lucide-react";
+import { db } from "@/lib/db";
+import { requireOrganization } from "@/lib/auth-helpers";
+import { ChecklistCard, type ChecklistItem } from "./checklist-card";
 
 export const metadata = { title: "Getting Started" };
 
-// Force dynamic + opt out of all caching to ensure stale 500
-// responses can never be served from edge or browser cache after
-// this deploy.
+// Force dynamic; we read auth + DB so it has to render per
+// request. Belt-and-suspenders against any stale edge cache from
+// the previous broken builds.
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
+type AuthCtx = Awaited<ReturnType<typeof requireOrganization>>;
+
 /**
- * Getting Started — fully static rendering.
+ * Getting Started — onboarding hub.
  *
- * This is the nuclear-option simplification after several rounds
- * of defensive wrapping failed to stop the page hitting error.tsx
- * on prod. Zero DB calls, zero auth dependencies, zero client
- * components. Just inline JSX that renders identically every
- * request.
+ * The page passes ONLY serialisable data (plain objects with
+ * strings + nested arrays of {label,href} objects) to the
+ * <ChecklistCard> client component. We never pass a function or
+ * a forwardRef-component across the server→client boundary
+ * (that was the digest-668202148 bug fixed in PR #177).
  *
- * Trade-off: Mark-as-Completed and auto-detection (e.g. "you've
- * created 3 invoices") are temporarily disabled. Every Configure
- * link still works (they're plain anchors), so the user can still
- * use this as the onboarding hub.
- *
- * Once we confirm this version renders cleanly on prod, the next
- * PR re-introduces the dynamic data behind a single try/catch
- * with an absolutely-failsafe fallback path.
+ * Features grid uses inline <StaticFeatureCard> (server
+ * component) so lucide icons stay on the server side.
  */
-export default function GettingStartedPage() {
+export default async function GettingStartedPage() {
+  // ── Auth + org bootstrap ─────────────────────────────────────
+  let auth: AuthCtx | null = null;
+  try {
+    auth = await requireOrganization();
+  } catch (err) {
+    console.error(
+      "[getting-started] requireOrganization failed — anon render",
+      err
+    );
+  }
+
+  // ── Data fetch + item construction ──────────────────────────
+  let items: ChecklistItem[] = STATIC_ITEMS;
+  let displayFirstName = "there";
+  let organizationName: string | null = null;
+
+  if (auth) {
+    const { user, organization } = auth;
+    organizationName = organization.name;
+    displayFirstName =
+      user.name?.trim().split(/\s+/)[0] ??
+      user.email?.split("@")[0] ??
+      "there";
+
+    try {
+      items = await buildLiveItems(auth);
+    } catch (err) {
+      console.error(
+        "[getting-started] buildLiveItems failed — falling back to static items",
+        err
+      );
+    }
+  }
+
   return (
     <div className="min-h-screen">
       {/* ── Top welcome banner ─────────────────────────────────── */}
@@ -53,12 +84,17 @@ export default function GettingStartedPage() {
             </div>
             <div>
               <h1 className="text-2xl font-semibold">
-                Welcome to Quikfinance
+                Hello, {displayFirstName}
               </h1>
-              <p className="text-sm text-muted-foreground">
-                The easy-to-use accounting software you can set up in
-                no time.
-              </p>
+              {organizationName ? (
+                <p className="text-sm text-muted-foreground">
+                  {organizationName}
+                </p>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  Welcome to Quikfinance
+                </p>
+              )}
             </div>
           </div>
           <div className="text-right space-y-0.5">
@@ -79,21 +115,17 @@ export default function GettingStartedPage() {
         {/* ── Hero card ────────────────────────────────────────── */}
         <div className="rounded-lg border bg-blue-50/40 dark:bg-blue-950/10 p-5">
           <div className="flex items-start gap-4">
-            <div className="h-24 w-40 rounded-md bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center shrink-0 relative">
+            <div className="h-24 w-40 rounded-md bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center shrink-0">
               <Video className="h-10 w-10 text-blue-600/70" />
-              <span className="absolute bottom-1 right-1 text-[10px] bg-white/80 px-1 rounded">
-                Coming soon
-              </span>
             </div>
             <div className="flex-1 space-y-2">
               <h2 className="text-base font-semibold">
                 Getting Started with Quikfinance
               </h2>
               <p className="text-sm text-muted-foreground">
-                Walk through the 5 steps below to get your books ready
-                for your first transaction. Configure your Chart of
-                Accounts, capture opening balances, set up GST, and
-                more.
+                The easy-to-use accounting software you can set up
+                in no time. Walk through the 5 steps below to get
+                your books ready for your first transaction.
               </p>
               <div className="flex items-center gap-2 text-xs text-muted-foreground pt-1">
                 <Phone className="h-3.5 w-3.5" />
@@ -109,63 +141,8 @@ export default function GettingStartedPage() {
           </div>
         </div>
 
-        {/* ── "Let's get you up and running" — static checklist ── */}
-        <div className="bg-background border rounded-lg overflow-hidden">
-          <div className="flex items-center justify-between px-5 py-3.5 border-b">
-            <h2 className="text-base font-semibold">
-              Let&apos;s get you up and running
-            </h2>
-            <div className="flex items-center gap-2.5">
-              <div className="w-40 h-1.5 rounded-full bg-muted overflow-hidden">
-                <div
-                  className="h-full bg-emerald-500"
-                  style={{ width: "0%" }}
-                />
-              </div>
-              <span className="text-xs tabular-nums text-emerald-700 font-medium">
-                0% Completed
-              </span>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-[280px_1fr] min-h-[280px]">
-            {/* Left rail */}
-            <div className="border-r py-2">
-              <ChecklistRail
-                items={CHECKLIST_ITEMS}
-                activeKey="add-organisation-details"
-              />
-            </div>
-
-            {/* Right pane — shows the FIRST item by default. */}
-            <div className="p-6 space-y-4">
-              <h3 className="text-base font-semibold">
-                Add Organisation Details
-              </h3>
-              <p className="text-sm text-muted-foreground leading-relaxed">
-                Add your organization&apos;s address and tax details to
-                Quikfinance to auto-populate them when you create
-                transactions. Also, add users to provide access to your
-                employees and accountants.
-              </p>
-              <div className="border-t pt-4 flex items-center gap-3 flex-wrap">
-                <Link
-                  href="/settings/profile"
-                  className="inline-flex items-center gap-1 text-sm text-primary hover:underline font-medium"
-                >
-                  Add Address
-                  <ArrowRight className="h-3 w-3" />
-                </Link>
-                <Link
-                  href="/settings/users"
-                  className="inline-flex items-center gap-1 text-sm text-foreground hover:text-primary"
-                >
-                  Invite User
-                </Link>
-              </div>
-            </div>
-          </div>
-        </div>
+        {/* ── Click-switchable 2-pane checklist (CLIENT) ──────── */}
+        <ChecklistCard items={items} />
 
         {/* ── Explore useful features ──────────────────────────── */}
         <div className="space-y-1 text-center pt-6">
@@ -173,8 +150,8 @@ export default function GettingStartedPage() {
             Explore useful features and set up Quikfinance
           </h2>
           <p className="text-sm text-muted-foreground">
-            Your journey to effortlessly manage your accounting starts
-            here.
+            Your journey to effortlessly manage your accounting
+            starts here.
           </p>
         </div>
 
@@ -260,53 +237,204 @@ export default function GettingStartedPage() {
   );
 }
 
-// ─── Static helpers (no client/server-side state) ────────────────
+// ─── Helpers ────────────────────────────────────────────────────
 
-const CHECKLIST_ITEMS = [
-  { key: "add-organisation-details", label: "Add Organisation Details" },
-  { key: "create-first-invoice", label: "Create your first invoice" },
+/**
+ * Static fallback items array — used when auth fails OR DB fetch
+ * fails. Every action route is hardcoded so the page is fully
+ * navigable even with no auto-detect signals.
+ */
+const STATIC_ITEMS: ChecklistItem[] = [
+  {
+    key: "add-organisation-details",
+    label: "Add Organisation Details",
+    done: false,
+    paneTitle: "Add Organisation Details",
+    paneBody:
+      "Add your organization's address and tax details to Quikfinance to auto-populate them when you create transactions. Also, add users to provide access to your employees and accountants.",
+    actions: [
+      { label: "Add Address", href: "/settings/profile", primary: true },
+      { label: "Invite User", href: "/settings/users" },
+    ],
+  },
+  {
+    key: "create-first-invoice",
+    label: "Create your first invoice",
+    done: false,
+    paneTitle: "Create your first invoice",
+    paneBody:
+      "Bill a customer for goods or services. The Invoice's line items + GST flow automatically into your Profit and Loss and into Accounts Receivable on your Balance Sheet.",
+    actions: [
+      { label: "New Invoice", href: "/sales/invoices/new", primary: true },
+      { label: "View all invoices", href: "/sales/invoices" },
+    ],
+  },
   {
     key: "create-first-bill-expense",
     label: "Create your first bill and expense",
+    done: false,
+    paneTitle: "Create your first bill and expense",
+    paneBody:
+      "Capture a vendor invoice or one-off expense. Bills become liabilities on your Balance Sheet; expenses hit your P&L immediately. Both inform your tax filings.",
+    actions: [
+      { label: "New Bill", href: "/purchases/bills/new", primary: true },
+      { label: "New Expense", href: "/purchases/expenses/new" },
+    ],
   },
-  { key: "setup-banking-journals", label: "Set up banking and journals" },
-  { key: "add-customers-vendors", label: "Add Customers and Vendors" },
+  {
+    key: "setup-banking-journals",
+    label: "Set up banking and journals",
+    done: false,
+    paneTitle: "Set up banking and journals",
+    paneBody:
+      "Add at least one bank account so you can record Payments Made/Received, reconcile statements, and produce a meaningful Cash Flow Statement. Use Manual Journal Entries for one-off adjustments like depreciation.",
+    actions: [
+      { label: "Add Bank Account", href: "/banking", primary: true },
+      {
+        label: "New Manual Journal",
+        href: "/accountant/manual-journals/new",
+      },
+    ],
+  },
+  {
+    key: "add-customers-vendors",
+    label: "Add Customers and Vendors",
+    done: false,
+    paneTitle: "Add Customers and Vendors",
+    paneBody:
+      "Customers are required to issue Invoices; Vendors are required to record Bills. Capture name + GSTIN so the GST input tax credit flows correctly.",
+    actions: [
+      { label: "Add Customer", href: "/sales/customers/new", primary: true },
+      { label: "Add Vendor", href: "/purchases/vendors/new" },
+    ],
+  },
 ];
 
-function ChecklistRail({
-  items,
-  activeKey,
-}: {
-  items: { key: string; label: string }[];
-  activeKey: string;
-}) {
-  return (
-    <>
-      {items.map((it) => {
-        const isActive = it.key === activeKey;
-        return (
-          <div
-            key={it.key}
-            className={
-              "w-full text-left flex items-center gap-2 px-5 py-3 text-sm " +
-              (isActive
-                ? "bg-background border-l-2 border-primary font-medium text-foreground"
-                : "text-muted-foreground border-l-2 border-transparent")
-            }
-          >
-            {isActive ? (
-              <Circle className="h-4 w-4 text-primary shrink-0" />
-            ) : (
-              <Circle className="h-4 w-4 text-muted-foreground/40 shrink-0" />
-            )}
-            <span className="truncate">{it.label}</span>
-          </div>
-        );
-      })}
-    </>
-  );
+/**
+ * Augments STATIC_ITEMS with `done` state (auto-detect via DB
+ * counts + manually-marked) and contextual `autoDoneLine` hints.
+ * Every Prisma call is wrapped so one missing table can't take
+ * the page down.
+ */
+async function buildLiveItems({ user, organization }: AuthCtx): Promise<
+  ChecklistItem[]
+> {
+  const [
+    customerCount,
+    vendorCount,
+    bankAccountCount,
+    journalEntryCount,
+    invoiceCount,
+    billCount,
+    completedItems,
+  ] = await Promise.all([
+    safeCount(() =>
+      db.contact.count({
+        where: { organizationId: organization.id, type: "CUSTOMER" },
+      })
+    ),
+    safeCount(() =>
+      db.contact.count({
+        where: { organizationId: organization.id, type: "VENDOR" },
+      })
+    ),
+    safeCount(() =>
+      db.bankAccount.count({ where: { organizationId: organization.id } })
+    ),
+    safeCount(() =>
+      db.manualJournal.count({ where: { organizationId: organization.id } })
+    ),
+    safeCount(() =>
+      db.invoice.count({ where: { organizationId: organization.id } })
+    ),
+    safeCount(() =>
+      db.bill.count({ where: { organizationId: organization.id } })
+    ),
+    fetchCompletedItems(user.id, organization.id),
+  ]);
+  const completedKeys = new Set(completedItems);
+
+  // Shallow-clone STATIC_ITEMS so we don't mutate the module
+  // constant, then patch `done` + `autoDoneLine` per item.
+  return STATIC_ITEMS.map((it) => {
+    const next = { ...it };
+    switch (it.key) {
+      case "add-organisation-details":
+        next.done = completedKeys.has(it.key);
+        next.autoDoneLine = organization.gstin
+          ? "Great! You've added the tax details!"
+          : null;
+        break;
+      case "create-first-invoice":
+        next.done = invoiceCount > 0 || completedKeys.has(it.key);
+        next.autoDoneLine =
+          invoiceCount > 0
+            ? `Great! You've created ${invoiceCount} invoice${invoiceCount === 1 ? "" : "s"}.`
+            : null;
+        break;
+      case "create-first-bill-expense":
+        next.done = billCount > 0 || completedKeys.has(it.key);
+        next.autoDoneLine =
+          billCount > 0
+            ? `Great! You've recorded ${billCount} bill${billCount === 1 ? "" : "s"}.`
+            : null;
+        break;
+      case "setup-banking-journals":
+        next.done =
+          bankAccountCount > 0 ||
+          journalEntryCount > 0 ||
+          completedKeys.has(it.key);
+        next.autoDoneLine =
+          bankAccountCount > 0
+            ? `Great! You have ${bankAccountCount} bank account${bankAccountCount === 1 ? "" : "s"} configured.`
+            : null;
+        break;
+      case "add-customers-vendors":
+        next.done =
+          (customerCount > 0 && vendorCount > 0) ||
+          completedKeys.has(it.key);
+        next.autoDoneLine =
+          customerCount > 0 || vendorCount > 0
+            ? `Great! ${customerCount} customer${customerCount === 1 ? "" : "s"}, ${vendorCount} vendor${vendorCount === 1 ? "" : "s"} so far.`
+            : null;
+        break;
+    }
+    return next;
+  });
 }
 
+async function fetchCompletedItems(
+  userId: string,
+  organizationId: string
+): Promise<string[]> {
+  try {
+    const rows = await db.userChecklistProgress.findMany({
+      where: { userId, organizationId },
+      select: { itemKey: true },
+    });
+    return rows.map((r) => r.itemKey);
+  } catch (err) {
+    console.error(
+      "[getting-started] UserChecklistProgress query failed",
+      err
+    );
+    return [];
+  }
+}
+
+async function safeCount(fn: () => Promise<number>): Promise<number> {
+  try {
+    return await fn();
+  } catch (err) {
+    console.error("[getting-started] safeCount query failed", err);
+    return 0;
+  }
+}
+
+/**
+ * Server-side feature card — keeps lucide icon components on the
+ * server-render side (never serialised across the boundary).
+ */
 function StaticFeatureCard({
   icon: Icon,
   title,
