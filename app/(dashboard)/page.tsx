@@ -5,8 +5,9 @@ import { db } from "@/lib/db";
 import { Card, CardHeader, CardContent, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { formatMoney } from "@/lib/money";
-import { Plus, ArrowUpRight } from "lucide-react";
+import { ArrowUpRight } from "lucide-react";
 import { CashFlowMini, IncomeVsExpenseMini, TopExpensesPie } from "@/components/dashboard/charts";
+import { NewRecordDropdown } from "./_dashboard-new-dropdown";
 
 export default async function HomePage() {
   const { user, organization } = await requireOrganization();
@@ -114,7 +115,13 @@ export default async function HomePage() {
         <Card>
           <CardHeader className="flex-row items-center justify-between">
             <CardTitle className="text-base">Total Receivables</CardTitle>
-            <Button asChild size="sm" variant="outline"><Link href="/sales/invoices/new"><Plus className="h-3 w-3 mr-1" /> New</Link></Button>
+            <NewRecordDropdown
+              items={[
+                { label: "New Invoice", href: "/sales/invoices/new" },
+                { label: "New Recurring Invoice", href: "/sales/recurring-invoices/new" },
+                { label: "New Customer Payment", href: "/sales/customer-payments/new" },
+              ]}
+            />
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-semibold">{formatMoney(recvCurrent + recvOverdue, cur)}</div>
@@ -129,7 +136,13 @@ export default async function HomePage() {
         <Card>
           <CardHeader className="flex-row items-center justify-between">
             <CardTitle className="text-base">Total Payables</CardTitle>
-            <Button asChild size="sm" variant="outline"><Link href="/purchases/bills/new"><Plus className="h-3 w-3 mr-1" /> New</Link></Button>
+            <NewRecordDropdown
+              items={[
+                { label: "New Bill", href: "/purchases/bills/new" },
+                { label: "New Recurring Bill", href: "/purchases/recurring-bills/new" },
+                { label: "New Vendor Payment", href: "/purchases/payments-made/new" },
+              ]}
+            />
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-semibold">{formatMoney(payCurrent + payOverdue, cur)}</div>
