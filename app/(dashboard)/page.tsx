@@ -119,7 +119,7 @@ export default async function HomePage() {
               items={[
                 { label: "New Invoice", href: "/sales/invoices/new" },
                 { label: "New Recurring Invoice", href: "/sales/recurring-invoices/new" },
-                { label: "New Customer Payment", href: "/sales/customer-payments/new" },
+                { label: "New Customer Payment", href: "/sales/payments-received/new" },
               ]}
             />
           </CardHeader>
