@@ -47,7 +47,25 @@ export default function HelpCategoryPage({
   if (!category) notFound();
 
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen bg-background">
+      {/* ── Brand nav bar ────────────────────────────────────── */}
+      <header className="border-b bg-background">
+        <div className="max-w-6xl mx-auto px-6 py-3 flex items-center justify-between">
+          <Link
+            href="/"
+            className="text-base font-semibold hover:text-primary"
+          >
+            Quikfinance
+          </Link>
+          <Link
+            href="/"
+            className="text-sm text-primary hover:underline"
+          >
+            ← Back to app
+          </Link>
+        </div>
+      </header>
+
       {/* ── Top header ─────────────────────────────────────────── */}
       <div className="border-b bg-gradient-to-b from-muted/30 to-background">
         <div className="max-w-4xl mx-auto px-6 py-8">

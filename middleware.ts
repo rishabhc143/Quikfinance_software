@@ -7,6 +7,9 @@ const PUBLIC_PATHS = [
   "/reset-password",
   "/verify-email",
   "/api/auth",
+  // Help Center is public so anyone (logged in or not) can read
+  // FAQs and answers — same as Zoho/Stripe/most SaaS help docs.
+  "/help",
 ];
 
 export function middleware(req: NextRequest) {
