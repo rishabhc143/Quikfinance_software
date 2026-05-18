@@ -2485,6 +2485,21 @@ model UserReportFavorite {
   @@index([userId, organizationId])
 }
 
+/// GETTING-STARTED — Per-user checklist completion state. Powers the
+/// "Mark as Completed" link on /getting-started. itemKey is free-form
+/// so adding new checklist items doesn't require a migration. FK
+/// cascade at SQL level only (same pattern as UserReportFavorite).
+model UserChecklistProgress {
+  id             String   @id @default(cuid())
+  userId         String
+  organizationId String
+  itemKey        String
+  completedAt    DateTime @default(now())
+
+  @@unique([userId, organizationId, itemKey])
+  @@index([userId, organizationId])
+}
+
 /// REPORTS — Recurring scheduled report. One row per user-defined
 /// "send me this report by email every Monday at 9am" rule. The
 /// cron worker (app/api/cron/scheduled-reports/route.ts) picks up

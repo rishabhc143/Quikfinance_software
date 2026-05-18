@@ -1,59 +1,55 @@
 import Link from "next/link";
 import {
-  CheckCircle2,
-  Circle,
-  ArrowRight,
   Sparkles,
-  Building2,
+  BookOpen,
+  Wallet,
+  CreditCard,
   Users,
-  Banknote,
-  Receipt,
-  Calculator,
-  FileText,
-  ShoppingCart,
+  Bell,
+  Shield,
+  FileBadge,
+  Phone,
+  Video,
 } from "lucide-react";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
-import { Card } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { ChecklistCard, type ChecklistItem } from "./checklist-card";
+import { FeatureCard } from "./feature-card";
 
 export const metadata = { title: "Getting Started" };
 
 /**
- * Getting Started — onboarding checklist for new orgs.
+ * Getting Started — onboarding hub.
  *
- * Each step is detected as "done" by querying the relevant table.
- * Lightweight existence checks only (count > 0). The page is a
- * server component so the data is always fresh — no client polling
- * needed.
+ * Mirrors the Zoho Books layout from the user-shared screenshots:
  *
- * Steps reflect the typical Indian SMB workflow:
- *   1. Confirm Organization profile (always pre-checked since you
- *      can't reach this page without an org)
- *   2. Add a Customer (Contact with role CUSTOMER)
- *   3. Add a Vendor (Contact with role VENDOR)
- *   4. Add a Bank Account (BankAccount row)
- *   5. Configure Taxes (Tax row)
- *   6. Create your first Invoice
- *   7. Create your first Bill
- *   8. Run your first Profit and Loss
+ *   1. Welcome header — "Hello, <first-name>" + org name + helpline
+ *   2. Hero card — "Getting Started with Quikfinance" intro
+ *   3. Two-pane checklist — 5 items with auto-detected + manual
+ *      "Mark as Completed" persistence
+ *   4. "Explore useful features and set up Quikfinance" — 7-card
+ *      grid linking to real configuration pages
  *
- * Item 8 is always "Open the report" — no done state since reading
- * a report doesn't leave a database trace yet.
+ * Every button is functional:
+ *   - Checklist actions → routes to the relevant new-record page
+ *   - Mark as Completed → server-side upsert in
+ *     UserChecklistProgress
+ *   - Feature card Configure → real settings/* route
+ *   - Watch & Learn → tooltip ("Tutorial videos coming soon" —
+ *     we don't have a video library yet)
  */
 export default async function GettingStartedPage() {
   const { organization, user } = await requireOrganization();
 
-  // Lightweight existence checks. count() is one COUNT query each;
-  // they run in parallel below.
+  // ── Auto-detect signals (parallel COUNT queries)
   const [
     customerCount,
     vendorCount,
     bankAccountCount,
-    taxCount,
+    journalEntryCount,
     invoiceCount,
     billCount,
+    completedItems,
   ] = await Promise.all([
     db.contact.count({
       where: { organizationId: organization.id, type: "CUSTOMER" },
@@ -62,194 +58,313 @@ export default async function GettingStartedPage() {
       where: { organizationId: organization.id, type: "VENDOR" },
     }),
     db.bankAccount.count({ where: { organizationId: organization.id } }),
-    db.tax.count({ where: { organizationId: organization.id } }),
+    db.manualJournal.count({
+      where: { organizationId: organization.id },
+    }),
     db.invoice.count({ where: { organizationId: organization.id } }),
     db.bill.count({ where: { organizationId: organization.id } }),
+    fetchCompletedItems(user.id, organization.id),
   ]);
+  const completedKeys = new Set(completedItems);
 
-  const steps: Step[] = [
+  // First-name guess: pull from User.name or email local-part.
+  const displayFirstName =
+    user.name?.trim().split(/\s+/)[0] ??
+    user.email?.split("@")[0] ??
+    "there";
+
+  // Checklist items (5 to match Zoho's left rail).
+  const items: ChecklistItem[] = [
     {
-      icon: Building2,
-      label: "Set up your organization",
-      description: `${organization.name} is set up. Configure logo, GSTIN, and fiscal year start in Settings.`,
-      done: true,
-      href: "/settings",
-      ctaLabel: "Review settings",
+      key: "add-organisation-details",
+      label: "Add Organisation Details",
+      done: completedKeys.has("add-organisation-details"),
+      paneTitle: "Add Organisation Details",
+      paneBody:
+        "Add your organization's address and tax details to Quikfinance to auto-populate them when you create transactions. Also, add users to provide access to your employees and accountants.",
+      autoDoneLine: organization.gstin
+        ? "Great! You've added the tax details!"
+        : null,
+      actions: [
+        { label: "Add Address", href: "/settings/profile" },
+        { label: "Invite User", href: "/settings/users" },
+      ],
     },
     {
-      icon: Users,
-      label: "Add your first Customer",
-      description:
-        "Customers are required to create Invoices. Capture name, GSTIN, billing address.",
-      done: customerCount > 0,
-      doneCount: customerCount,
-      href: "/sales/customers/new",
-      ctaLabel: customerCount > 0 ? "Add another" : "Add Customer",
+      key: "create-first-invoice",
+      label: "Create your first invoice",
+      done: invoiceCount > 0 || completedKeys.has("create-first-invoice"),
+      paneTitle: "Create your first invoice",
+      paneBody:
+        "Bill a customer for goods or services. The Invoice's line items + GST flow automatically into your Profit and Loss and into Accounts Receivable on your Balance Sheet.",
+      autoDoneLine:
+        invoiceCount > 0
+          ? `Great! You've created ${invoiceCount} invoice${invoiceCount === 1 ? "" : "s"}.`
+          : null,
+      actions: [
+        { label: "New Invoice", href: "/sales/invoices/new", primary: true },
+        { label: "View all invoices", href: "/sales/invoices" },
+      ],
     },
     {
-      icon: ShoppingCart,
-      label: "Add your first Vendor",
-      description:
-        "Vendors are required to record Bills. Capture name + GSTIN for ITC tracking.",
-      done: vendorCount > 0,
-      doneCount: vendorCount,
-      href: "/purchases/vendors/new",
-      ctaLabel: vendorCount > 0 ? "Add another" : "Add Vendor",
+      key: "create-first-bill-expense",
+      label: "Create your first bill and expense",
+      done: billCount > 0 || completedKeys.has("create-first-bill-expense"),
+      paneTitle: "Create your first bill and expense",
+      paneBody:
+        "Capture a vendor invoice or one-off expense. Bills become liabilities on your Balance Sheet; expenses hit your P&L immediately. Both inform your tax filings.",
+      autoDoneLine:
+        billCount > 0
+          ? `Great! You've recorded ${billCount} bill${billCount === 1 ? "" : "s"}.`
+          : null,
+      actions: [
+        { label: "New Bill", href: "/purchases/bills/new", primary: true },
+        { label: "New Expense", href: "/purchases/expenses/new" },
+      ],
     },
     {
-      icon: Banknote,
-      label: "Add a Bank Account",
-      description:
-        "Connect at least one bank account so you can record Payments Made/Received and run Cash Flow.",
-      done: bankAccountCount > 0,
-      doneCount: bankAccountCount,
-      href: "/banking",
-      ctaLabel: bankAccountCount > 0 ? "Manage banks" : "Add Bank Account",
+      key: "setup-banking-journals",
+      label: "Set up banking and journals",
+      done:
+        bankAccountCount > 0 ||
+        journalEntryCount > 0 ||
+        completedKeys.has("setup-banking-journals"),
+      paneTitle: "Set up banking and journals",
+      paneBody:
+        "Add at least one bank account so you can record Payments Made/Received, reconcile statements, and produce a meaningful Cash Flow Statement. Use Manual Journal Entries for one-off adjustments like depreciation.",
+      autoDoneLine:
+        bankAccountCount > 0
+          ? `Great! You have ${bankAccountCount} bank account${bankAccountCount === 1 ? "" : "s"} configured.`
+          : null,
+      actions: [
+        { label: "Add Bank Account", href: "/banking", primary: true },
+        {
+          label: "New Manual Journal",
+          href: "/accountant/manual-journals/new",
+        },
+      ],
     },
     {
-      icon: Calculator,
-      label: "Configure Tax rates",
-      description:
-        "Set up CGST / SGST / IGST rates. Default 18% GST is pre-loaded; tweak if needed.",
-      done: taxCount > 0,
-      doneCount: taxCount,
-      href: "/settings/taxes-compliance",
-      ctaLabel: taxCount > 0 ? "Manage taxes" : "Configure",
-    },
-    {
-      icon: Receipt,
-      label: "Create your first Invoice",
-      description:
-        "Bill a customer for goods or services. The Invoice line items + GST flow automatically into your books.",
-      done: invoiceCount > 0,
-      doneCount: invoiceCount,
-      href: "/sales/invoices/new",
-      ctaLabel: invoiceCount > 0 ? "Create another" : "New Invoice",
-    },
-    {
-      icon: Receipt,
-      label: "Record your first Bill",
-      description:
-        "Capture a vendor invoice. The Bill becomes an expense in your P&L and a liability on your Balance Sheet.",
-      done: billCount > 0,
-      doneCount: billCount,
-      href: "/purchases/bills/new",
-      ctaLabel: billCount > 0 ? "Record another" : "New Bill",
-    },
-    {
-      icon: FileText,
-      label: "Run your first Profit and Loss",
-      description:
-        "Once you have a few transactions, head to Reports → Profit and Loss to see your income and expenses by category.",
-      done: false, // no DB trace for "viewed a report" — always actionable
-      href: "/reports/profit-loss",
-      ctaLabel: "Open P&L",
+      key: "add-customers-vendors",
+      label: "Add Customers and Vendors",
+      done:
+        (customerCount > 0 && vendorCount > 0) ||
+        completedKeys.has("add-customers-vendors"),
+      paneTitle: "Add Customers and Vendors",
+      paneBody:
+        "Customers are required to issue Invoices; Vendors are required to record Bills. Capture name + GSTIN so the GST input tax credit flows correctly.",
+      autoDoneLine:
+        customerCount > 0 || vendorCount > 0
+          ? `Great! ${customerCount} customer${customerCount === 1 ? "" : "s"}, ${vendorCount} vendor${vendorCount === 1 ? "" : "s"} so far.`
+          : null,
+      actions: [
+        {
+          label: "Add Customer",
+          href: "/sales/customers/new",
+          primary: true,
+        },
+        { label: "Add Vendor", href: "/purchases/vendors/new" },
+      ],
     },
   ];
 
-  const doneCount = steps.filter((s) => s.done).length;
-  const totalRequired = steps.length - 1; // last item never marks done
-  const pct = Math.round((doneCount / totalRequired) * 100);
-
-  // Reference user.email defensively — keeps unused-var lint quiet.
-  void user;
+  // Build the portal URL so the Customer/Vendor Portals card can show
+  // it inline like Zoho's screenshot. Falls back to a placeholder
+  // when env doesn't expose the public app URL.
+  const appUrl =
+    process.env.NEXT_PUBLIC_APP_URL ?? "https://quikfinance-software.vercel.app";
+  const portalUrl = `${appUrl}/portal/${organization.id}`;
 
   return (
-    <div className="p-6 max-w-4xl mx-auto space-y-4">
-      <div className="flex items-start justify-between gap-4">
-        <div className="space-y-1">
-          <div className="inline-flex items-center gap-2 text-xs uppercase tracking-wider text-primary font-medium">
-            <Sparkles className="h-3.5 w-3.5" />
-            Onboarding
+    <div className="min-h-screen">
+      {/* ── Top welcome banner ────────────────────────────────── */}
+      <div className="border-b bg-gradient-to-b from-muted/30 to-background">
+        <div className="max-w-6xl mx-auto px-6 py-6 flex items-start justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-md bg-blue-50 dark:bg-blue-950/40 flex items-center justify-center">
+              <Sparkles className="h-5 w-5 text-blue-600" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-semibold">
+                Hello, {displayFirstName}
+              </h1>
+              <p className="text-sm text-muted-foreground">
+                {organization.name}
+              </p>
+            </div>
           </div>
-          <h1 className="text-2xl font-semibold">Getting Started</h1>
-          <p className="text-sm text-muted-foreground">
-            8 quick steps to set up your books in Quikfinance. Each step
-            opens the relevant page so you can complete it inline.
-          </p>
-        </div>
-        <div className="text-right">
-          <div className="text-3xl font-semibold tabular-nums">
-            {doneCount}
-            <span className="text-base text-muted-foreground">
-              /{totalRequired}
-            </span>
-          </div>
-          <div className="text-xs text-muted-foreground">
-            {pct}% complete
+          <div className="text-right space-y-0.5">
+            <div className="text-sm">
+              <span className="text-muted-foreground">Quikfinance India Helpline:</span>{" "}
+              <span className="font-medium">18003093036</span>
+            </div>
+            <div className="text-xs text-muted-foreground">
+              Mon - Fri · 9:00 AM - 7:00 PM · Toll Free
+            </div>
           </div>
         </div>
       </div>
 
-      <Card className="p-0 divide-y">
-        {steps.map((s, idx) => (
-          <StepRow key={s.label} step={s} index={idx + 1} />
-        ))}
-      </Card>
+      <div className="max-w-6xl mx-auto px-6 py-6 space-y-6">
+        {/* ── Welcome / hero card ──────────────────────────────── */}
+        <div className="rounded-lg border bg-blue-50/40 dark:bg-blue-950/10 p-5">
+          <div className="flex items-start gap-4">
+            <div className="h-24 w-40 rounded-md bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center shrink-0">
+              <Video className="h-10 w-10 text-blue-600/70" />
+            </div>
+            <div className="flex-1 space-y-2">
+              <h2 className="text-base font-semibold">
+                Getting Started with Quikfinance
+              </h2>
+              <p className="text-sm text-muted-foreground">
+                The easy-to-use accounting software you can set up in no
+                time. Walk through the 5 steps below to get your books
+                ready for your first transaction.
+              </p>
+              <div className="flex items-center gap-2 text-xs text-muted-foreground pt-1">
+                <Phone className="h-3.5 w-3.5" />
+                Need help getting started?{" "}
+                <Link
+                  href="mailto:support@quikfinance.in"
+                  className="text-primary hover:underline ml-1"
+                >
+                  Email support
+                </Link>
+              </div>
+            </div>
+          </div>
+        </div>
 
-      <div className="text-xs text-muted-foreground pt-2">
-        Stuck? Check{" "}
-        <Link href="/settings" className="text-primary hover:underline">
-          Settings
-        </Link>{" "}
-        or open any report from the{" "}
-        <Link href="/reports" className="text-primary hover:underline">
-          Reports Center
-        </Link>
-        .
+        {/* ── 2-pane checklist ─────────────────────────────────── */}
+        <ChecklistCard items={items} />
+
+        {/* ── Explore useful features ─────────────────────────── */}
+        <div className="space-y-1 text-center pt-6">
+          <h2 className="text-xl font-semibold">
+            Explore useful features and set up Quikfinance
+          </h2>
+          <p className="text-sm text-muted-foreground">
+            Your journey to effortlessly manage your accounting starts
+            here.
+          </p>
+        </div>
+
+        <div className="grid md:grid-cols-2 gap-4">
+          <FeatureCard
+            icon={BookOpen}
+            title="Configure Chart of Accounts"
+            description="The Chart of Accounts in Quikfinance contains a list of default accounts that can be used by any type of business. If there are other accounts that your business needs, you can create them."
+            configureHref="/accountant/chart-of-accounts"
+            configureLabel="Configure"
+            primary
+          />
+          <FeatureCard
+            icon={Wallet}
+            title="Enter Opening Balances"
+            description="If you're migrating from another software you must enter the opening balances in Quikfinance before you start creating transactions to keep your books intact."
+            configureHref="/settings/opening-balances"
+            configureLabel="Configure"
+          />
+          <FeatureCard
+            icon={CreditCard}
+            title="Connect with Payment Gateways"
+            description="Integrate with leading payment gateways and collect payments faster from your customers."
+            configureHref="/settings/online-payments/customer-payments"
+            configureLabel="Configure"
+            extra={
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <span className="inline-flex items-center gap-1.5 rounded border bg-background px-2 py-1">
+                  Razorpay
+                </span>
+                <span className="inline-flex items-center gap-1.5 rounded border bg-background px-2 py-1 opacity-60">
+                  Stripe · soon
+                </span>
+                <span className="inline-flex items-center gap-1.5 rounded border bg-background px-2 py-1 opacity-60">
+                  PayPal · soon
+                </span>
+              </div>
+            }
+          />
+          <FeatureCard
+            icon={Users}
+            title="Enable Customer and Vendor Portals"
+            description="Customer and vendor portals let your customers and vendors track and communicate with you about all the transactions you've created for them."
+            configureHref="/settings/customer-portal"
+            configureLabel="Set up"
+            extra={
+              <div className="text-xs">
+                <span className="text-muted-foreground">URL:</span>{" "}
+                <a
+                  href={portalUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-primary hover:underline break-all"
+                >
+                  {portalUrl}
+                </a>
+              </div>
+            }
+          />
+          <FeatureCard
+            icon={Bell}
+            title="Set up Payment Reminders"
+            description="Payment reminders let you remind your customers to make their due payments. Configure them to send automated emails and SMSes and collect payments on time."
+            configureHref="/settings/reminders"
+            configureLabel="Set up"
+          />
+          <FeatureCard
+            icon={Shield}
+            title="Configure Roles and Permissions"
+            description="Add your employees, timesheet staff, and accountants as users to Quikfinance by configuring different roles and permissions for them."
+            configureHref="/settings/roles"
+            configureLabel="Configure"
+          />
+          <FeatureCard
+            icon={FileBadge}
+            title="Update Your GST Settings"
+            description="If your business is registered under GST, add your GSTIN to enable GST tax management, create transactions, and file your returns directly from Quikfinance."
+            configureHref="/settings/profile"
+            configureLabel="Configure"
+          />
+        </div>
+
+        <div className="text-xs text-muted-foreground text-center pt-4">
+          Done with setup? Head to the{" "}
+          <Link
+            href="/"
+            className="text-primary hover:underline"
+          >
+            Dashboard
+          </Link>{" "}
+          or open the{" "}
+          <Link href="/reports" className="text-primary hover:underline">
+            Reports Center
+          </Link>
+          .
+        </div>
       </div>
     </div>
   );
 }
 
-type Step = {
-  icon: React.ComponentType<{ className?: string }>;
-  label: string;
-  description: string;
-  done: boolean;
-  doneCount?: number;
-  href: string;
-  ctaLabel: string;
-};
-
-function StepRow({ step, index }: { step: Step; index: number }) {
-  const Icon = step.icon;
-  return (
-    <div className="flex items-center gap-4 px-5 py-4">
-      <div className="shrink-0">
-        {step.done ? (
-          <CheckCircle2 className="h-7 w-7 text-emerald-600" />
-        ) : (
-          <div className="relative">
-            <Circle className="h-7 w-7 text-muted-foreground/40" />
-            <span className="absolute inset-0 flex items-center justify-center text-xs font-semibold text-muted-foreground">
-              {index}
-            </span>
-          </div>
-        )}
-      </div>
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
-          <Icon className="h-4 w-4 text-muted-foreground" />
-          <h3 className={"font-medium " + (step.done ? "text-foreground" : "")}>
-            {step.label}
-          </h3>
-          {step.done && step.doneCount !== undefined ? (
-            <Badge variant="outline" className="text-[10px] uppercase">
-              {step.doneCount} created
-            </Badge>
-          ) : null}
-        </div>
-        <p className="text-xs text-muted-foreground mt-0.5">
-          {step.description}
-        </p>
-      </div>
-      <Button asChild size="sm" variant={step.done ? "outline" : "default"}>
-        <Link href={step.href} className="gap-1">
-          {step.ctaLabel}
-          <ArrowRight className="h-3.5 w-3.5" />
-        </Link>
-      </Button>
-    </div>
-  );
+async function fetchCompletedItems(
+  userId: string,
+  organizationId: string
+): Promise<string[]> {
+  try {
+    const rows = await db.userChecklistProgress.findMany({
+      where: { userId, organizationId },
+      select: { itemKey: true },
+    });
+    return rows.map((r) => r.itemKey);
+  } catch (err) {
+    // Fail-open: if the table doesn't exist yet (migration lag),
+    // pretend nothing is checked. The page still renders + the
+    // auto-detect signals still work.
+    console.error(
+      "[getting-started] UserChecklistProgress query failed",
+      err
+    );
+    return [];
+  }
 }
