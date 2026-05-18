@@ -21,10 +21,18 @@ import {
 import {
   buildBalanceSheet,
   cashAndEquivalentsChildren,
+  mergeBalanceSheetWithCompare,
   type BsAccountInput,
   type BsLeafGroup,
   type BsMidGroup,
+  type BalanceSheetWithCompare,
 } from "@/lib/reports/balance-sheet";
+import {
+  parseCompareMode,
+  computeCompareAsOf,
+  COMPARE_LABEL,
+} from "@/lib/reports/compare";
+import { BalanceSheetCompareTable } from "@/components/reports/balance-sheet-compare-table";
 
 export const metadata = { title: "Balance Sheet" };
 
@@ -70,6 +78,7 @@ export default async function BalanceSheetPage({
   const asOf = parseAsOfDate(searchParams.as_of) ?? endOfToday();
   const asOfText = format(asOf, "dd/MM/yyyy");
   const basis = parseReportBasis(searchParams);
+  const compareMode = parseCompareMode(searchParams);
 
   // Pull every ChartOfAccount on this org (so empty buckets surface
   // as 0.00 in the table per Zoho's empty state).
@@ -146,6 +155,59 @@ export default async function BalanceSheetPage({
   const bs = buildBalanceSheet(inputs);
   const cur = organization.currency;
 
+  // ── Compare-period: fetch previous as-of date's ledger snapshot.
+  let bsCompare: BalanceSheetWithCompare | null = null;
+  let previousAsOfText: string | null = null;
+  if (compareMode !== "none") {
+    const prevAsOf = computeCompareAsOf(asOf, compareMode);
+    previousAsOfText = format(prevAsOf, "dd/MM/yyyy");
+    const prevJeLines = await db.journalEntryLine.findMany({
+      where: {
+        journalEntry: {
+          organizationId: organization.id,
+          date: { lte: prevAsOf },
+        },
+        account: {
+          type: { in: ["ASSET", "LIABILITY", "EQUITY"] },
+        },
+      },
+      select: {
+        debit: true,
+        credit: true,
+        accountId: true,
+        account: {
+          select: { id: true, name: true, code: true, type: true },
+        },
+      },
+    });
+    const prevLedger = aggregateLedgerLines(
+      prevJeLines.map((l) => ({
+        account: {
+          id: l.account.id,
+          name: l.account.name,
+          code: l.account.code,
+          type: l.account.type as AccountBucket,
+        },
+        debit: Number(l.debit),
+        credit: Number(l.credit),
+      }))
+    );
+    const prevLedgerById = new Map(prevLedger.map((r) => [r.accountId, r]));
+    const prevInputs: BsAccountInput[] = accounts.map((a) => {
+      const row = prevLedgerById.get(a.id);
+      return {
+        accountId: a.id,
+        accountName: a.name,
+        accountCode: a.code,
+        accountType: a.type as AccountBucket,
+        accountSubType: a.subType,
+        netBalance: row ? row.netBalance : 0,
+      };
+    });
+    const prevBs = buildBalanceSheet(prevInputs);
+    bsCompare = mergeBalanceSheetWithCompare(bs, prevBs);
+  }
+
   const exportParams = new URLSearchParams({
     as_of: format(asOf, "yyyy-MM-dd"),
   });
@@ -212,10 +274,25 @@ export default async function BalanceSheetPage({
           </div>
           <div className="text-sm text-muted-foreground tabular-nums">
             As of {asOfText}
+            {bsCompare ? (
+              <span className="ml-2">
+                vs {previousAsOfText}{" "}
+                <span className="text-xs uppercase tracking-wider text-emerald-600">
+                  · {COMPARE_LABEL[compareMode]}
+                </span>
+              </span>
+            ) : null}
           </div>
         </div>
 
         {/* 4-level hierarchical table */}
+        {bsCompare ? (
+          <BalanceSheetCompareTable
+            bs={bsCompare}
+            currentLabel={`As of ${asOfText}`}
+            previousLabel={`As of ${previousAsOfText}`}
+          />
+        ) : (
         <table className="w-full text-sm">
           <thead className="bg-muted/30 text-xs uppercase tracking-wider text-muted-foreground">
             <tr>
@@ -258,6 +335,7 @@ export default async function BalanceSheetPage({
             />
           </tbody>
         </table>
+        )}
 
         <div className="text-xs text-muted-foreground px-6 py-4 flex items-center gap-2">
           ** Amount is displayed in your base currency

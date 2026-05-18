@@ -303,9 +303,10 @@ function GeneralTab(props: {
           {props.compare !== "none" ? (
             <p className="text-xs text-muted-foreground mt-1">
               Adds a second amount column showing the comparison period
-              and a % change column. Currently live on Profit and Loss;
-              Balance Sheet and Cash Flow Statement land in the next
-              release.
+              and a % change column. Live on Profit and Loss, Balance
+              Sheet, and Cash Flow Statement. Export formats still
+              ship the single-period view — comparison columns in
+              CSV/XLSX/PDF coming in a future release.
             </p>
           ) : null}
         </div>
