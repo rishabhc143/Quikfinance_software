@@ -7,6 +7,7 @@ import {
   ChevronDown,
 } from "lucide-react";
 import { HELP_CATEGORIES, findCategory } from "@/lib/help/faqs";
+import { HashOpener } from "./hash-opener";
 
 export const dynamic = "force-static";
 
@@ -80,6 +81,9 @@ export default function HelpCategoryPage({
       </div>
 
       <div className="max-w-4xl mx-auto px-6 py-6">
+        {/* Auto-opens whichever <details> matches the URL hash. */}
+        <HashOpener />
+
         {/* ── Q&A accordions ─────────────────────────────────── */}
         <div className="space-y-2">
           {category.faqs.map((faq) => (
