@@ -9,6 +9,12 @@ import {
   Landmark,
   FileBadge,
   BarChart3,
+  UserCog,
+  FileText,
+  Package,
+  BookOpen,
+  Globe,
+  Target,
 } from "lucide-react";
 import { HELP_CATEGORIES, allFaqCount } from "@/lib/help/faqs";
 
@@ -19,13 +25,19 @@ const CATEGORY_ICONS: Record<
   string,
   React.ComponentType<{ className?: string }>
 > = {
-  "fiscal-year-end-tasks": CalendarClock,
+  "account-and-settings": UserCog,
   "getting-started": Sparkles,
   "sales-and-invoicing": ShoppingCart,
+  "quotes-sales-orders-and-delivery": FileText,
   "purchases-and-bills": Receipt,
+  "items-and-inventory": Package,
   banking: Landmark,
-  "taxes-and-gst": FileBadge,
+  "manual-journals-and-coa": BookOpen,
+  "taxes-gst-and-tds": FileBadge,
+  "multi-currency": Globe,
   reports: BarChart3,
+  "budgets-and-reporting-tags": Target,
+  "fiscal-year-end-tasks": CalendarClock,
 };
 
 /**
