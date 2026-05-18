@@ -8,25 +8,15 @@ export const metadata = { title: "Users" };
 export const dynamic = "force-dynamic";
 
 /**
- * Server Component — fetches all OrganizationMemberships for the
- * current org + splits into "active" (real users with a password)
- * vs "pending" (placeholder users created by the invite flow,
- * passwordHash === null).
- *
- * Belt-and-suspenders defensive: every layer wrapped in try/catch
- * so we never bubble an opaque "Server Components render" error.
- * On failure, we render the simplest possible UsersManager with
- * an empty members list and surface the diagnosis in Vercel logs
- * via console.error.
+ * Server Component — fetches OrganizationMemberships for the
+ * current org. Belt-and-suspenders try/catch so we never bubble
+ * an opaque "Server Components render" error.
  */
 export default async function UsersPage() {
-  let me: Awaited<ReturnType<typeof requireOrganization>>["user"] | null = null;
   try {
-    const auth = await requireOrganization();
-    me = auth.user;
-
+    const { user: me, organization } = await requireOrganization();
     const memberships = await db.organizationMembership.findMany({
-      where: { organizationId: auth.organization.id },
+      where: { organizationId: organization.id },
       include: {
         user: {
           select: {
@@ -58,7 +48,7 @@ export default async function UsersPage() {
                 id: m.id,
                 userId: m.userId,
                 role: m.role,
-                isMe: m.userId === me!.id,
+                isMe: m.userId === me.id,
                 name: m.user.name,
                 email: m.user.email,
                 image: m.user.image,
@@ -67,7 +57,10 @@ export default async function UsersPage() {
                 id: m.id,
                 email: m.user.email,
                 role: m.role,
-                invitedAt: m.createdAt.toISOString(),
+                invitedAt:
+                  m.createdAt instanceof Date
+                    ? m.createdAt.toISOString()
+                    : String(m.createdAt),
               }))}
             />
           </CardContent>
@@ -75,18 +68,11 @@ export default async function UsersPage() {
       </SettingsShell>
     );
   } catch (err) {
-    // Log the FULL error to Vercel logs so we can see what's
-    // happening when the user reports a server-component render
-    // error. Then render a minimal-state page so the UI at
-    // least doesn't blow up.
     const stack =
       err instanceof Error
         ? `${err.name}: ${err.message}\n${err.stack ?? ""}`
         : String(err);
-    console.error(
-      "[settings/users] page render failed — falling back to empty state",
-      stack
-    );
+    console.error("[settings/users] page render failed", stack);
     return (
       <SettingsShell
         title="Users"
@@ -99,12 +85,13 @@ export default async function UsersPage() {
                 Couldn&apos;t load the team list.
               </p>
               <p className="text-amber-800 dark:text-amber-300 mt-1">
-                The team list is temporarily unavailable. Try
-                refreshing in a minute. Your data is safe — this is
-                a display-only issue.
+                Try refreshing in a minute. Your data is safe — this
+                is a display-only issue.
               </p>
-              <p className="text-xs text-muted-foreground mt-2">
-                ref: {(err as { digest?: string })?.digest ?? "unknown"}
+              <p className="text-xs text-muted-foreground mt-2 font-mono">
+                {err instanceof Error
+                  ? `${err.name}: ${err.message}`
+                  : "unknown error"}
               </p>
             </div>
           </CardContent>
