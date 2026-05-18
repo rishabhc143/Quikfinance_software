@@ -41,7 +41,10 @@ export const metadata = { title: "Getting Started" };
 export default async function GettingStartedPage() {
   const { organization, user } = await requireOrganization();
 
-  // ── Auto-detect signals (parallel COUNT queries)
+  // ── Auto-detect signals (parallel COUNT queries).
+  // Wrapped per-query so a single missing table or transient DB
+  // error doesn't 500 the whole page. Fail-open → 0 / [] which
+  // makes the corresponding checklist item just look incomplete.
   const [
     customerCount,
     vendorCount,
@@ -51,18 +54,28 @@ export default async function GettingStartedPage() {
     billCount,
     completedItems,
   ] = await Promise.all([
-    db.contact.count({
-      where: { organizationId: organization.id, type: "CUSTOMER" },
-    }),
-    db.contact.count({
-      where: { organizationId: organization.id, type: "VENDOR" },
-    }),
-    db.bankAccount.count({ where: { organizationId: organization.id } }),
-    db.manualJournal.count({
-      where: { organizationId: organization.id },
-    }),
-    db.invoice.count({ where: { organizationId: organization.id } }),
-    db.bill.count({ where: { organizationId: organization.id } }),
+    safeCount(() =>
+      db.contact.count({
+        where: { organizationId: organization.id, type: "CUSTOMER" },
+      })
+    ),
+    safeCount(() =>
+      db.contact.count({
+        where: { organizationId: organization.id, type: "VENDOR" },
+      })
+    ),
+    safeCount(() =>
+      db.bankAccount.count({ where: { organizationId: organization.id } })
+    ),
+    safeCount(() =>
+      db.manualJournal.count({ where: { organizationId: organization.id } })
+    ),
+    safeCount(() =>
+      db.invoice.count({ where: { organizationId: organization.id } })
+    ),
+    safeCount(() =>
+      db.bill.count({ where: { organizationId: organization.id } })
+    ),
     fetchCompletedItems(user.id, organization.id),
   ]);
   const completedKeys = new Set(completedItems);
@@ -366,5 +379,20 @@ async function fetchCompletedItems(
       err
     );
     return [];
+  }
+}
+
+/**
+ * Wraps a single COUNT query in a try/catch so one missing table
+ * or transient DB error doesn't blow up Promise.all and 500 the
+ * whole page. Fail-open returns 0 — the corresponding checklist
+ * item just looks incomplete until the underlying data appears.
+ */
+async function safeCount(fn: () => Promise<number>): Promise<number> {
+  try {
+    return await fn();
+  } catch (err) {
+    console.error("[getting-started] safeCount query failed", err);
+    return 0;
   }
 }
