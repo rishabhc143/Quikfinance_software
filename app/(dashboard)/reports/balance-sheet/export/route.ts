@@ -9,11 +9,22 @@ import {
 import {
   buildBalanceSheet,
   cashAndEquivalentsChildren,
+  mergeBalanceSheetWithCompare,
   type BalanceSheet,
   type BsAccountInput,
   type BsLeafGroup,
   type BsMidGroup,
+  type BalanceSheetWithCompare,
+  type BsTopGroupWithCompare,
+  type BsMidGroupWithCompare,
+  type BsLeafGroupWithCompare,
 } from "@/lib/reports/balance-sheet";
+import {
+  parseCompareMode,
+  computeCompareAsOf,
+  pctChange,
+  formatPctChange,
+} from "@/lib/reports/compare";
 import {
   toCsv,
   csvResponse,
@@ -103,7 +114,60 @@ export async function GET(req: Request) {
     };
   });
   const bs = buildBalanceSheet(inputs);
-  const filenameStub = `balance-sheet-as-of-${csvDateSuffix(asOf)}`;
+
+  // ── Compare-period (CSV only for v1).
+  const compareMode = parseCompareMode(
+    Object.fromEntries(url.searchParams.entries())
+  );
+  let bsCompare: BalanceSheetWithCompare | null = null;
+  if (compareMode !== "none" && fmt === "csv") {
+    const prevAsOf = computeCompareAsOf(asOf, compareMode);
+    const prevJeLines = await db.journalEntryLine.findMany({
+      where: {
+        journalEntry: {
+          organizationId: organization.id,
+          date: { lte: prevAsOf },
+        },
+        account: { type: { in: ["ASSET", "LIABILITY", "EQUITY"] } },
+      },
+      select: {
+        debit: true,
+        credit: true,
+        account: {
+          select: { id: true, name: true, code: true, type: true },
+        },
+      },
+    });
+    const prevLedger = aggregateLedgerLines(
+      prevJeLines.map((l) => ({
+        account: {
+          id: l.account.id,
+          name: l.account.name,
+          code: l.account.code,
+          type: l.account.type as AccountBucket,
+        },
+        debit: Number(l.debit),
+        credit: Number(l.credit),
+      }))
+    );
+    const prevLedgerByAccountId = new Map(
+      prevLedger.map((r) => [r.accountId, r])
+    );
+    const prevInputs: BsAccountInput[] = accounts.map((a) => ({
+      accountId: a.id,
+      accountName: a.name,
+      accountCode: a.code,
+      accountType: a.type as AccountBucket,
+      accountSubType: a.subType,
+      netBalance: prevLedgerByAccountId.get(a.id)?.netBalance ?? 0,
+    }));
+    const prevBs = buildBalanceSheet(prevInputs);
+    bsCompare = mergeBalanceSheetWithCompare(bs, prevBs);
+  }
+
+  const filenameStub = bsCompare
+    ? `balance-sheet-as-of-${csvDateSuffix(asOf)}-vs-${compareMode}`
+    : `balance-sheet-as-of-${csvDateSuffix(asOf)}`;
 
   void logReportActivity({
     organizationId: organization.id,
@@ -137,6 +201,9 @@ export async function GET(req: Request) {
   }
   if (fmt === "xlsx") {
     return buildXlsx(organization.name, asOf, bs, filenameStub);
+  }
+  if (bsCompare) {
+    return buildCsvWithCompare(bsCompare, filenameStub);
   }
   return buildCsv(bs, filenameStub);
 }
@@ -208,6 +275,120 @@ function buildCsv(bs: BalanceSheet, filenameStub: string): Response {
 
 function labelFor(code: string | null, name: string): string {
   return code ? `${code} · ${name}` : name;
+}
+
+// ─── CSV with Compare columns ────────────────────────────────────
+
+function buildCsvWithCompare(
+  bs: BalanceSheetWithCompare,
+  filenameStub: string
+): Response {
+  const rows: Record<string, string | number>[] = [];
+
+  function pushRow(
+    level: string,
+    label: string,
+    current: number | "",
+    previous: number | "",
+    change: string
+  ) {
+    rows.push({ level, label, current, previous, change });
+  }
+
+  function emitTop(top: BsTopGroupWithCompare) {
+    pushRow("top-header", top.label, "", "", "");
+    for (const mid of top.groups) emitMid(mid);
+    pushRow(
+      "top-total",
+      `Total for ${top.label}`,
+      top.total,
+      top.previousTotal,
+      formatPctChange(pctChange(top.total, top.previousTotal))
+    );
+  }
+
+  function emitMid(mid: BsMidGroupWithCompare) {
+    pushRow("mid-header", mid.label, "", "", "");
+    for (const leaf of mid.leaves) emitLeaf(leaf);
+    for (const a of mid.accounts) {
+      pushRow(
+        "account",
+        labelFor(a.accountCode, a.accountName),
+        a.amount,
+        a.previousAmount,
+        formatPctChange(pctChange(a.amount, a.previousAmount))
+      );
+    }
+    pushRow(
+      "mid-total",
+      `Total for ${mid.label}`,
+      mid.total,
+      mid.previousTotal,
+      formatPctChange(pctChange(mid.total, mid.previousTotal))
+    );
+  }
+
+  function emitLeaf(leaf: BsLeafGroupWithCompare) {
+    pushRow("leaf-header", leaf.label, "", "", "");
+    for (const a of leaf.accounts) {
+      pushRow(
+        "account",
+        labelFor(a.accountCode, a.accountName),
+        a.amount,
+        a.previousAmount,
+        formatPctChange(pctChange(a.amount, a.previousAmount))
+      );
+    }
+    pushRow(
+      "leaf-total",
+      `Total for ${leaf.label}`,
+      leaf.total,
+      leaf.previousTotal,
+      formatPctChange(pctChange(leaf.total, leaf.previousTotal))
+    );
+  }
+
+  emitTop(bs.assets);
+  rows.push({
+    level: "spacer",
+    label: "Liabilities & Equities",
+    current: "",
+    previous: "",
+    change: "",
+  });
+  pushRow("top-header", "Liabilities", "", "", "");
+  for (const mid of bs.liabilities.groups) emitMid(mid);
+  pushRow(
+    "top-total",
+    "Total for Liabilities",
+    bs.liabilities.total,
+    bs.liabilities.previousTotal,
+    formatPctChange(
+      pctChange(bs.liabilities.total, bs.liabilities.previousTotal)
+    )
+  );
+  emitMid(bs.equities);
+  pushRow(
+    "grand-total",
+    "Total for Liabilities & Equities",
+    bs.liabilitiesAndEquitiesTotal,
+    bs.previousLiabilitiesAndEquitiesTotal,
+    formatPctChange(
+      pctChange(
+        bs.liabilitiesAndEquitiesTotal,
+        bs.previousLiabilitiesAndEquitiesTotal
+      )
+    )
+  );
+
+  const csv = toCsv(rows as CsvRow[], [
+    "level",
+    "label",
+    "current",
+    "previous",
+    "change",
+  ]);
+  return csvResponse(filenameStub, csv);
 }
 
 // ─── XLSX (Zoho-style with borders + fills + bold totals) ────────

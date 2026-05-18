@@ -9,9 +9,17 @@ import {
 import {
   buildCashFlowStatement,
   isCashAccount,
+  mergeCashFlowWithCompare,
   type CashFlowAccountDelta,
   type CashFlowStatement,
+  type CashFlowStatementWithCompare,
 } from "@/lib/reports/cash-flow";
+import {
+  parseCompareMode,
+  computeCompareRange,
+  pctChange,
+  formatPctChange,
+} from "@/lib/reports/compare";
 import {
   toCsv,
   csvResponse,
@@ -165,7 +173,25 @@ export async function GET(req: Request) {
     netIncome,
     nonCashDeltas,
   });
-  const filenameStub = `cash-flow-${csvDateSuffix(range.start)}-to-${csvDateSuffix(range.end)}`;
+
+  // ── Compare-period (CSV only for v1).
+  const compareMode = parseCompareMode(params);
+  let cfCompare: CashFlowStatementWithCompare | null = null;
+  if (compareMode !== "none" && fmt === "csv") {
+    const prevRange = computeCompareRange(range, compareMode);
+    const prevCf = await buildCfForRange(
+      organization.id,
+      prevRange.start,
+      prevRange.end,
+      accountById,
+      cashAccountIds
+    );
+    cfCompare = mergeCashFlowWithCompare(cf, prevCf);
+  }
+
+  const filenameStub = cfCompare
+    ? `cash-flow-${csvDateSuffix(range.start)}-to-${csvDateSuffix(range.end)}-vs-${compareMode}`
+    : `cash-flow-${csvDateSuffix(range.start)}-to-${csvDateSuffix(range.end)}`;
 
   void logReportActivity({
     organizationId: organization.id,
@@ -200,6 +226,9 @@ export async function GET(req: Request) {
   }
   if (fmt === "xlsx") {
     return buildXlsx(organization.name, range, cf, filenameStub);
+  }
+  if (cfCompare) {
+    return buildCsvWithCompare(cfCompare, filenameStub);
   }
   return buildCsv(cf, filenameStub);
 }
@@ -443,4 +472,186 @@ async function buildXlsx(
       "Content-Length": String(buf.byteLength),
     },
   });
+}
+
+// ─── Compare-period helpers ──────────────────────────────────────
+
+type CoaRow = {
+  id: string;
+  name: string;
+  code: string | null;
+  type: string;
+  subType: string | null;
+};
+
+/**
+ * Build a CashFlowStatement for an arbitrary range, reusing the
+ * already-fetched chart of accounts. Mirrors the inline logic from
+ * the main GET handler so both periods (current and previous) flow
+ * through the same recipe.
+ */
+async function buildCfForRange(
+  organizationId: string,
+  start: Date,
+  end: Date,
+  accountById: Map<string, CoaRow>,
+  cashAccountIds: string[]
+): Promise<CashFlowStatement> {
+  const [beforeLines, periodLines] = await Promise.all([
+    cashAccountIds.length > 0
+      ? db.journalEntryLine.findMany({
+          where: {
+            accountId: { in: cashAccountIds },
+            journalEntry: { organizationId, date: { lt: start } },
+          },
+          select: { debit: true, credit: true, accountId: true },
+        })
+      : Promise.resolve(
+          [] as Array<{ debit: unknown; credit: unknown; accountId: string }>
+        ),
+    db.journalEntryLine.findMany({
+      where: {
+        journalEntry: { organizationId, date: { gte: start, lte: end } },
+      },
+      select: {
+        debit: true,
+        credit: true,
+        account: { select: { id: true, name: true, code: true, type: true } },
+      },
+    }),
+  ]);
+
+  const beginningCashBalance = beforeLines.reduce(
+    (s, l) => s + Number(l.debit) - Number(l.credit),
+    0
+  );
+
+  const ledger = aggregateLedgerLines(
+    periodLines.map((l) => ({
+      account: {
+        id: l.account.id,
+        name: l.account.name,
+        code: l.account.code,
+        type: l.account.type as AccountBucket,
+      },
+      debit: Number(l.debit),
+      credit: Number(l.credit),
+    }))
+  );
+
+  let netIncome = 0;
+  for (const r of ledger) {
+    if (r.accountType === "INCOME" || r.accountType === "OTHER_INCOME") {
+      netIncome += r.totalCredit - r.totalDebit;
+    } else if (
+      r.accountType === "EXPENSE" ||
+      r.accountType === "COST_OF_GOODS_SOLD" ||
+      r.accountType === "OTHER_EXPENSE"
+    ) {
+      netIncome -= r.totalDebit - r.totalCredit;
+    }
+  }
+
+  const nonCashDeltas: CashFlowAccountDelta[] = ledger
+    .filter((r) => {
+      if (
+        r.accountType === "INCOME" ||
+        r.accountType === "OTHER_INCOME" ||
+        r.accountType === "EXPENSE" ||
+        r.accountType === "COST_OF_GOODS_SOLD" ||
+        r.accountType === "OTHER_EXPENSE"
+      ) {
+        return false;
+      }
+      const a = accountById.get(r.accountId);
+      if (!a) return false;
+      return !isCashAccount(a.type as AccountBucket, a.subType);
+    })
+    .map((r) => {
+      const a = accountById.get(r.accountId)!;
+      return {
+        accountId: r.accountId,
+        accountName: r.accountName,
+        accountCode: r.accountCode,
+        accountType: a.type as AccountBucket,
+        accountSubType: a.subType,
+        rawDelta: r.totalDebit - r.totalCredit,
+      };
+    });
+
+  const cashPeriodDelta = ledger
+    .filter((r) => {
+      const a = accountById.get(r.accountId);
+      return a ? isCashAccount(a.type as AccountBucket, a.subType) : false;
+    })
+    .reduce((s, r) => s + (r.totalDebit - r.totalCredit), 0);
+  const endingCashBalance = beginningCashBalance + cashPeriodDelta;
+
+  return buildCashFlowStatement({
+    beginningCashBalance,
+    endingCashBalance,
+    netIncome,
+    nonCashDeltas,
+  });
+}
+
+function buildCsvWithCompare(
+  cf: CashFlowStatementWithCompare,
+  filenameStub: string
+): Response {
+  const rows: Record<string, string | number>[] = [];
+
+  function pushRow(
+    section: string,
+    line: string,
+    current: number | "",
+    previous: number | "",
+    change: string
+  ) {
+    rows.push({ section, line, current, previous, change });
+  }
+
+  // Beginning cash
+  pushRow(
+    "Cash Balances",
+    "Beginning Cash Balance",
+    cf.beginningCashBalance,
+    cf.previousBeginningCashBalance,
+    formatPctChange(
+      pctChange(cf.beginningCashBalance, cf.previousBeginningCashBalance)
+    )
+  );
+
+  // Operating
+  pushRow("Operating Activities", "Net Income", cf.operating.netIncome, cf.operating.previousNetIncome, formatPctChange(pctChange(cf.operating.netIncome, cf.operating.previousNetIncome)));
+  for (const adj of cf.operating.nonCashAdjustments) {
+    pushRow("Operating Activities", adj.label, adj.amount, adj.previousAmount, formatPctChange(pctChange(adj.amount, adj.previousAmount)));
+  }
+  pushRow("Operating Activities", "Non-cash adjustments Total", cf.operating.nonCashAdjustmentsTotal, cf.operating.previousNonCashAdjustmentsTotal, formatPctChange(pctChange(cf.operating.nonCashAdjustmentsTotal, cf.operating.previousNonCashAdjustmentsTotal)));
+  pushRow("Operating Activities", "Net cash from Operating Activities", cf.operating.netCashFromOperating, cf.operating.previousNetCashFromOperating, formatPctChange(pctChange(cf.operating.netCashFromOperating, cf.operating.previousNetCashFromOperating)));
+
+  // Investing
+  for (const it of cf.investing.items) {
+    pushRow("Investing Activities", it.label, it.amount, it.previousAmount, formatPctChange(pctChange(it.amount, it.previousAmount)));
+  }
+  pushRow("Investing Activities", "Net cash from Investing Activities", cf.investing.netCashFromInvesting, cf.investing.previousNetCashFromInvesting, formatPctChange(pctChange(cf.investing.netCashFromInvesting, cf.investing.previousNetCashFromInvesting)));
+
+  // Financing
+  for (const it of cf.financing.items) {
+    pushRow("Financing Activities", it.label, it.amount, it.previousAmount, formatPctChange(pctChange(it.amount, it.previousAmount)));
+  }
+  pushRow("Financing Activities", "Net cash from Financing Activities", cf.financing.netCashFromFinancing, cf.financing.previousNetCashFromFinancing, formatPctChange(pctChange(cf.financing.netCashFromFinancing, cf.financing.previousNetCashFromFinancing)));
+
+  // Net change + ending
+  pushRow("Cash Balances", "Net Change in cash", cf.netChangeInCash, cf.previousNetChangeInCash, formatPctChange(pctChange(cf.netChangeInCash, cf.previousNetChangeInCash)));
+  pushRow("Cash Balances", "Ending Cash Balance", cf.endingCashBalance, cf.previousEndingCashBalance, formatPctChange(pctChange(cf.endingCashBalance, cf.previousEndingCashBalance)));
+
+  const csv = toCsv(rows as CsvRow[], [
+    "section",
+    "line",
+    "current",
+    "previous",
+    "change",
+  ]);
+  return csvResponse(filenameStub, csv);
 }

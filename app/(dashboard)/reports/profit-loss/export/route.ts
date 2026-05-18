@@ -8,9 +8,18 @@ import {
 } from "@/lib/reports/ledger-aggregation";
 import {
   buildProfitAndLoss,
+  mergePnlWithCompare,
   type ProfitAndLoss,
   type PnlSection,
+  type ProfitAndLossWithCompare,
+  type PnlSectionWithCompare,
 } from "@/lib/reports/profit-loss";
+import {
+  parseCompareMode,
+  computeCompareRange,
+  pctChange,
+  formatPctChange,
+} from "@/lib/reports/compare";
 import {
   toCsv,
   csvResponse,
@@ -88,7 +97,60 @@ export async function GET(req: Request) {
   );
 
   const pnl = buildProfitAndLoss(ledgerRows);
-  const filenameStub = `profit-and-loss-${csvDateSuffix(range.start)}-to-${csvDateSuffix(range.end)}`;
+
+  // ── Compare-period (only when ?compare=… is set + format is CSV
+  // for now; XLSX/PDF still ship single-period exports).
+  const compareMode = parseCompareMode(params);
+  let pnlCompare: ProfitAndLossWithCompare | null = null;
+  let prevRangeText: string | null = null;
+  if (compareMode !== "none" && fmt === "csv") {
+    const prevRange = computeCompareRange(range, compareMode);
+    prevRangeText = `From ${format(prevRange.start, "dd/MM/yyyy")} To ${format(prevRange.end, "dd/MM/yyyy")}`;
+    const prevJeLines = await db.journalEntryLine.findMany({
+      where: {
+        journalEntry: {
+          organizationId: organization.id,
+          date: { gte: prevRange.start, lte: prevRange.end },
+        },
+        account: {
+          type: {
+            in: [
+              "INCOME",
+              "OTHER_INCOME",
+              "EXPENSE",
+              "COST_OF_GOODS_SOLD",
+              "OTHER_EXPENSE",
+            ],
+          },
+        },
+      },
+      select: {
+        debit: true,
+        credit: true,
+        account: {
+          select: { id: true, name: true, code: true, type: true },
+        },
+      },
+    });
+    const prevLedger = aggregateLedgerLines(
+      prevJeLines.map((l) => ({
+        account: {
+          id: l.account.id,
+          name: l.account.name,
+          code: l.account.code,
+          type: l.account.type as AccountBucket,
+        },
+        debit: Number(l.debit),
+        credit: Number(l.credit),
+      }))
+    );
+    const prevPnl = buildProfitAndLoss(prevLedger);
+    pnlCompare = mergePnlWithCompare(pnl, prevPnl);
+  }
+
+  const filenameStub = pnlCompare
+    ? `profit-and-loss-${csvDateSuffix(range.start)}-to-${csvDateSuffix(range.end)}-vs-${compareMode}`
+    : `profit-and-loss-${csvDateSuffix(range.start)}-to-${csvDateSuffix(range.end)}`;
 
   // Best-effort audit trail. Fire-and-forget — the helper swallows
   // its own errors, so a slow audit insert never blocks the download.
@@ -131,6 +193,9 @@ export async function GET(req: Request) {
       filenameStub
     );
   }
+  if (pnlCompare) {
+    return buildCsvWithCompare(pnlCompare, filenameStub, prevRangeText);
+  }
   return buildCsv(pnl, filenameStub);
 }
 
@@ -165,6 +230,87 @@ function buildCsv(pnl: ProfitAndLoss, filenameStub: string): Response {
   rows.push({ section: "Subtotal", account: "Net Profit/Loss", amount: pnl.netProfitLoss });
 
   const csv = toCsv(rows, ["section", "account", "amount"]);
+  return csvResponse(filenameStub, csv);
+}
+
+// ─── CSV with Compare columns ────────────────────────────────────
+
+function buildCsvWithCompare(
+  pnl: ProfitAndLossWithCompare,
+  filenameStub: string,
+  prevLabel: string | null
+): Response {
+  const rows: Record<string, string | number>[] = [];
+  function pushSection(s: PnlSectionWithCompare) {
+    rows.push({
+      section: s.label,
+      account: s.label,
+      current: "",
+      previous: "",
+      change_pct: "",
+    });
+    for (const a of s.accounts) {
+      rows.push({
+        section: s.label,
+        account: a.accountCode
+          ? `${a.accountCode} · ${a.accountName}`
+          : a.accountName,
+        current: a.amount,
+        previous: a.previousAmount,
+        change_pct: formatPctChange(pctChange(a.amount, a.previousAmount)),
+      });
+    }
+    rows.push({
+      section: s.label,
+      account: `Total for ${s.label}`,
+      current: s.total,
+      previous: s.previousTotal,
+      change_pct: formatPctChange(pctChange(s.total, s.previousTotal)),
+    });
+  }
+  pushSection(pnl.operatingIncome);
+  pushSection(pnl.costOfGoodsSold);
+  rows.push({
+    section: "Subtotal",
+    account: "Gross Profit",
+    current: pnl.grossProfit,
+    previous: pnl.previousGrossProfit,
+    change_pct: formatPctChange(
+      pctChange(pnl.grossProfit, pnl.previousGrossProfit)
+    ),
+  });
+  pushSection(pnl.operatingExpense);
+  rows.push({
+    section: "Subtotal",
+    account: "Operating Profit",
+    current: pnl.operatingProfit,
+    previous: pnl.previousOperatingProfit,
+    change_pct: formatPctChange(
+      pctChange(pnl.operatingProfit, pnl.previousOperatingProfit)
+    ),
+  });
+  pushSection(pnl.nonOperatingIncome);
+  pushSection(pnl.nonOperatingExpense);
+  rows.push({
+    section: "Subtotal",
+    account: "Net Profit/Loss",
+    current: pnl.netProfitLoss,
+    previous: pnl.previousNetProfitLoss,
+    change_pct: formatPctChange(
+      pctChange(pnl.netProfitLoss, pnl.previousNetProfitLoss)
+    ),
+  });
+
+  // Reference prevLabel so it's not flagged unused (could surface
+  // as a CSV header comment in the future — for now the column
+  // name "previous" + the filename suffix "-vs-previous-period"
+  // already document the comparison window).
+  void prevLabel;
+
+  const csv = toCsv(
+    rows as CsvRow[],
+    ["section", "account", "current", "previous", "change_pct"]
+  );
   return csvResponse(filenameStub, csv);
 }
 
