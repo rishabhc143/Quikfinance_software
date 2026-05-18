@@ -3,6 +3,19 @@ import * as React from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
+// Re-exported for back-compat with existing import sites; the actual
+// definitions live in the server-safe lib so server pages can import
+// them without crossing the "use client" boundary (which breaks
+// non-component exports on prod — see lib/reports/report-basis.ts
+// for the back-story).
+import {
+  REPORT_BASIS_LABEL,
+  parseReportBasis,
+  type ReportBasis,
+} from "@/lib/reports/report-basis";
+
+export { REPORT_BASIS_LABEL, parseReportBasis };
+export type { ReportBasis };
 
 /**
  * REPORTS — Report Basis pill-style dropdown.
@@ -15,13 +28,6 @@ import { cn } from "@/lib/utils";
  * Visual: matches Zoho's filter-strip pill (rounded border, label +
  * value + caret). Sized to align with the date-range picker pill.
  */
-
-export type ReportBasis = "accrual" | "cash";
-
-export const REPORT_BASIS_LABEL: Record<ReportBasis, string> = {
-  accrual: "Accrual",
-  cash: "Cash",
-};
 
 export function ReportBasisDropdown({
   defaultBasis = "accrual",
@@ -99,14 +105,8 @@ export function ReportBasisDropdown({
   );
 }
 
-/**
- * Server-side helper to parse the basis param. Returns "accrual" if
- * missing or invalid. Use this in the report page so the centered
- * card header can label its own basis.
- */
-export function parseReportBasis(
-  searchParams: Record<string, string | undefined>
-): ReportBasis {
-  const raw = searchParams.basis;
-  return raw === "cash" ? "cash" : "accrual";
-}
+// parseReportBasis was inlined here historically. It now lives in
+// lib/reports/report-basis.ts (server-safe) and is re-exported at
+// the top of this file. Server pages should ideally import directly
+// from the lib path to avoid pulling in this client component's
+// React imports, but the re-export keeps existing call sites working.
