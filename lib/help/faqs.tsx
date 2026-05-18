@@ -888,7 +888,7 @@ export const HELP_CATEGORIES: FaqCategory[] = [
             <ol className="list-decimal ml-5 space-y-1.5">
               <Step>
                 Open{" "}
-                <L href="/sales/customer-payments/new">
+                <L href="/sales/payments-received/new">
                   Sales → Payments Received → New
                 </L>
               </Step>
@@ -3003,7 +3003,7 @@ export const HELP_CATEGORIES: FaqCategory[] = [
             <ol className="list-decimal ml-5 space-y-1.5">
               <Step>
                 Open the customer&apos;s payment form (either{" "}
-                <L href="/sales/customer-payments/new">
+                <L href="/sales/payments-received/new">
                   Payments Received → New
                 </L>{" "}
                 or via the invoice&apos;s Record Payment)
