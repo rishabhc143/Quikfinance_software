@@ -86,7 +86,7 @@ export function computeCompareRange(
 /**
  * Balance Sheet specific — shift an as-of date backwards.
  *
- *   - "previous-period": one month earlier (Zoho convention)
+ *   - "previous-period": one month earlier (canonical convention)
  *   - "previous-year": one year earlier (same day-of-month)
  */
 export function computeCompareAsOf(

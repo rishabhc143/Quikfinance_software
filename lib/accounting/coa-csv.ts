@@ -58,7 +58,7 @@ function isSystemCode(code: string | null): boolean {
  *   - "1.234.567,89" comma decimal + period thousands (EU/de-DE)
  *
  * CoA rows don't currently surface numeric values in the CSV, so
- * the option is here for parity with Zoho's UX and for the moment
+ * the option is here for parity with the reference UX and for the moment
  * when we add a Balance column.
  */
 export type DecimalFormat = "1234567.89" | "1,234,567.89" | "1.234.567,89";

@@ -75,7 +75,7 @@ describe("currencyName", () => {
 });
 
 describe("currencyLabel", () => {
-  it("returns the Zoho-style 'CODE — Name' label", () => {
+  it("returns the 'CODE — Name' label", () => {
     expect(currencyLabel("AED")).toBe("AED — UAE Dirham");
     expect(currencyLabel("INR")).toBe("INR — Indian Rupee");
   });

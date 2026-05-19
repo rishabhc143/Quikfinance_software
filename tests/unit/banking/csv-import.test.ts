@@ -8,7 +8,7 @@ import {
 /**
  * Tests for BNK-A CSV import helpers.
  *
- * Focus on the three amount-column variants Zoho documents (DOUBLE,
+ * Focus on the three amount-column variants the spec documents (DOUBLE,
  * SINGLE_WITH_TYPE, SINGLE_NEGATIVE) plus header auto-detection across
  * the common Indian-bank spellings (ICICI uses "Particulars", HDFC uses
  * "Narration", etc.).

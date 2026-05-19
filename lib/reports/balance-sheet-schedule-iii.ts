@@ -2,7 +2,7 @@
  * REPORTS — Balance Sheet (Schedule III).
  *
  * Companies Act 2013 mandated Indian Balance Sheet format. Unlike
- * our Zoho-style Balance Sheet (which uses Assets / Liabilities &
+ * our Balance Sheet (which uses Assets / Liabilities &
  * Equities top-level groupings), Schedule III prescribes a two-
  * column "EQUITY AND LIABILITIES" / "ASSETS" layout with strict
  * numbered sub-sections.

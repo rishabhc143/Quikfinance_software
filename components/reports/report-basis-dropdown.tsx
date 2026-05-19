@@ -25,7 +25,7 @@ export type { ReportBasis };
  * soon" hint surfaces on the report itself. URL persistence via
  * `?basis=accrual|cash` so the user's choice survives reload.
  *
- * Visual: matches Zoho's filter-strip pill (rounded border, label +
+ * Visual: matches the reference's filter-strip pill (rounded border, label +
  * value + caret). Sized to align with the date-range picker pill.
  */
 

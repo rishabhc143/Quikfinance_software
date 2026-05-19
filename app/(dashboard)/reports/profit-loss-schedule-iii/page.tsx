@@ -27,7 +27,7 @@ export const metadata = { title: "Profit and Loss (Schedule III)" };
  * REPORTS — Profit and Loss (Schedule III).
  *
  * The Companies Act 2013 mandated Indian P&L format. Renders the
- * 15 Roman-numeraled sections matching the user-supplied Zoho
+ * 15 Roman-numeraled sections matching the user-supplied
  * screenshot, and *always* shows a side-by-side previous-month
  * column (Schedule III is comparative by default — Note 1 in the
  * Schedule itself requires comparative figures).

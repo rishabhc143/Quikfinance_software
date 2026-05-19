@@ -31,7 +31,7 @@ const LABELS: Record<Period, string> = {
 
 /**
  * ACCT-C.3 — "Filter By: ▾" pill on the Base Currency Adjustments
- * list. Matches Zoho's pill; pushes `?period=` to the URL so the
+ * list. Matches the reference pill; pushes `?period=` to the URL so the
  * server component re-fetches scoped to the new range.
  */
 export function PeriodFilter({ current }: { current: Period }) {

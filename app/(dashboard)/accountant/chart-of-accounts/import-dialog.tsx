@@ -38,12 +38,12 @@ const TYPE_LABEL: Record<string, string> = {
   OTHER_EXPENSE: "Other Expense",
 };
 
-const MAX_BYTES = 25 * 1024 * 1024; // matches Zoho's 25 MB cap
+const MAX_BYTES = 25 * 1024 * 1024; // matches a 25 MB cap
 
 type Step = 1 | 2 | 3;
 
 /**
- * ACCT-E.4 — 3-step CoA import wizard mirroring Zoho's UX:
+ * ACCT-E.4 — 3-step CoA import wizard mirroring the reference UX:
  *
  *   ① Configure — file picker + duplicate handling + encoding
  *   ② Map Fields — auto-mapped columns with read-only display

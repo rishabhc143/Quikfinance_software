@@ -364,7 +364,7 @@ describe("buildBalanceSheet — sort + zero-balance handling", () => {
     expect(otherCurrent.accounts[1].accountCode).toBe("1900");
   });
 
-  it("keeps zero-balance accounts in the structure (matches Zoho)", () => {
+  it("keeps zero-balance accounts in the structure (matches the reference)", () => {
     const bs = buildBalanceSheet([
       {
         accountId: "petty",

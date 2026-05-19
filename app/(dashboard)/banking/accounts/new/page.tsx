@@ -9,11 +9,11 @@ import { createBankAccountAction } from "../actions";
 export const metadata = { title: "Add Bank or Credit Card" };
 
 /**
- * BNK-A — refactored to Zoho-parity Add Bank or Credit Card form.
+ * BNK-A — refactored to Add Bank or Credit Card form.
  *
  * The previous form was a flat field list with a free-text accountType
  * dropdown (Checking/Savings/Credit Card/Cash/Wallet). Per Screenshots
- * 3 + 4 in docs/zoho-banking-screenshots.md, Zoho's actual form is a
+ * 3 + 4 in the banking screenshots doc, the reference form is a
  * Bank vs Credit Card radio toggle that dynamically hides 3 fields
  * (Account Number, IFSC, Make-this-primary) for credit cards.
  *

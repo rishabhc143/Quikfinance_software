@@ -1,6 +1,6 @@
 /**
  * REPORTS — Pure builder that turns aggregated ledger rows into the
- * Zoho-style Profit and Loss structure:
+ * Profit and Loss structure:
  *
  *   Operating Income           (INCOME accounts)
  *   Cost of Goods Sold         (COST_OF_GOODS_SOLD accounts)
@@ -71,10 +71,10 @@ const SECTION_LABELS: Record<keyof typeof SECTION_TYPES, string> = {
 };
 
 /**
- * Build a Zoho-style Profit and Loss from aggregated ledger rows.
+ * Build a Profit and Loss from aggregated ledger rows.
  *
  * Accounts with `netBalance === 0` are dropped from their section's
- * `accounts` list (matches Zoho's behaviour — empty sections still
+ * `accounts` list (matches the reference's behaviour — empty sections still
  * show a "Total for X: 0.00" row from the section header). Within a
  * section, accounts sort by code then name.
  */

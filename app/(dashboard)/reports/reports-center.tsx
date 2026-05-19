@@ -33,7 +33,7 @@ import {
 import { toggleReportFavoriteAction } from "./actions";
 
 /**
- * REPORTS-CENTER — Zoho-parity client component for `/reports`.
+ * REPORTS-CENTER — client component for `/reports`.
  *
  *   - Left sidebar: Home / Favorites / (stubbed) Shared / My /
  *     Scheduled tabs, then the 15 Report Category folders.

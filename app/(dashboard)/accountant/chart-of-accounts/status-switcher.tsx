@@ -19,7 +19,7 @@ const LABELS: Record<string, string> = {
 /**
  * ACCT-E.2 — "Active Accounts ▾" dropdown header. Replaces the
  * pre-existing filter pills with a single dropdown that matches
- * Zoho's UX. Pushes `?status=` to the URL so the page query knows
+ * the reference UX. Pushes `?status=` to the URL so the page query knows
  * which filter is in effect.
  */
 export function StatusSwitcher({

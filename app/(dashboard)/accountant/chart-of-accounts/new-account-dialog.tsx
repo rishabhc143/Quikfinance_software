@@ -26,7 +26,7 @@ import { createAccountAction } from "./actions";
 const DEFAULT_VALUE = "ASSET:Other Asset";
 
 /**
- * ACCT-E.3 — Zoho-style "Create Account" modal.
+ * ACCT-E.3 — "Create Account" modal.
  *
  * Replaces the old `+ New` page link. A single Account Type
  * dropdown surfaces every granular sub-type (Cash / Bank / Other
@@ -168,7 +168,7 @@ export function NewAccountDialog() {
                 Add to the watchlist on my dashboard
               </label>
               {/* Watchlist persistence comes with the dashboard
-                  widget — UI-only stub for v1 parity with Zoho. */}
+                  widget — UI-only stub for v1 parity with the reference. */}
             </div>
 
             {/* ── Right: contextual help panel ─────────────── */}

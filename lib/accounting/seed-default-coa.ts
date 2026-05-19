@@ -3,7 +3,7 @@ import { db } from "@/lib/db";
 import { DEFAULT_ACCOUNTS } from "@/lib/accounting/coa-defaults";
 
 /**
- * ACCT-E (+ hotfixes) — Backfill the Zoho-parity default Chart
+ * ACCT-E (+ hotfixes) — Backfill the default Chart
  * of Accounts.
  *
  * Behavior:

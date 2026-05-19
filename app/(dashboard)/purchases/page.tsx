@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 
 /**
  * `/purchases` lands directly on the Vendors list — matching the
- * Zoho Books pattern where the Purchases module's default landing is
+ * the reference design pattern where the Purchases module's default landing is
  * the Active Vendors page. Users still reach every sub-module via
  * the sidebar; this redirect just gives the parent route a sensible
  * default.

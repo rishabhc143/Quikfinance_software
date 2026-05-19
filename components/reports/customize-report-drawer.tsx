@@ -17,7 +17,7 @@ import {
 import { cn } from "@/lib/utils";
 
 /**
- * REPORTS — Customize Report drawer (Zoho-style).
+ * REPORTS — Customize Report drawer.
  *
  * Two tabs on the left rail:
  *

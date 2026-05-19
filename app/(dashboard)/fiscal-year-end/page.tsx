@@ -21,7 +21,7 @@ import { Button } from "@/components/ui/button";
 export const metadata = { title: "Fiscal Year-End Tasks" };
 
 /**
- * Fiscal Year-End Tasks — Zoho-faithful.
+ * Fiscal Year-End Tasks — reference-faithful.
  *
  * Matches the user-shared screenshots:
  *   1. Welcome header — Hello, <name> + org + helpline

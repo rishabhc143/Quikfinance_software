@@ -4,7 +4,7 @@ import { z } from "zod";
  * Vendor Credit — zod schemas per <vendor_credits_spec>.
  *
  * Per master prompt:
- *   - Number prefix is `CN-` (Zoho UI labels it "Credit Note#"; the
+ *   - Number prefix is `CN-` (the reference UI labels it "Credit Note#"; the
  *     module slug is `vendorCredit` so it doesn't collide with the
  *     sales `CreditNote` table which uses `CR-`).
  *   - Auto-generated via `getNextDocumentNumber(...,'VENDOR_CREDIT')`.

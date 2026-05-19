@@ -7,7 +7,7 @@ import { format, parse } from "date-fns";
 /**
  * REPORTS — "As of" date pill for the Balance Sheet filter strip.
  *
- * Matches the Zoho-style pill: gray "As of :" label + the current
+ * Matches the pill: gray "As of :" label + the current
  * date or a preset name + a calendar icon. Native <input type="date">
  * powers the picker; changes push `?as_of=YYYY-MM-DD` to the URL.
  */

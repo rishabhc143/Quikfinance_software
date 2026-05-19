@@ -133,7 +133,7 @@ describe("buildCoaCsv", () => {
 // ─────────────── parseAccountType ───────────────
 
 describe("parseAccountType", () => {
-  it("accepts Zoho-style display labels (case-insensitive)", () => {
+  it("accepts display labels (case-insensitive)", () => {
     expect(parseAccountType("Asset")).toBe("ASSET");
     expect(parseAccountType("liability")).toBe("LIABILITY");
     expect(parseAccountType("EQUITY")).toBe("EQUITY");
@@ -282,7 +282,7 @@ describe("parseCoaCsv — row errors", () => {
 
 // ─────────────── formatDecimal ───────────────
 
-describe("formatDecimal — Zoho-parity decimal-format option for export", () => {
+describe("formatDecimal — decimal-format option for export", () => {
   it("'1234567.89' format: period decimal, no thousand separator", () => {
     expect(formatDecimal(1234567.89, "1234567.89")).toBe("1234567.89");
     expect(formatDecimal(1000, "1234567.89")).toBe("1000.00");

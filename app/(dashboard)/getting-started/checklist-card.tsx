@@ -12,7 +12,7 @@ import { cn } from "@/lib/utils";
 /**
  * GETTING-STARTED — "Let's get you up and running" 2-pane checklist.
  *
- * Matches the Zoho screenshot:
+ * Matches the reference screenshot:
  *   - Top: "Let's get you up and running" + "Mark as Completed" link
  *     + right-aligned progress bar with "X% Completed" text
  *   - Left rail (~280px): list of items, each with a ✓ or circle icon

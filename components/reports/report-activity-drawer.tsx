@@ -26,13 +26,13 @@ import {
  *
  * Server fetches the timeline rows (via `getRecentReportActivity` in
  * lib/reports/activity.ts) and passes them in as a prop. This client
- * just renders the vertical timeline matching Zoho's screenshot:
+ * just renders the vertical timeline matching the reference screenshot:
  *
  *   • icon · user.displayName · createdAt
  *   • bubble with the human message ("PDF generated for the …")
  *
  * When the list is empty we show the same friendly empty state as
- * Zoho — folder icon + "View the upcoming logs of your Scheduled
+ * Reference style — folder icon + "View the upcoming logs of your Scheduled
  * Reports". (Identical copy is fine — it's a generic empty state,
  * not an integration claim.)
  */

@@ -1,7 +1,7 @@
 /**
  * REPORTS — Balance Sheet compare-mode table.
  *
- * Renders the 4-level Zoho hierarchy with two as-of date columns
+ * Renders the 4-level hierarchy with two as-of date columns
  * + a % change column. Used by `/reports/balance-sheet` when the
  * Customize drawer's Compare With ≠ None.
  *

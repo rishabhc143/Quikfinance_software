@@ -76,7 +76,7 @@ describe("buildManualJournalCsvRows", () => {
       "Account Name": "Cash",
       Description: "Cash payment",
       Debit: 1000,
-      Credit: 0, // not blank — explicit zero matches Zoho parity
+      Credit: 0, // not blank — explicit zero matches the reference design
       Currency: "INR",
       "Reporting Method": "Accrual and Cash",
       Contact: "",

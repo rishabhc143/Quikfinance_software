@@ -9,7 +9,7 @@ import {
  * REPORTS — Activity formatter tests.
  *
  * `formatReportActivityMessage` is the on-screen sentence in the
- * Report Activity drawer's timeline. Wording must match Zoho's
+ * Report Activity drawer's timeline. Wording must match the canonical
  * (per screenshot) — testing pins the strings so a future refactor
  * that breaks the tone gets caught.
  */

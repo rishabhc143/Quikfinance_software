@@ -52,7 +52,7 @@ const TYPE_LABEL: Record<string, string> = {
 /**
  * ACCT-E.2 — Bulk-aware Chart of Accounts table.
  *
- * Renders the 5-column Zoho layout (Name · Code · Type · Documents
+ * Renders the 5-column reference layout (Name · Code · Type · Documents
  * · Parent) plus a leading checkbox + trailing ⚙ dropdown per row.
  *
  * Bulk select shows a toolbar above the table with Archive /

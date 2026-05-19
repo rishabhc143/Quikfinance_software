@@ -70,7 +70,7 @@ function rangeForPeriod(p: Period): { gte?: Date; lte?: Date } {
 }
 
 /**
- * ACCT-C.3 — Base Currency Adjustments list, matching Zoho's UX.
+ * ACCT-C.3 — Base Currency Adjustments list, matching the reference UX.
  *
  * Columns:  Date · Currency · Exchange Rate · Gain or Loss · Notes
  * Header:   "Find Accountants" link · "+ New" button

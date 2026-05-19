@@ -13,7 +13,7 @@ export const metadata = { title: "Customer Payments" };
 
 /**
  * M17b: Razorpay-only customer-payments settings page. Renders the
- * single Razorpay card; no Paytm or Zoho-equivalent gateways exist
+ * single Razorpay card; no Paytm or gateways exist
  * here per the patch spec.
  */
 export default async function CustomerPaymentsPage() {

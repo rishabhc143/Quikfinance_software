@@ -11,11 +11,11 @@ import {
  * REPORTS-CENTER — Invariants for the static report catalog driving
  * `/reports`. Anything that violates these would either break the
  * favorites toggle (duplicate / unknown keys), the category
- * sidebar (orphan category), or the Zoho-parity row count.
+ * sidebar (orphan category), or the row count.
  */
 
 describe("REPORTS catalog", () => {
-  it("has exactly 80 reports (matches Zoho's All Reports badge)", () => {
+  it("has exactly 80 reports (matches the reference's All Reports badge)", () => {
     expect(REPORTS).toHaveLength(80);
     expect(REPORT_COUNT).toBe(80);
   });

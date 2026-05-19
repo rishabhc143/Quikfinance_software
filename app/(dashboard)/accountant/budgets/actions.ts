@@ -14,7 +14,7 @@ import {
 } from "@/lib/accounting/budgets";
 
 /**
- * ACCT-D.2 — Server actions for Budgets (Zoho-parity rebuild).
+ * ACCT-D.2 — Server actions for Budgets (rebuild).
  *
  *   createBudgetAction         — writes the header + N×accounts
  *                                BudgetLine rows (N = 12/4/1 based

@@ -37,7 +37,7 @@ import { BalanceSheetCompareTable } from "@/components/reports/balance-sheet-com
 export const metadata = { title: "Balance Sheet" };
 
 /**
- * Zoho-style Balance Sheet report.
+ * Balance Sheet report.
  *
  *   Outer (ReportShell):
  *     "Business Overview · Balance Sheet · As of DD/MM/YYYY"
@@ -81,7 +81,7 @@ export default async function BalanceSheetPage({
   const compareMode = parseCompareMode(searchParams);
 
   // Pull every ChartOfAccount on this org (so empty buckets surface
-  // as 0.00 in the table per Zoho's empty state).
+  // as 0.00 in the table per the reference empty state).
   const [accounts, jeLines] = await Promise.all([
     db.chartOfAccount.findMany({
       where: {
@@ -249,7 +249,7 @@ export default async function BalanceSheetPage({
         />
       }
     >
-      {/* Filter strip — Zoho-aligned pills */}
+      {/* Filter strip — pills */}
       <ReportFilterStrip>
         <BalanceSheetAsOfPill defaultValue={format(asOf, "yyyy-MM-dd")} />
         <ReportBasisDropdown defaultBasis={basis} />

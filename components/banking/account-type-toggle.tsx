@@ -6,9 +6,9 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 
 /**
- * BNK-A — Add Bank or Credit Card form with Zoho-parity field toggling.
+ * BNK-A — Add Bank or Credit Card form with field toggling.
  *
- * Mirrors Screenshots 3 & 4 in docs/zoho-banking-screenshots.md:
+ * Mirrors Screenshots 3 & 4 in the banking screenshots doc:
  * - Bank type shows: Account Number, IFSC, Make-this-primary checkbox
  * - Credit Card type hides those three fields
  * - Both types share: Account Name, Account Code, Currency, Bank Name,

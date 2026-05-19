@@ -2,7 +2,7 @@
  * REPORTS — Profit and Loss (Schedule III).
  *
  * The Companies Act 2013 Schedule III prescribes a strict 15-section
- * P&L layout for Indian companies. Unlike the Zoho-style P&L (which
+ * P&L layout for Indian companies. Unlike the P&L (which
  * groups by account type with subtotals at Gross / Operating / Net
  * profit), Schedule III uses Roman numerals and bakes in specific
  * line-items like "Cost of materials consumed", "Employee benefits

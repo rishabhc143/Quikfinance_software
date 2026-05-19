@@ -41,7 +41,7 @@ const CATEGORY_ICONS: Record<
 };
 
 /**
- * Quikfinance Help index — Zoho-style category grid.
+ * Quikfinance Help index — category grid.
  *
  * Server-only render. Each category card links to
  * `/help/{slug}` which renders the per-category Q&A page.

@@ -4,8 +4,8 @@ import { Button } from "@/components/ui/button";
 
 /**
  * Banking module empty state — shown on /banking when the org has zero
- * BankAccount rows. Mirrors Zoho Books' "Stay on top of your money"
- * empty-state pattern (confirmed from Screenshot 1 in the Zoho banking
+ * BankAccount rows. Mirrors the reference design' "Stay on top of your money"
+ * empty-state pattern (confirmed from Screenshot 1 in the banking
  * research doc). The primary CTA opens the manual Add-Account form;
  * the secondary CTA is an alias of the primary for v1 since Yodlee
  * auto-feeds (BNK-J) aren't built yet — both buttons go to the same

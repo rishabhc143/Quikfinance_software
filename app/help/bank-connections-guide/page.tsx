@@ -16,7 +16,7 @@ export const metadata = {
 export const dynamic = "force-static";
 
 /**
- * Long-form guide that replaces the Zoho help link previously on
+ * Long-form guide that replaces the previous external help link previously on
  * the Banking empty-state component. Public route.
  */
 export default function BankConnectionsGuidePage() {

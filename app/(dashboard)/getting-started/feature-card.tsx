@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 /**
  * GETTING-STARTED — One card in the "Explore useful features" grid.
  *
- * Matches the Zoho screenshot:
+ * Matches the reference screenshot:
  *   - Left icon (colored blue tint background)
  *   - Right side: bold title / description with "Learn More" link
  *     in body / optional supplementary content (URL, payment gateway
@@ -35,7 +35,7 @@ export function FeatureCard({
   configureHref: string;
   configureLabel?: string;
   /** True if this is the highlighted "next step" — adds a primary
-   *  blue border like Zoho's active card. */
+   *  blue border like the active card in the reference design. */
   primary?: boolean;
   /** Optional extra row between description and buttons (e.g.
    *  Portal URL or payment gateway logos). */

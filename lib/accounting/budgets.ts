@@ -124,7 +124,7 @@ export function computeVariance(budget: number, actual: number): Variance {
 }
 
 /**
- * Subset of CoA types the Budgets UI accepts. The Zoho-parity New
+ * Subset of CoA types the Budgets UI accepts. The New
  * Budget form (ACCT-D.2) groups them into:
  *   - Income Accounts        — INCOME, OTHER_INCOME
  *   - Expense Accounts       — EXPENSE, OTHER_EXPENSE, COST_OF_GOODS_SOLD
