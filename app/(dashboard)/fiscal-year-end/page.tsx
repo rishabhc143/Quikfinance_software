@@ -85,8 +85,11 @@ export default async function FiscalYearEndPage() {
         {/* ── Hero video card ──────────────────────────────────── */}
         <div className="rounded-lg border bg-blue-50/40 dark:bg-blue-950/10 p-5">
           <div className="flex items-start gap-4">
-            <div className="h-24 w-40 rounded-md bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center shrink-0">
+            <div className="h-24 w-40 rounded-md bg-blue-100 dark:bg-blue-900/40 flex flex-col items-center justify-center shrink-0 relative">
               <Video className="h-10 w-10 text-blue-600/70" />
+              <span className="absolute bottom-1.5 text-[10px] font-medium text-blue-700/70 bg-white/70 dark:bg-background/70 px-1.5 py-0.5 rounded">
+                Tutorial coming soon
+              </span>
             </div>
             <div className="flex-1 space-y-2">
               <h2 className="text-base font-semibold">
