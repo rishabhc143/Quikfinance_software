@@ -294,7 +294,7 @@ export function ManualJournalForm({
                   onChange={(e) => setPublishReverseOnlyOnDate(e.target.checked)}
                 />
                 Publish reverse journal only on the reverse journal date
-                <span title="For v1 the reverse JE is always date-stamped to the reverse date. This checkbox is stored for round-trip fidelity with Zoho exports but has no effect on math.">
+                <span title="For v1 the reverse JE is always date-stamped to the reverse date. This checkbox is stored for round-trip fidelity with third-party exports but has no effect on math.">
                   <Info className="h-3 w-3" />
                 </span>
               </label>
