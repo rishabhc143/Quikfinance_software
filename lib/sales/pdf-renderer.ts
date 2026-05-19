@@ -30,7 +30,15 @@ export type RenderableSalesDocument = {
     // sent alongside related correspondence.
     | "BILL"
     | "VENDOR_CREDIT";
-  organization: { name: string; logoUrl?: string | null; address?: string | null };
+  organization: {
+    name: string;
+    logoUrl?: string | null;
+    address?: string | null;
+    /** New (PR #201): rendered on the invoice PDF supplier block. */
+    phoneNumber?: string | null;
+    email?: string | null;
+    gstin?: string | null;
+  };
   document: {
     number: string;
     date: string;
@@ -38,12 +46,17 @@ export type RenderableSalesDocument = {
     referenceNumber?: string | null;
     subject?: string | null;
     status?: string;
+    /** "Net 30" etc. — rendered in the invoice meta strip. */
+    terms?: string | null;
+    /** Customer's place of supply ("Tamil Nadu (33)" etc.). */
+    placeOfSupply?: string | null;
   };
   customer: {
     displayName: string;
     email?: string | null;
     billingAddress?: string | null;
     shippingAddress?: string | null;
+    gstin?: string | null;
   };
   lines: Array<{
     name: string;
@@ -51,8 +64,25 @@ export type RenderableSalesDocument = {
     quantity: string;
     rate: string;
     amount: string;
+    /** Per-line HSN/SAC code. Shown in the line-items table. */
+    hsnSac?: string | null;
+    /** Per-line tax rate (18 = 18%) — used to compute IGST per row. */
+    taxRate?: number | null;
+    /** Per-line tax amount in rupees. */
+    taxAmount?: number | null;
+    /** Unit of measure ("Nos", "Hrs", ...). Optional. */
+    unit?: string | null;
   }>;
   totals: DocumentComputed;
+  /**
+   * Per-tax-rate aggregation rows for the bottom-right totals
+   * stack (e.g. "IGST18 (18%)" → 37800.00).
+   */
+  taxBreakdown?: { label: string; amount: string }[];
+  /** "Indian Rupee Two Lakh Forty-Seven Thousand Eight Hundred Only". */
+  totalInWords?: string;
+  /** Balance due after applied payments. Falls back to total. */
+  balanceDue?: string;
   notes?: string | null;
   termsAndConditions?: string | null;
   /**

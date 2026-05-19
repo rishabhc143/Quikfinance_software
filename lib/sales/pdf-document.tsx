@@ -13,12 +13,565 @@ import type { RenderableSalesDocument } from "./pdf-renderer";
 /**
  * Real PDF rendering for Sales documents via @react-pdf/renderer.
  *
- * Phase M2 (D43-revised): swaps the HTML fallback for a proper PDF
- * document. The `RenderableSalesDocument` shape stays identical, so the
- * call sites in /[id]/pdf/route.ts files don't change beyond using the new
- * function. Existing HTML renderer stays as a fallback for emails (which
- * accept HTML natively).
+ * Two layouts live here:
+ *   1. INVOICE → Indian GST "TAX INVOICE" format with supplier
+ *      block, Bill To / Ship To grid, HSN/SAC + IGST columns,
+ *      Total In Words, Authorized Signature, etc.
+ *   2. All other types (Quote, SO, CN, etc.) → original simple
+ *      layout (kept for back-compat until each gets its own
+ *      proper template).
  */
+
+const TYPE_LABEL: Record<RenderableSalesDocument["type"], string> = {
+  QUOTE: "Quote",
+  SALES_ORDER: "Sales Order",
+  INVOICE: "Invoice",
+  CREDIT_NOTE: "Credit Note",
+  DELIVERY_CHALLAN: "Delivery Challan",
+  DEBIT_NOTE: "Debit Note",
+  PURCHASE_ORDER: "Purchase Order",
+  BILL: "Bill",
+  VENDOR_CREDIT: "Credit Note",
+};
+
+// ─── Shared INR formatter ───────────────────────────────────────
+
+function formatINR(value: string | number | null | undefined): string {
+  const num =
+    typeof value === "number" ? value : value == null ? 0 : Number(value);
+  if (!Number.isFinite(num)) return "0.00";
+  const sign = num < 0 ? "-" : "";
+  const abs = Math.abs(num);
+  // Indian thousands grouping: 2,47,800.00
+  const [intPart, decPart = "00"] = abs.toFixed(2).split(".");
+  let formatted = "";
+  if (intPart.length <= 3) {
+    formatted = intPart;
+  } else {
+    const last3 = intPart.slice(-3);
+    const rest = intPart.slice(0, -3);
+    const restGrouped = rest.replace(/\B(?=(\d{2})+(?!\d))/g, ",");
+    formatted = `${restGrouped},${last3}`;
+  }
+  return `${sign}${formatted}.${decPart}`;
+}
+
+// ─── INVOICE layout (GST Tax Invoice) ──────────────────────────
+
+const inv = StyleSheet.create({
+  page: {
+    paddingTop: 30,
+    paddingBottom: 40,
+    paddingHorizontal: 30,
+    fontSize: 9,
+    fontFamily: "Helvetica",
+    color: "#111",
+  },
+  // Outer border that wraps the whole content block
+  outer: {
+    borderWidth: 1,
+    borderColor: "#000",
+    borderStyle: "solid",
+  },
+  // Top section: org on left, TAX INVOICE on right
+  topRow: {
+    flexDirection: "row",
+    borderBottomWidth: 1,
+    borderBottomColor: "#000",
+    borderBottomStyle: "solid",
+  },
+  topLeft: {
+    flex: 1.4,
+    padding: 8,
+    borderRightWidth: 1,
+    borderRightColor: "#000",
+    borderRightStyle: "solid",
+  },
+  topRight: {
+    flex: 1,
+    padding: 8,
+    justifyContent: "flex-start",
+    alignItems: "flex-end",
+  },
+  orgName: {
+    fontFamily: "Helvetica-Bold",
+    fontSize: 11,
+    marginBottom: 3,
+  },
+  orgLine: { fontSize: 8.5, lineHeight: 1.35, color: "#222" },
+  taxInvoiceTitle: {
+    fontFamily: "Helvetica-Bold",
+    fontSize: 22,
+    marginTop: 6,
+  },
+  // Meta strip: # / Date / Terms / Due | Place of Supply
+  metaRow: {
+    flexDirection: "row",
+    borderBottomWidth: 1,
+    borderBottomColor: "#000",
+    borderBottomStyle: "solid",
+  },
+  metaLeft: {
+    flex: 1.4,
+    padding: 6,
+    borderRightWidth: 1,
+    borderRightColor: "#000",
+    borderRightStyle: "solid",
+  },
+  metaRight: {
+    flex: 1,
+    padding: 6,
+  },
+  metaPair: {
+    flexDirection: "row",
+    marginVertical: 1,
+  },
+  metaLabel: {
+    width: 75,
+    color: "#444",
+    fontSize: 8.5,
+  },
+  metaValue: {
+    flex: 1,
+    fontFamily: "Helvetica-Bold",
+    fontSize: 9,
+  },
+  metaLabelRight: {
+    color: "#444",
+    fontSize: 8.5,
+  },
+  metaValueRight: {
+    fontFamily: "Helvetica-Bold",
+    fontSize: 9,
+    marginLeft: 6,
+  },
+  // Bill To / Ship To panels header strip
+  partyHeaderRow: {
+    flexDirection: "row",
+    backgroundColor: "#f4f4f4",
+    borderBottomWidth: 1,
+    borderBottomColor: "#000",
+    borderBottomStyle: "solid",
+  },
+  partyHeaderCell: {
+    flex: 1,
+    padding: 4,
+    fontFamily: "Helvetica-Bold",
+    fontSize: 9,
+    borderRightWidth: 1,
+    borderRightColor: "#000",
+    borderRightStyle: "solid",
+  },
+  partyHeaderCellLast: {
+    flex: 1,
+    padding: 4,
+    fontFamily: "Helvetica-Bold",
+    fontSize: 9,
+  },
+  partyBodyRow: {
+    flexDirection: "row",
+    borderBottomWidth: 1,
+    borderBottomColor: "#000",
+    borderBottomStyle: "solid",
+  },
+  partyCell: {
+    flex: 1,
+    padding: 6,
+    borderRightWidth: 1,
+    borderRightColor: "#000",
+    borderRightStyle: "solid",
+  },
+  partyCellLast: {
+    flex: 1,
+    padding: 6,
+  },
+  partyName: {
+    fontFamily: "Helvetica-Bold",
+    fontSize: 10,
+    marginBottom: 3,
+  },
+  partyLine: { fontSize: 9, lineHeight: 1.4, color: "#222" },
+  partyGstin: { fontSize: 9, marginTop: 3 },
+  // Line items table
+  itemsHeader: {
+    flexDirection: "row",
+    backgroundColor: "#f4f4f4",
+    borderBottomWidth: 1,
+    borderBottomColor: "#000",
+    borderBottomStyle: "solid",
+  },
+  itemsHeaderCell: {
+    fontFamily: "Helvetica-Bold",
+    fontSize: 8.5,
+    padding: 5,
+    borderRightWidth: 1,
+    borderRightColor: "#000",
+    borderRightStyle: "solid",
+  },
+  itemsHeaderCellLast: {
+    fontFamily: "Helvetica-Bold",
+    fontSize: 8.5,
+    padding: 5,
+  },
+  itemRow: {
+    flexDirection: "row",
+    borderBottomWidth: 1,
+    borderBottomColor: "#000",
+    borderBottomStyle: "solid",
+    minHeight: 24,
+  },
+  itemCell: {
+    padding: 5,
+    borderRightWidth: 1,
+    borderRightColor: "#000",
+    borderRightStyle: "solid",
+  },
+  itemCellLast: { padding: 5 },
+  // Column widths (must sum to 100%)
+  colNo: { width: "4%" },
+  colItem: { width: "32%" },
+  colHsn: { width: "10%", textAlign: "center" as const },
+  colQty: { width: "8%", textAlign: "right" as const },
+  colRate: { width: "12%", textAlign: "right" as const },
+  colTaxPct: { width: "7%", textAlign: "right" as const },
+  colTaxAmt: { width: "11%", textAlign: "right" as const },
+  colAmount: { width: "16%", textAlign: "right" as const },
+  // Headers above IGST cluster
+  igstClusterRow: {
+    flexDirection: "row",
+    backgroundColor: "#f4f4f4",
+    borderBottomWidth: 1,
+    borderBottomColor: "#000",
+    borderBottomStyle: "solid",
+    borderRightWidth: 0,
+  },
+  igstClusterHeader: {
+    fontFamily: "Helvetica-Bold",
+    fontSize: 8.5,
+    padding: 3,
+    textAlign: "center" as const,
+  },
+  // Bottom strip — left col (words + notes), right col (totals)
+  bottomRow: { flexDirection: "row" },
+  bottomLeft: {
+    flex: 1.4,
+    padding: 8,
+    borderRightWidth: 1,
+    borderRightColor: "#000",
+    borderRightStyle: "solid",
+  },
+  bottomRight: { flex: 1 },
+  totalLine: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderBottomWidth: 1,
+    borderBottomColor: "#e5e5e5",
+    borderBottomStyle: "solid",
+  },
+  totalLabel: { fontSize: 9, color: "#222" },
+  totalValue: { fontSize: 9 },
+  totalLineBold: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderBottomWidth: 1,
+    borderBottomColor: "#000",
+    borderBottomStyle: "solid",
+  },
+  totalLabelBold: { fontSize: 9.5, fontFamily: "Helvetica-Bold" },
+  totalValueBold: { fontSize: 9.5, fontFamily: "Helvetica-Bold" },
+  twoLabel: {
+    fontFamily: "Helvetica-Bold",
+    fontSize: 9,
+    marginBottom: 3,
+  },
+  twoText: { fontSize: 9, fontStyle: "italic" as const, lineHeight: 1.4 },
+  notesLabel: {
+    fontFamily: "Helvetica-Bold",
+    fontSize: 9,
+    marginTop: 10,
+    marginBottom: 2,
+  },
+  notesText: { fontSize: 9, lineHeight: 1.4 },
+  signatureBox: {
+    padding: 8,
+    minHeight: 70,
+    justifyContent: "flex-end",
+    alignItems: "flex-end",
+  },
+  signatureLabel: {
+    fontSize: 9,
+    color: "#222",
+    paddingTop: 28,
+    borderTopWidth: 1,
+    borderTopColor: "#222",
+    borderTopStyle: "solid",
+    width: 140,
+    textAlign: "center" as const,
+  },
+});
+
+function joinNonEmpty(parts: (string | null | undefined)[], sep = " "): string {
+  return parts
+    .map((p) => (p ?? "").trim())
+    .filter(Boolean)
+    .join(sep);
+}
+
+function splitLines(text: string | null | undefined): string[] {
+  if (!text) return [];
+  return text
+    .split(/\r?\n/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+function InvoiceTaxPdf({ doc }: { doc: RenderableSalesDocument }) {
+  const org = doc.organization;
+  const orgAddressLines = splitLines(org.address);
+  const billingAddressLines = splitLines(doc.customer.billingAddress);
+  const shippingAddressLines = splitLines(
+    doc.customer.shippingAddress ?? doc.customer.billingAddress
+  );
+  const balance = doc.balanceDue ?? doc.totals.total;
+  const breakdown = doc.taxBreakdown ?? [];
+
+  return (
+    <Document>
+      <Page size="A4" style={inv.page}>
+        <View style={inv.outer}>
+          {/* Top: supplier block on left, TAX INVOICE on right */}
+          <View style={inv.topRow}>
+            <View style={inv.topLeft}>
+              <Text style={inv.orgName}>{org.name}</Text>
+              {orgAddressLines.map((ln, i) => (
+                <Text key={`oa-${i}`} style={inv.orgLine}>
+                  {ln}
+                </Text>
+              ))}
+              {org.gstin ? (
+                <Text style={inv.orgLine}>GSTIN {org.gstin}</Text>
+              ) : null}
+              {org.phoneNumber ? (
+                <Text style={inv.orgLine}>{org.phoneNumber}</Text>
+              ) : null}
+              {org.email ? (
+                <Text style={inv.orgLine}>{org.email}</Text>
+              ) : null}
+            </View>
+            <View style={inv.topRight}>
+              <Text style={inv.taxInvoiceTitle}>TAX INVOICE</Text>
+            </View>
+          </View>
+
+          {/* Meta strip */}
+          <View style={inv.metaRow}>
+            <View style={inv.metaLeft}>
+              <View style={inv.metaPair}>
+                <Text style={inv.metaLabel}>#</Text>
+                <Text style={inv.metaValue}>: {doc.document.number}</Text>
+              </View>
+              <View style={inv.metaPair}>
+                <Text style={inv.metaLabel}>Invoice Date</Text>
+                <Text style={inv.metaValue}>: {doc.document.date}</Text>
+              </View>
+              {doc.document.terms ? (
+                <View style={inv.metaPair}>
+                  <Text style={inv.metaLabel}>Terms</Text>
+                  <Text style={inv.metaValue}>: {doc.document.terms}</Text>
+                </View>
+              ) : null}
+              {doc.document.dueDate ? (
+                <View style={inv.metaPair}>
+                  <Text style={inv.metaLabel}>Due Date</Text>
+                  <Text style={inv.metaValue}>: {doc.document.dueDate}</Text>
+                </View>
+              ) : null}
+            </View>
+            <View style={inv.metaRight}>
+              {doc.document.placeOfSupply ? (
+                <View style={{ flexDirection: "row" }}>
+                  <Text style={inv.metaLabelRight}>Place Of Supply</Text>
+                  <Text style={inv.metaValueRight}>
+                    : {doc.document.placeOfSupply}
+                  </Text>
+                </View>
+              ) : null}
+            </View>
+          </View>
+
+          {/* Bill To / Ship To header */}
+          <View style={inv.partyHeaderRow}>
+            <Text style={inv.partyHeaderCell}>Bill To</Text>
+            <Text style={inv.partyHeaderCellLast}>Ship To</Text>
+          </View>
+          <View style={inv.partyBodyRow}>
+            <View style={inv.partyCell}>
+              <Text style={inv.partyName}>{doc.customer.displayName}</Text>
+              {billingAddressLines.map((ln, i) => (
+                <Text key={`ba-${i}`} style={inv.partyLine}>
+                  {ln}
+                </Text>
+              ))}
+              {doc.customer.gstin ? (
+                <Text style={inv.partyGstin}>GSTIN {doc.customer.gstin}</Text>
+              ) : null}
+            </View>
+            <View style={inv.partyCellLast}>
+              {shippingAddressLines.map((ln, i) => (
+                <Text key={`sa-${i}`} style={inv.partyLine}>
+                  {ln}
+                </Text>
+              ))}
+              {doc.customer.gstin ? (
+                <Text style={inv.partyGstin}>GSTIN {doc.customer.gstin}</Text>
+              ) : null}
+            </View>
+          </View>
+
+          {/* Items table */}
+          <View style={inv.itemsHeader}>
+            <Text style={[inv.itemsHeaderCell, inv.colNo]}>#</Text>
+            <Text style={[inv.itemsHeaderCell, inv.colItem]}>
+              Item &amp; Description
+            </Text>
+            <Text style={[inv.itemsHeaderCell, inv.colHsn]}>HSN/SAC</Text>
+            <Text style={[inv.itemsHeaderCell, inv.colQty]}>Qty</Text>
+            <Text style={[inv.itemsHeaderCell, inv.colRate]}>Rate</Text>
+            <Text style={[inv.itemsHeaderCell, inv.colTaxPct]}>IGST %</Text>
+            <Text style={[inv.itemsHeaderCell, inv.colTaxAmt]}>IGST Amt</Text>
+            <Text style={[inv.itemsHeaderCellLast, inv.colAmount]}>
+              Amount
+            </Text>
+          </View>
+          {doc.lines.map((l, i) => {
+            const rateNum = Number(l.rate);
+            const amountNum = Number(l.amount);
+            const taxPct = l.taxRate ?? 0;
+            const taxAmt =
+              l.taxAmount != null
+                ? Number(l.taxAmount)
+                : taxPct
+                  ? (amountNum * taxPct) / 100
+                  : 0;
+            return (
+              <View key={i} style={inv.itemRow} wrap={false}>
+                <Text style={[inv.itemCell, inv.colNo]}>{i + 1}</Text>
+                <View style={[inv.itemCell, inv.colItem]}>
+                  <Text style={{ fontFamily: "Helvetica-Bold", fontSize: 9 }}>
+                    {l.name}
+                  </Text>
+                  {l.description
+                    ? splitLines(l.description).map((dl, di) => (
+                        <Text
+                          key={`d-${i}-${di}`}
+                          style={{
+                            fontSize: 8.5,
+                            color: "#444",
+                            marginTop: di === 0 ? 1 : 0,
+                          }}
+                        >
+                          {dl}
+                        </Text>
+                      ))
+                    : null}
+                </View>
+                <Text style={[inv.itemCell, inv.colHsn]}>{l.hsnSac ?? ""}</Text>
+                <Text style={[inv.itemCell, inv.colQty]}>
+                  {joinNonEmpty([l.quantity, l.unit])}
+                </Text>
+                <Text style={[inv.itemCell, inv.colRate]}>
+                  {formatINR(rateNum)}
+                </Text>
+                <Text style={[inv.itemCell, inv.colTaxPct]}>
+                  {taxPct ? `${taxPct}%` : ""}
+                </Text>
+                <Text style={[inv.itemCell, inv.colTaxAmt]}>
+                  {taxAmt ? formatINR(taxAmt) : ""}
+                </Text>
+                <Text style={[inv.itemCellLast, inv.colAmount]}>
+                  {formatINR(amountNum)}
+                </Text>
+              </View>
+            );
+          })}
+
+          {/* Bottom: words+notes on left, totals on right */}
+          <View style={inv.bottomRow}>
+            <View style={inv.bottomLeft}>
+              {doc.totalInWords ? (
+                <>
+                  <Text style={inv.twoLabel}>Total In Words</Text>
+                  <Text style={inv.twoText}>{doc.totalInWords}</Text>
+                </>
+              ) : null}
+              {doc.notes ? (
+                <>
+                  <Text style={inv.notesLabel}>Notes</Text>
+                  <Text style={inv.notesText}>{doc.notes}</Text>
+                </>
+              ) : null}
+              {doc.termsAndConditions ? (
+                <>
+                  <Text style={inv.notesLabel}>Terms &amp; Conditions</Text>
+                  <Text style={inv.notesText}>{doc.termsAndConditions}</Text>
+                </>
+              ) : null}
+            </View>
+            <View style={inv.bottomRight}>
+              <View style={inv.totalLine}>
+                <Text style={inv.totalLabel}>Sub Total</Text>
+                <Text style={inv.totalValue}>
+                  {formatINR(doc.totals.subTotal)}
+                </Text>
+              </View>
+              {breakdown.map((b, i) => (
+                <View key={`bd-${i}`} style={inv.totalLine}>
+                  <Text style={inv.totalLabel}>{b.label}</Text>
+                  <Text style={inv.totalValue}>{formatINR(b.amount)}</Text>
+                </View>
+              ))}
+              {Number(doc.totals.documentDiscountAmount) !== 0 ? (
+                <View style={inv.totalLine}>
+                  <Text style={inv.totalLabel}>Discount</Text>
+                  <Text style={inv.totalValue}>
+                    -{formatINR(doc.totals.documentDiscountAmount)}
+                  </Text>
+                </View>
+              ) : null}
+              {Number(doc.totals.adjustmentAmount) !== 0 ? (
+                <View style={inv.totalLine}>
+                  <Text style={inv.totalLabel}>Adjustment</Text>
+                  <Text style={inv.totalValue}>
+                    {formatINR(doc.totals.adjustmentAmount)}
+                  </Text>
+                </View>
+              ) : null}
+              <View style={inv.totalLineBold}>
+                <Text style={inv.totalLabelBold}>Total</Text>
+                <Text style={inv.totalValueBold}>
+                  ₹{formatINR(doc.totals.total)}
+                </Text>
+              </View>
+              <View style={inv.totalLineBold}>
+                <Text style={inv.totalLabelBold}>Balance Due</Text>
+                <Text style={inv.totalValueBold}>₹{formatINR(balance)}</Text>
+              </View>
+              <View style={inv.signatureBox}>
+                <Text style={inv.signatureLabel}>Authorized Signature</Text>
+              </View>
+            </View>
+          </View>
+        </View>
+      </Page>
+    </Document>
+  );
+}
+
+// ─── Legacy layout (kept for non-INVOICE types) ────────────────
 
 const styles = StyleSheet.create({
   page: {
@@ -124,19 +677,7 @@ const styles = StyleSheet.create({
   },
 });
 
-const TYPE_LABEL: Record<RenderableSalesDocument["type"], string> = {
-  QUOTE: "Quote",
-  SALES_ORDER: "Sales Order",
-  INVOICE: "Invoice",
-  CREDIT_NOTE: "Credit Note",
-  DELIVERY_CHALLAN: "Delivery Challan",
-  DEBIT_NOTE: "Debit Note",
-  PURCHASE_ORDER: "Purchase Order",
-  BILL: "Bill",
-  VENDOR_CREDIT: "Credit Note",
-};
-
-function SalesDocumentPdf({ doc }: { doc: RenderableSalesDocument }): React.ReactElement<unknown> {
+function LegacySalesDocumentPdf({ doc }: { doc: RenderableSalesDocument }): React.ReactElement<unknown> {
   const label = TYPE_LABEL[doc.type];
   return (
     <Document>
@@ -281,6 +822,13 @@ function SalesDocumentPdf({ doc }: { doc: RenderableSalesDocument }): React.Reac
       </Page>
     </Document>
   );
+}
+
+function SalesDocumentPdf({ doc }: { doc: RenderableSalesDocument }): React.ReactElement<unknown> {
+  if (doc.type === "INVOICE") {
+    return <InvoiceTaxPdf doc={doc} />;
+  }
+  return <LegacySalesDocumentPdf doc={doc} />;
 }
 
 /**

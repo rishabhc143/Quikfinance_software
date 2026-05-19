@@ -4,6 +4,8 @@ import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
 import { renderSalesDocumentPdf } from "@/lib/sales/pdf-document";
 import { loadVisibleCustomFields } from "@/lib/sales/custom-fields-loader";
+import { formatTotalInWords } from "@/lib/sales/total-in-words";
+import { groupByTaxRate, type LineForTax } from "@/lib/sales/invoice-tax-breakdown";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -15,9 +17,31 @@ export async function GET(
   const { organization } = await requireOrganization();
   const inv = await db.invoice.findFirst({
     where: { id: params.id, organizationId: organization.id, deletedAt: null },
-    include: { contact: true, lineItems: true, organization: true },
+    include: {
+      contact: true,
+      lineItems: true,
+      organization: true,
+    },
   });
   if (!inv) return NextResponse.json({ error: "Not found" }, { status: 404 });
+
+  // Load all tax records used by this invoice's lines so we can
+  // resolve per-line tax rate without N+1 queries.
+  const taxIds = Array.from(
+    new Set(
+      inv.lineItems
+        .map((l) => l.taxId)
+        .filter((t): t is string => Boolean(t))
+    )
+  );
+  const taxes = taxIds.length
+    ? await db.tax.findMany({
+        where: { id: { in: taxIds }, organizationId: organization.id },
+      })
+    : [];
+  const taxById = new Map<string, (typeof taxes)[number]>(
+    taxes.map((t) => [t.id, t])
+  );
 
   const customFields = await loadVisibleCustomFields({
     organizationId: organization.id,
@@ -26,28 +50,87 @@ export async function GET(
     surface: "pdf",
   });
 
+  // Build per-line tax breakdown for the totals stack.
+  const linesForTax: LineForTax[] = inv.lineItems.map((l) => {
+    const tax = l.taxId ? taxById.get(l.taxId) : undefined;
+    const rate = tax ? Number(tax.rate) : 0;
+    return {
+      amount: Number(l.amount),
+      taxRate: rate,
+      // IGST for inter-state; we don't currently store the
+      // intra/inter split, so default to IGST. CGST+SGST split is
+      // a follow-up enhancement.
+      taxKind: "IGST",
+    };
+  });
+  const taxBreakdown = groupByTaxRate(linesForTax).map((b) => ({
+    label: b.label,
+    amount: String(b.amount),
+  }));
+
+  // Total in Words from the grand total.
+  const totalInWords = formatTotalInWords(Number(inv.total));
+
+  // Balance Due = total minus amount paid. Falls back to total
+  // if amountPaid is null/zero.
+  const balance = Number(inv.total) - Number(inv.amountPaid ?? 0);
+
+  const billingAddress =
+    inv.contact.billingAddress ??
+    [
+      inv.contact.displayName,
+      // (the legacy contact form stores everything in billingAddress free-form)
+    ]
+      .filter(Boolean)
+      .join("\n");
+
+  // Derive "Place of Supply" — prefer Contact.placeOfSupply (set
+  // on customer); fall back to a state hint extracted from
+  // billing address if present.
+  const placeOfSupply = inv.contact.placeOfSupply ?? null;
+
   const pdfBytes = await renderSalesDocumentPdf({
     type: "INVOICE",
-    organization: { name: inv.organization.name },
+    organization: {
+      name: inv.organization.name,
+      address: inv.organization.address,
+      phoneNumber: inv.organization.phoneNumber,
+      email: inv.organization.email,
+      gstin: inv.organization.gstin,
+      logoUrl: inv.organization.logoUrl,
+    },
     document: {
       number: inv.number,
-      date: format(inv.issueDate, "dd MMM yyyy"),
-      dueDate: format(inv.dueDate, "dd MMM yyyy"),
+      date: format(inv.issueDate, "dd/MM/yyyy"),
+      dueDate: format(inv.dueDate, "dd/MM/yyyy"),
       referenceNumber: inv.referenceNumber,
       status: inv.status,
+      terms: inv.terms,
+      placeOfSupply,
     },
     customer: {
       displayName: inv.contact.displayName,
       email: inv.contact.email,
-      billingAddress: inv.contact.billingAddress,
+      billingAddress,
+      shippingAddress: inv.contact.shippingAddress ?? billingAddress,
+      gstin: inv.contact.gstin,
     },
-    lines: inv.lineItems.map((l) => ({
-      name: l.description,
-      description: undefined,
-      quantity: l.quantity.toString(),
-      rate: l.rate.toString(),
-      amount: l.amount.toString(),
-    })),
+    lines: inv.lineItems.map((l) => {
+      const tax = l.taxId ? taxById.get(l.taxId) : undefined;
+      const rate = tax ? Number(tax.rate) : 0;
+      const amount = Number(l.amount);
+      return {
+        name: l.description,
+        description: undefined,
+        quantity: l.quantity.toString(),
+        rate: l.rate.toString(),
+        amount: l.amount.toString(),
+        hsnSac: l.hsnSacCode,
+        taxRate: rate || null,
+        taxAmount: rate ? Math.round(((amount * rate) / 100) * 100) / 100 : null,
+        unit: null,
+      };
+    }),
     totals: {
       lines: inv.lineItems.map((l) => ({
         amount: l.amount.toString(),
@@ -60,8 +143,11 @@ export async function GET(
       adjustmentAmount: inv.adjustmentValue.toString(),
       total: inv.total.toString(),
     },
+    taxBreakdown,
+    totalInWords,
+    balanceDue: balance.toFixed(2),
     notes: inv.customerNotes ?? inv.notes,
-    termsAndConditions: inv.termsAndConditions ?? inv.terms,
+    termsAndConditions: inv.termsAndConditions,
     customFields,
   });
 

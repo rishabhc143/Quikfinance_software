@@ -97,6 +97,11 @@ model Organization {
   country               String                   @default("IN")
   fiscalYearStart       Int                      @default(4)
   gstin                 String? // Supplier GSTIN, used by GSTR-1 export
+  // Organisation contact block — rendered in the top-left of the
+  // invoice PDF (matches the Indian Tax Invoice format).
+  address               String?
+  phoneNumber           String?
+  email                 String?
   logoUrl               String?
   planTier              String                   @default("trial")
   trialEndsAt           DateTime?
