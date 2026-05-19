@@ -122,7 +122,7 @@ export default async function FiscalYearEndPage() {
               you don&apos;t have to worry about closing and opening
               your books of accounts.{" "}
               <Link
-                href="/help/fiscal-year-end-auto-close"
+                href="/help/fiscal-year-end-tasks#close-books-for-year"
                 className="text-blue-600 hover:underline whitespace-nowrap"
               >
                 Know More
