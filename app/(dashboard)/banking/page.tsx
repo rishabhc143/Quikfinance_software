@@ -71,7 +71,7 @@ export default async function BankingPage() {
     include: { _count: { select: { transactions: true } } },
   });
 
-  // BNK-A: when zero accounts exist, render the Zoho-style empty-state
+  // BNK-A: when zero accounts exist, render the empty-state
   // page (Screenshot 1). When at least one account exists, render the
   // existing tile-grid + per-account cards layout.
   if (accounts.length === 0) {

@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 /**
- * REPORTS — Zoho-style aligned filter strip.
+ * REPORTS — aligned filter strip.
  *
  * Layout (from screenshot):
  *

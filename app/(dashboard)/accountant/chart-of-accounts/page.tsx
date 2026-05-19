@@ -49,7 +49,7 @@ function sortToPrismaOrder(
 }
 
 /**
- * ACCT-E.2 — Chart of Accounts list, pixel-perfect Zoho layout.
+ * ACCT-E.2 — Chart of Accounts list, pixel-perfect reference layout.
  *
  * Header strip:
  *   [ Active Accounts ▾ ]      [ 🔍 search ]     [ + New ]
@@ -72,7 +72,7 @@ export default async function ChartOfAccountsPage({
   const q = (searchParams?.q ?? "").trim();
   const sort = parseSort(searchParams?.sort);
 
-  // Seed the Zoho-parity defaults the first time an org lands here.
+  // Seed the defaults the first time an org lands here.
   await seedDefaultCoaIfEmpty(organization.id);
 
   const where: Prisma.ChartOfAccountWhereInput = {

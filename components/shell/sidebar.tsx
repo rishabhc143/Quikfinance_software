@@ -13,7 +13,7 @@ import { cn } from "@/lib/utils";
 /**
  * Top-level dashboard nav.
  *
- * Items with `children` render as a click-to-toggle group (Zoho Books
+ * Items with `children` render as a click-to-toggle group (the reference design
  * pattern). The group header itself is a button — it does not navigate
  * — so the sub-items are the only navigation targets. Groups whose
  * children contain the current pathname auto-expand on mount.

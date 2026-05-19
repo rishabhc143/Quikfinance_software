@@ -58,7 +58,7 @@ type Props = {
 };
 
 /**
- * BNK-A — 4-step CSV-import wizard. Mirrors Zoho's documented column-
+ * BNK-A — 4-step CSV-import wizard. Mirrors the documented column-
  * mapping flow (Upload → Mapping → Preview → Done). Auto-detects the
  * column map on upload via lib/banking/csv-import.ts; user can override
  * each column + the Amount-column-type before submitting.

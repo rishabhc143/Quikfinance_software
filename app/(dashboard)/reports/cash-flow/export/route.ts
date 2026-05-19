@@ -31,10 +31,10 @@ import { logReportActivity } from "@/lib/reports/activity";
 import { renderCashFlowPdf } from "@/lib/reports/pdf/cash-flow";
 
 /**
- * REPORTS — Export endpoint for the Zoho-style Cash Flow Statement.
+ * REPORTS — Export endpoint for the Cash Flow Statement.
  *
  *   ?format=csv  (default) — flat list of section / line / amount
- *   ?format=xlsx           — Zoho-style banner, borders, grey
+ *   ?format=xlsx           — banner, borders, grey
  *                            fills, bold subtotals on grey #F5F5F5
  *
  * Filter: same `?preset=…&from=…&to=…` shape as the page.

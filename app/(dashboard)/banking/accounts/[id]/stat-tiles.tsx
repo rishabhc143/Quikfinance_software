@@ -19,7 +19,7 @@ import type { BankAccountStats } from "@/lib/banking/account-stats";
  *
  * Pure presentational React Server Component. Six metric tiles +
  * three header strips (latest statement / last reconciliation /
- * active rules). Layout mirrors Zoho's "Latest Statement Details"
+ * active rules). Layout mirrors the reference "Latest Statement Details"
  * panel.
  *
  * Each tile gets a hue that maps to the action the user might take:

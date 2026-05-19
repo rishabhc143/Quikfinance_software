@@ -16,7 +16,7 @@ import {
  *   parseCoaCsvAction  — pure parse + validate; no DB writes.
  *   importCoaAction    — persists the previewed rows. Two modes:
  *
- *     "skip"      — Default Zoho behaviour. Rows whose name (or
+ *     "skip"      — Default behaviour. Rows whose name (or
  *                    code) collides with an existing account are
  *                    silently skipped + reported in `errors`.
  *

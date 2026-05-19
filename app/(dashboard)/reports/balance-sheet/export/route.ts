@@ -35,10 +35,10 @@ import { logReportActivity } from "@/lib/reports/activity";
 import { renderBalanceSheetPdf } from "@/lib/reports/pdf/balance-sheet";
 
 /**
- * REPORTS — Export endpoint for the Zoho-style Balance Sheet page.
+ * REPORTS — Export endpoint for the Balance Sheet page.
  *
  *   ?format=csv  (default) — section / account / amount, flat
- *   ?format=xlsx           — Zoho-style with merged banners,
+ *   ?format=xlsx           — with merged banners,
  *                            borders, grey fills, bold subtotals.
  *
  * Filter:
@@ -391,7 +391,7 @@ function buildCsvWithCompare(
   return csvResponse(filenameStub, csv);
 }
 
-// ─── XLSX (Zoho-style with borders + fills + bold totals) ────────
+// ─── XLSX (with borders + fills + bold totals) ────────
 
 async function buildXlsx(
   orgName: string,

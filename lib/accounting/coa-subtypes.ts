@@ -1,7 +1,7 @@
 import type { AccountType } from "@prisma/client";
 
 /**
- * ACCT-E.2 — Zoho-parity Chart of Accounts sub-types.
+ * ACCT-E.2 — Chart of Accounts sub-types.
  *
  * The granular labels accountants pick when creating an account.
  * Driven by the broad `AccountType` enum: each type has a fixed
@@ -74,7 +74,7 @@ export const DEFAULT_SUBTYPE_FOR_TYPE: Record<AccountType, string> = {
 /**
  * ACCT-E.3 — Flat option list for the "Create Account" modal.
  *
- * Zoho's new-account UI shows one Account Type dropdown with all
+ * The reference new-account UI shows one Account Type dropdown with all
  * granular labels at once (Cash / Bank / Other Asset / etc.) and
  * a contextual help panel that updates when the selection changes.
  *
@@ -82,13 +82,13 @@ export const DEFAULT_SUBTYPE_FOR_TYPE: Record<AccountType, string> = {
  *   - `value` — the broad+sub coded as `TYPE:SUBTYPE` so the form
  *     can serialize it into a single hidden field and the server
  *     action can split it back.
- *   - `label` — the granular display name (matches Zoho).
+ *   - `label` — the granular display name (matches the reference).
  *   - `type` — broad AccountType for the DB column.
  *   - `subType` — granular label for the DB column.
  *   - `groupHeader` — short broad-type heading the help panel renders.
  *   - `description` — one-line context the help panel renders.
  *
- * Order matches the way Zoho groups + lists its options.
+ * Order matches the way the reference groups + lists its options.
  */
 export type AccountTypeOption = {
   value: string;

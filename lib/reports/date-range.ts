@@ -1,6 +1,6 @@
 /**
  * REPORTS-INFRA — Pure helpers for the date-range filter that every
- * Zoho-style report uses. No Prisma or DOM imports — safe for unit
+ * report uses. No Prisma or DOM imports — safe for unit
  * tests and for the client `<DateRangePicker>` to import.
  *
  * Concepts:

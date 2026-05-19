@@ -12,7 +12,7 @@ import { BudgetForm } from "./form";
 export const metadata = { title: "New Budget" };
 
 /**
- * ACCT-D.2 — Server wrapper for the Zoho-parity New Budget form.
+ * ACCT-D.2 — Server wrapper for the New Budget form.
  *
  * Fetches all org accounts whose type is in the budget-able set,
  * then partitions them into the five buckets the form needs
@@ -55,7 +55,7 @@ export default async function NewBudgetPage() {
       : now.getUTCFullYear() - 1;
 
   // Dropdown options: 1 previous FY + current + 4 future FYs.
-  // Matches Zoho's screenshot — accountants budget forward more
+  // Matches the reference screenshot — accountants budget forward more
   // than backward, so the range is asymmetric.
   const fiscalYearOptions = [-1, 0, 1, 2, 3, 4].map((delta) => {
     const value = defaultFiscalYear + delta;

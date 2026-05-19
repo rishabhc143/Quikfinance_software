@@ -2,7 +2,7 @@
  * ACCT-C.3 — ISO 4217 currency list for the Base Currency
  * Adjustment modal's Currency dropdown.
  *
- * Display label format matches Zoho: "CODE — Name" (e.g.
+ * Display label format matches the reference: "CODE — Name" (e.g.
  * "AED — UAE Dirham"). 60+ entries covering the major currencies
  * Quikfinance orgs would post foreign-currency transactions in.
  *
@@ -177,7 +177,7 @@ export function currencyName(code: string): string {
   return c ? c.name : code;
 }
 
-/** Format the Zoho-style label: "AED — UAE Dirham" */
+/** Format the label: "AED — UAE Dirham" */
 export function currencyLabel(code: string): string {
   const c = ISO_CURRENCIES.find((x) => x.code === code.toUpperCase());
   return c ? `${c.code} — ${c.name}` : code;

@@ -1,7 +1,7 @@
 /**
  * BNK-A — Duplicate detection for imported bank transactions.
  *
- * Per Zoho's documented behaviour: a transaction is a duplicate when it
+ * Per the documented behaviour: a transaction is a duplicate when it
  * matches an existing row on the quadruple (accountId, date, amount,
  * reference). The match-key fudge-factor:
  *   - date  → same calendar day (ignore time-of-day)

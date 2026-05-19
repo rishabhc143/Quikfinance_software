@@ -1,6 +1,6 @@
 /**
  * REPORTS — Pure builder that turns aggregated ledger rows (as of a
- * single point in time) into the Zoho-style 4-level Balance Sheet
+ * single point in time) into the 4-level Balance Sheet
  * structure:
  *
  *   Assets
@@ -178,7 +178,7 @@ function finalizeMid(g: BsMidGroup): BsMidGroup {
  * accounts with their net balances as of the report date.
  *
  * Zero-balance accounts are kept in the structure so the section
- * headers always appear (matches Zoho's behaviour — empty sections
+ * headers always appear (matches the reference's behaviour — empty sections
  * still render a "Total for X: 0.00" row).
  */
 export function buildBalanceSheet(inputs: BsAccountInput[]): BalanceSheet {

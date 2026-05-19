@@ -9,7 +9,7 @@ import { renderSalesDocumentPdf } from "@/lib/sales/pdf-document";
  *
  * Reuses renderSalesDocumentPdf with type='VENDOR_CREDIT'. Per spec
  * the label shown in the PDF is "Credit Note" (matches the UI's
- * "Credit Note#" copy and Zoho-parity); only the module slug and
+ * "Credit Note#" copy and the reference design); only the module slug and
  * prefix differ from sales Credit Notes.
  */
 

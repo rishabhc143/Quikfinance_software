@@ -32,7 +32,7 @@ These come from the master prompt's `<architectural_decisions_locked>` block and
 1. **One Contact table** — vendors are `Contact` rows with `type=VENDOR` (or `BOTH`). No separate Vendor model. The Vendors page filters by type.
 2. **Vendor-specific fields are additive on Contact**: `msmeRegistered`, `msmeNumber`, `msmeCategory`, `msmeRegisteredDate`, `defaultTdsId`, `enableVendorPortal`, `vendorPortalToken`. Customer-side ignores these.
 3. **Bill numbers are MANUAL** — no `NumberSeries` row for `BILL`. Free-text input with uniqueness validation per `(orgId, vendorId)`. Duplicates flagged with a warning but allowed.
-4. **Other Purchases docs auto-generate numbers** via `getNextDocumentNumber()`: PO (`PO-`), Payment Made (`PM-`), Vendor Credit (`CN-` per Zoho's UI), Recurring Bill (`RB-`), Recurring Expense (`RE-`), Expense (`EX-`).
+4. **Other Purchases docs auto-generate numbers** via `getNextDocumentNumber()`: PO (`PO-`), Payment Made (`PM-`), Vendor Credit (`CN-` per the reference UI), Recurring Bill (`RB-`), Recurring Expense (`RE-`), Expense (`EX-`).
 5. **`TransactionLineItemsTable` gets two config props** (added in PR #82):
     - `accountColumnVisible: 'inline' | 'expandable' | 'hidden'` (default `'expandable'`; PO + Bill use `'inline'`)
     - `customerColumnVisible: boolean` (default `false`; Bill + Recurring Bill + Expense use `true` — exposes `lineItem.billableToCustomerId`)
@@ -44,7 +44,7 @@ These come from the master prompt's `<architectural_decisions_locked>` block and
 11. **Vendor Portal** is scaffolded in schema (`Contact.enableVendorPortal`, `Bill.portalAccessToken`, `PurchaseOrder.portalAccessToken`) but no portal pages are built in v1.
 12. **MSME compliance banner** appears on `/purchases/vendors` only when `org.country === 'IN'` AND any active vendor has `msmeRegistered=null`.
 13. **"At Transaction Level" GST dropdown** on Bill / Recurring Bill / Vendor Credit / PO forms — stored as `placeOfSupply`. Single select for v1; full GST stacking behind a `gst.advanced` flag.
-14. **Vendor Credits document-number prefix uses `CN-`** per Zoho's UI (label reads "Credit Note#"), distinct from sales `CreditNote` (which uses `CR-`).
+14. **Vendor Credits document-number prefix uses `CN-`** per the reference UI (label reads "Credit Note#"), distinct from sales `CreditNote` (which uses `CR-`).
 15. **Expenses sub-module is a placeholder** — schema fully defined; list page + minimal CRUD scaffold; New Expense form is a stub with deferred-feature banner. Don't invent fields without screenshots.
 
 ---

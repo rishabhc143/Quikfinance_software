@@ -38,11 +38,11 @@ type Line = {
 };
 
 /**
- * ACCT-C.3 — Base Currency Adjustment modal matching Zoho's UX.
+ * ACCT-C.3 — Base Currency Adjustment modal matching the reference UX.
  *
  * Two steps inside one modal:
  *   ① Configure — Currency / Date / Exchange Rate / Notes
- *      (matches Zoho's screenshot 1:1; the user enters the rate
+ *      (matches the reference screenshot 1:1; the user enters the rate
  *      they're revaluing FC balances at)
  *   ② Allocate  — per-account gain/loss lines. This step exists
  *      because we don't track per-line FC amounts in the ledger

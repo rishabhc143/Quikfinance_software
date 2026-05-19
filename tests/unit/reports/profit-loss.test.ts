@@ -3,7 +3,7 @@ import { buildProfitAndLoss } from "@/lib/reports/profit-loss";
 import type { LedgerRow } from "@/lib/reports/ledger-aggregation";
 
 /**
- * REPORTS — Pin the Zoho-style Profit and Loss math. Bugs here
+ * REPORTS — Pin the Profit and Loss math. Bugs here
  * mis-state every accountant's primary KPI, so the section
  * totals + subtotal formulas (Gross Profit, Operating Profit,
  * Net Profit/Loss) each get explicit boundary cases.
@@ -36,7 +36,7 @@ describe("buildProfitAndLoss — empty ledger", () => {
     expect(pnl.netProfitLoss).toBe(0);
   });
 
-  it("uses canonical Zoho section labels", () => {
+  it("uses canonical section labels", () => {
     const pnl = buildProfitAndLoss([]);
     expect(pnl.operatingIncome.label).toBe("Operating Income");
     expect(pnl.costOfGoodsSold.label).toBe("Cost of Goods Sold");

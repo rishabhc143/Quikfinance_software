@@ -1,5 +1,5 @@
 /**
- * REPORTS — Pure builder for the Zoho-style Cash Flow Statement.
+ * REPORTS — Pure builder for the Cash Flow Statement.
  *
  * Uses the **indirect method**:
  *

@@ -1,18 +1,18 @@
 /**
  * REPORTS-CENTER — Static catalog of every report shown in
- * `/reports` (the Zoho-parity Reports Center).
+ * `/reports` (the Reports Center).
  *
  * Each entry is one row of the All Reports table. `available: true`
  * means we've built a real route for it — clicking the name lands
  * on that route. `available: false` is a stub row rendered grayed
  * out with a "Coming soon" badge — the count badge ("All Reports
- * 80") still includes it so the page matches Zoho.
+ * 80") still includes it so the page matches the reference.
  *
  * Adding a new report = append one entry here. No migration needed,
  * favorites + filters key off `reportKey` which is a free-form string.
  *
- * Categories follow Zoho Books exactly — 15 categories, ordered the
- * same way they appear in Zoho's left sidebar.
+ * Categories follow the reference design exactly — 15 categories, ordered the
+ * same way they appear in the reference left sidebar.
  *
  * The 80 reports below match the screenshots the user shared on
  * 2026-05-14 turn-by-turn. Internal routes that exist in the app
@@ -55,7 +55,7 @@ export type ReportEntry = {
 };
 
 /**
- * The catalog. Order inside a category follows Zoho's display
+ * The catalog. Order inside a category follows the canonical display
  * order. Available entries map to existing routes; the rest are
  * stubs.
  */

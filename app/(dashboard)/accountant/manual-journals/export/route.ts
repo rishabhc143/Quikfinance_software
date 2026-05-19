@@ -13,7 +13,7 @@ import {
  *
  * GET /accountant/manual-journals/export?from=&to=&status=&q=
  *
- * Streams a CSV with **one row per line** (the Zoho-compatible
+ * Streams a CSV with **one row per line** (the spec-compatible
  * layout). Both DRAFT and PUBLISHED journals are eligible: DRAFTs
  * pull their lines from `ManualJournalLine`, PUBLISHED ones pull
  * from the canonical `JournalEntryLine` under reference `MJ:<id>`

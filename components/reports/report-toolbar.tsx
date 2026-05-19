@@ -37,7 +37,7 @@ import type { ReportActivityRow } from "@/lib/reports/activity";
  * REPORTS — Standard 5-button toolbar that every report mounts in
  * its `<ReportShell actions={...} />` slot.
  *
- * Buttons (left to right, matching the Zoho screenshot):
+ * Buttons (left to right, matching the reference screenshot):
  *
  *   1. Customize Report (sliders) — opens the Customize drawer.
  *   2. Schedule Report (play + green dot badge) — Phase B; rendered

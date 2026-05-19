@@ -28,7 +28,7 @@ type Account = {
 type Bucket = "INCOME" | "EXPENSE" | "ASSET" | "LIABILITY" | "EQUITY";
 
 /**
- * ACCT-D.2 — Zoho-parity New Budget form.
+ * ACCT-D.2 — New Budget form.
  *
  *   Name *
  *   Fiscal Year * (3-option dropdown — prev FY / current / next)

@@ -1,13 +1,13 @@
 /**
  * BNK-A — CSV import helpers for bank statements.
  *
- * Three layers of complexity Zoho's column-mapping wizard handles, in
+ * Three layers of complexity the standard column-mapping wizard handles, in
  * order of appearance in the wizard UI:
  *
  *   1. Header detection — find which CSV columns are Date, Description,
  *      Reference, Amount (and how Amount is encoded — see #2).
  *
- *   2. Amount column type — three variants Zoho documents:
+ *   2. Amount column type — three variants the spec documents:
  *      - DOUBLE             — separate Debit + Credit columns; one is always 0
  *      - SINGLE_WITH_TYPE   — one Amount column + a Type column (DR/CR or +/−)
  *      - SINGLE_NEGATIVE    — one Amount column where negatives are

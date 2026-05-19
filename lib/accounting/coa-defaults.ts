@@ -1,20 +1,20 @@
 import type { AccountType } from "@prisma/client";
 
 /**
- * ACCT-E — Zoho-parity default Chart of Accounts.
+ * ACCT-E — default Chart of Accounts.
  *
- * The 60+ accounts a fresh Zoho Books org sees on first visit to
+ * The 60+ accounts a fresh the reference design org sees on first visit to
  * Chart of Accounts → Active Accounts. Each row carries:
  *
- *   - `name`        — display name (matches Zoho exactly)
+ *   - `name`        — display name (matches the reference exactly)
  *   - `type`        — one of our 8 AccountType enum variants
- *   - `subType`     — Zoho's granular label (e.g. "Other Current
+ *   - `subType`     — the granular subtype label (e.g. "Other Current
  *                     Asset", "Fixed Asset", "Stock"); rendered
  *                     when set, otherwise the broad type label
  *                     wins
  *   - `locked`      — when true, the UI shows a lock icon + the
  *                     account can't be archived or renamed.
- *                     Mirrors Zoho's locked rows.
+ *                     Mirrors the reference's locked rows.
  *   - `description` — short one-liner used on the detail page
  *
  * Five names collide with our SYS-* lazy-created accounts and are

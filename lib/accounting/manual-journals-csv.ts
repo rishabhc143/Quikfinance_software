@@ -1,7 +1,7 @@
 /**
  * ACCT-A.4.a — Pure CSV builder for Manual Journal exports.
  *
- * Emits **one row per line** (Zoho-compatible layout) so a single
+ * Emits **one row per line** (spec-compatible layout) so a single
  * journal with N lines produces N rows in the CSV. The header
  * fields are repeated on every line for spreadsheet pivot-table
  * friendliness.
@@ -89,7 +89,7 @@ export function buildManualJournalCsvRows(
     Description: l.description ?? "",
     // Numbers stay numeric so Excel doesn't coerce them to strings.
     // Cells with 0 render as "0" rather than blank for parity with
-    // Zoho's export — accountants prefer the explicit zero.
+    // Third-party export convention — accountants prefer the explicit zero.
     Debit: l.debit,
     Credit: l.credit,
     Currency: l.currency,

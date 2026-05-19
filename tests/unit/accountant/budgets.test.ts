@@ -131,7 +131,7 @@ describe("computeVariance", () => {
 describe("BUDGETABLE_ACCOUNT_TYPES", () => {
   it("includes P&L + balance-sheet types (ACCT-D.2 widened set)", () => {
     // The form + the action validator agree on this list. ACCT-D.2
-    // added the balance-sheet trio so the Zoho-parity form's
+    // added the balance-sheet trio so the form's
     // "Include Asset, Liability, and Equity Accounts in Budget"
     // expandable section actually has accounts to pick.
     expect([...BUDGETABLE_ACCOUNT_TYPES]).toEqual([

@@ -21,12 +21,12 @@ import {
 } from "@/lib/reports/scheduled";
 
 /**
- * REPORTS — Schedule Report drawer (Zoho-style).
+ * REPORTS — Schedule Report drawer.
  *
  * Two modes:
  *  • No existing schedule → renders the create form.
  *  • Existing schedule → renders the summary card matching
- *    Zoho's screenshot (Active badge, next-send timestamp,
+ *    the reference screenshot (Active badge, next-send timestamp,
  *    Schedule Details, Show Recipients, Schedule History tab).
  *
  * Form fields:

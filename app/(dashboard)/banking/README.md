@@ -4,8 +4,8 @@
 
 | Sub-module | Status |
 |------------|--------|
-| Empty-state UX | ✅ Zoho-parity "Stay on top of your money" page when no accounts exist |
-| Bank Accounts | ✅ Bank / Credit Card / PayPal types with Zoho-parity Add form (conditional fields per type) |
+| Empty-state UX | ✅ "Stay on top of your money" page when no accounts exist |
+| Bank Accounts | ✅ Bank / Credit Card / PayPal types with Add form (conditional fields per type) |
 | Per-account dashboard | ✅ Detail page with transactions table + Import Statement + Undo Last Import |
 | CSV Statement Import | ✅ 4-step wizard (Upload → Mapping → Preview → Done) with auto-detect, three Amount-column modes, duplicate detection, save-as-preset |
 | Undo Last Import | ✅ Gear menu, batch-level delete, refuses to undo reconciled transactions |
@@ -19,7 +19,7 @@
 
 ### Account model
 
-`BankAccount.type` is the Zoho-parity enum (`BANK | CREDIT_CARD | PAYPAL`). The
+`BankAccount.type` is the enum (`BANK | CREDIT_CARD | PAYPAL`). The
 legacy free-text `accountType` column stays for backward compat but new code
 reads `type`. Each `BANK` account has `isPrimary` (only one primary per org,
 enforced by a partial unique index).
@@ -39,7 +39,7 @@ User uploads CSV →  lib/banking/csv-import.ts autoDetects column map →
 
 ### Duplicate detection
 
-`lib/banking/duplicate-detection.ts` matches on the quadruple Zoho documents:
+`lib/banking/duplicate-detection.ts` matches on the quadruple the spec documents:
 
 - Same calendar day (UTC, ignore time)
 - Same amount (4-decimal-place tolerance for Decimal columns)
@@ -54,7 +54,7 @@ Duplicates are still persisted with `excluded=true` so:
 
 ### Amount column types
 
-Three modes Zoho documents, all supported:
+Three modes the spec documents, all supported:
 
 | Mode | When to use | Example |
 |------|-------------|---------|
@@ -85,4 +85,4 @@ own preset namespace.
 - BNK-J — Yodlee auto-feeds (vendor contract required)
 - BNK-K — Direct partner-bank APIs (ICICI / HDFC / Axis Connected Banking)
 
-See `docs/zoho-banking-research.md` for the full Zoho-parity spec.
+See `the banking spec doc` for the full spec.

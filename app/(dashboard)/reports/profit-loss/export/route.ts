@@ -31,15 +31,15 @@ import { logReportActivity } from "@/lib/reports/activity";
 import { renderProfitLossPdf } from "@/lib/reports/pdf/profit-loss";
 
 /**
- * REPORTS — Export endpoint for the Zoho-style Profit and Loss page.
+ * REPORTS — Export endpoint for the Profit and Loss page.
  *
  * Accepts:
  *   - `?format=csv` (default) or `?format=xlsx`
  *   - Same `?preset=…&from=…&to=…` shape the page reads, so the
  *     export window always matches what the user just looked at.
  *
- * The XLSX layout matches Zoho's downloaded P&L 1:1 — see
- * `buildXlsxZohoStyle` for the exact cell-by-cell spec.
+ * The XLSX layout matches the reference P&L template 1:1 — see
+ * `buildXlsxStyled` for the exact cell-by-cell spec.
  *
  * Filename: `profit-and-loss-{yyyymmdd}-to-{yyyymmdd}.csv` (or .xlsx).
  */
@@ -186,7 +186,7 @@ export async function GET(req: Request) {
     });
   }
   if (fmt === "xlsx") {
-    return buildXlsxZohoStyle(
+    return buildXlsxStyled(
       organization.name,
       range,
       pnl,
@@ -314,10 +314,10 @@ function buildCsvWithCompare(
   return csvResponse(filenameStub, csv);
 }
 
-// ─── XLSX — Zoho-1:1 layout ───────────────────────────────────────
+// ─── XLSX — 1:1 layout ───────────────────────────────────────
 
 /**
- * Build the .xlsx file matching Zoho's downloaded P&L pixel-for-
+ * Build the .xlsx file matching the reference P&L template pixel-for-
  * pixel. The user's template (`Profit and Loss.xlsx`) is the
  * source-of-truth — fills, borders, column widths, the merged top +
  * bottom banners, and the **live Excel formulas** for Gross Profit /
@@ -328,7 +328,7 @@ function buildCsvWithCompare(
  * header, we track each total's actual row number as we emit and
  * splice it back into the formula strings.
  */
-async function buildXlsxZohoStyle(
+async function buildXlsxStyled(
   orgName: string,
   range: { start: Date; end: Date },
   pnl: ProfitAndLoss,
@@ -398,7 +398,7 @@ async function buildXlsxZohoStyle(
 
   // Cursor starts on row 3 (the blank row above Operating Income
   // section header per the template). We'll always leave one blank
-  // row between sections to match Zoho's spacing.
+  // row between sections to match the reference spacing.
   let row = 3;
   ws.getRow(row).height = 8; // thin spacer
   row += 1;

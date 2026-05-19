@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/dialog";
 
 /**
- * ACCT-E.4 — Export Chart of Accounts modal, matching Zoho's UX.
+ * ACCT-E.4 — Export Chart of Accounts modal, matching the reference UX.
  *
  * Fields:
  *   - Module *           (read-only — only "Chart of Accounts")

@@ -8,7 +8,7 @@ import { requireOrganization } from "@/lib/auth-helpers";
 import { writeAuditLog } from "@/lib/audit";
 
 /**
- * BNK-A — refactored to the Zoho-parity Bank/Credit Card account shape.
+ * BNK-A — refactored to the Bank/Credit Card account shape.
  *
  * Field reference (Screenshots 3 + 4):
  *   Both types  → name, accountCode, currency, bankName, description

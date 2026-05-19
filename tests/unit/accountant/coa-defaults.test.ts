@@ -65,7 +65,7 @@ describe("DEFAULT_ACCOUNTS — SYS-* collision avoidance", () => {
   );
 });
 
-describe("DEFAULT_ACCOUNTS — Zoho-parity spot checks", () => {
+describe("DEFAULT_ACCOUNTS — spot checks", () => {
   function byName(name: string): DefaultAccountSpec | undefined {
     return DEFAULT_ACCOUNTS.find((a) => a.name === name);
   }
@@ -116,19 +116,19 @@ describe("DEFAULT_ACCOUNTS — Zoho-parity spot checks", () => {
 });
 
 describe("DEFAULT_ACCOUNTS — locked-flag invariants", () => {
-  it("some entries are locked + some are not (mirrors Zoho's mixed list)", () => {
+  it("some entries are locked + some are not (mirrors the reference's mixed list)", () => {
     const locked = DEFAULT_ACCOUNTS.filter((a) => a.locked === true);
     const unlocked = DEFAULT_ACCOUNTS.filter((a) => a.locked !== true);
     expect(locked.length).toBeGreaterThan(0);
     expect(unlocked.length).toBeGreaterThan(0);
   });
 
-  it("Travel Expense is NOT locked (Zoho shows a checkbox here)", () => {
+  it("Travel Expense is NOT locked (reference shows a checkbox here)", () => {
     const a = DEFAULT_ACCOUNTS.find((x) => x.name === "Travel Expense");
     expect(a?.locked ?? false).toBe(false);
   });
 
-  it("Petty Cash IS locked (Zoho shows a lock icon)", () => {
+  it("Petty Cash IS locked (reference shows a lock icon)", () => {
     const a = DEFAULT_ACCOUNTS.find((x) => x.name === "Petty Cash");
     expect(a?.locked).toBe(true);
   });

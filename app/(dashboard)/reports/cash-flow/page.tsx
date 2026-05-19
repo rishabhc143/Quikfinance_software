@@ -37,7 +37,7 @@ import { getExistingSchedule } from "@/lib/reports/scheduled";
 export const metadata = { title: "Cash Flow Statement" };
 
 /**
- * Zoho-style Cash Flow Statement — indirect method.
+ * Cash Flow Statement — indirect method.
  *
  *   Beginning Cash Balance
  *   Cash Flow from Operating Activities

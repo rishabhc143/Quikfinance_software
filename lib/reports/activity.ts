@@ -120,7 +120,7 @@ export async function getRecentReportActivity(
       const u = byId.get(r.userId);
       const displayName =
         u?.name?.trim() ||
-        // Fall back to local-part of email if no name (matches Zoho's
+        // Fall back to local-part of email if no name (matches the reference's
         // screenshot which shows "purvansh.bhor").
         (u?.email ? u.email.split("@")[0] : "Unknown user");
       return {
@@ -148,7 +148,7 @@ export async function getRecentReportActivity(
 
 /**
  * Human-readable message for one activity row, matching the tone
- * of Zoho's Report Activity drawer (see screenshot in PR description):
+ * of the Report Activity drawer (see screenshot in PR description):
  *
  *   "PDF generated for the "Cash Flow Statement" report."
  *   "Schedule Created with recipients foo@bar.com, baz@qux.com"

@@ -1,7 +1,7 @@
 /**
  * REPORTS-PDF — Profit and Loss.
  *
- * Renders the same 8-section Zoho-style layout as the on-screen
+ * Renders the same 8-section layout as the on-screen
  * report (lib/reports/profit-loss.ts) but in a paginated PDF.
  */
 

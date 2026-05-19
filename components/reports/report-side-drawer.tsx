@@ -12,7 +12,7 @@ import { cn } from "@/lib/utils";
  * on Radix Dialog so it inherits ESC-to-close, focus-trapping, and
  * aria-modal handling.
  *
- * Layout matches Zoho's drawers:
+ * Layout matches the reference's drawers:
  *  - Slides in from the right edge
  *  - Full-width on mobile, fixed 420px (or 720px for Customize) on
  *    desktop

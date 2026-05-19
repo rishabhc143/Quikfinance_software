@@ -258,7 +258,7 @@ export async function runRecurringBillNowAction(
   const today = new Date();
   await generateBillFromProfile(id, today);
   // Don't advance the cursor — the user might want the daily cron
-  // to also fire. Or do? Per Zoho parity, Run Now does advance. We
+  // to also fire. Or do? Per the reference design, Run Now does advance. We
   // do advance to keep the cron + UI consistent.
   await advanceRecurringBillCursor(id, today);
   await writeAuditLog({

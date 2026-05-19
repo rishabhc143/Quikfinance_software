@@ -39,7 +39,7 @@ import { formatMoney } from "@/lib/money";
 export const metadata = { title: "Profit and Loss" };
 
 /**
- * Zoho-style Profit and Loss report.
+ * Profit and Loss report.
  *
  *   Outer (ReportShell) header:
  *     "Business Overview · Profit and Loss · From DD/MM/YYYY To DD/MM/YYYY"
@@ -340,7 +340,7 @@ export default async function ProfitLossPage({
 /**
  * Render one report section: a bolded "Operating Income"-style group
  * header, one row per non-zero account beneath, then a "Total for X"
- * subtotal row. Matches Zoho's structure even when the section has
+ * subtotal row. Matches the reference structure even when the section has
  * zero accounts (the total row still appears with 0.00).
  */
 function SectionRows({
@@ -415,7 +415,7 @@ function SubtotalRow({
 function formatPnlAmount(n: number, currency: string): string {
   // Strip the currency symbol so the column reads as a pure
   // number — the badge in the footnote tells the reader the
-  // currency. Matches Zoho's table style.
+  // currency. Matches the reference table style.
   void currency;
   if (Math.abs(n) < 0.005) return "0.00";
   const abs = Math.abs(n).toLocaleString(undefined, {

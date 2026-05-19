@@ -26,7 +26,7 @@ import { ExportCoaDialog } from "./export-dialog";
 /**
  * ACCT-E.4 — Chart of Accounts "More actions" menu.
  *
- * Mirrors Zoho's 3-dot menu:
+ * Mirrors the spec'''s 3-dot menu:
  *   - Sort by ▸  (Account Name / Account Code / Account Type)
  *   - Import Chart of Accounts  (opens 2-step CSV wizard)
  *   - Export ▸  (Export to CSV)
