@@ -45,9 +45,7 @@ export function BankingEmptyState() {
       </p>
       <div className="mt-12 border-t pt-6 w-full">
         <Link
-          href="https://www.zoho.com/books/help/banking/"
-          target="_blank"
-          rel="noopener noreferrer"
+          href="/help/bank-connections-guide"
           className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
         >
           <Play className="h-4 w-4" />
