@@ -22,6 +22,28 @@ const schema = z.object({
     .transform((v) => (v.length === 0 ? null : v.toUpperCase()))
     .nullable()
     .optional(),
+  // Contact-block fields for the invoice PDF.
+  address: z
+    .string()
+    .trim()
+    .max(500)
+    .transform((v) => (v.length === 0 ? null : v))
+    .nullable()
+    .optional(),
+  phoneNumber: z
+    .string()
+    .trim()
+    .max(40)
+    .transform((v) => (v.length === 0 ? null : v))
+    .nullable()
+    .optional(),
+  email: z
+    .string()
+    .trim()
+    .max(160)
+    .transform((v) => (v.length === 0 ? null : v))
+    .nullable()
+    .optional(),
   logoUrl: z.string().url().optional().nullable(),
 });
 
@@ -37,7 +59,14 @@ export async function saveProfileAction(input: z.input<typeof schema>) {
   const before = { name: organization.name, slug: organization.slug, currency: organization.currency };
   await db.organization.update({
     where: { id: organization.id },
-    data: { ...data, logoUrl: data.logoUrl ?? null, gstin: data.gstin ?? null },
+    data: {
+      ...data,
+      logoUrl: data.logoUrl ?? null,
+      gstin: data.gstin ?? null,
+      address: data.address ?? null,
+      phoneNumber: data.phoneNumber ?? null,
+      email: data.email ?? null,
+    },
   });
   await writeAuditLog({
     organizationId: organization.id,

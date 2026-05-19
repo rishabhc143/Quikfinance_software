@@ -8,7 +8,10 @@ export const metadata = { title: "Organization Profile" };
 export default async function ProfilePage() {
   const { organization } = await requireOrganization();
   return (
-    <SettingsShell title="Organization Profile" description="Name, country, currency, fiscal year, and contact details.">
+    <SettingsShell
+      title="Organization Profile"
+      description="Name, country, currency, fiscal year, and contact details. The contact block appears at the top of every invoice PDF."
+    >
       <Card>
         <CardContent className="pt-6">
           <ProfileForm
@@ -19,6 +22,9 @@ export default async function ProfilePage() {
               currency: organization.currency,
               fiscalYearStart: organization.fiscalYearStart,
               gstin: organization.gstin ?? "",
+              address: organization.address ?? "",
+              phoneNumber: organization.phoneNumber ?? "",
+              email: organization.email ?? "",
               logoUrl: organization.logoUrl,
             }}
           />

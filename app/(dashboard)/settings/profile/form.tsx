@@ -30,6 +30,9 @@ export function ProfileForm({
     currency: string;
     fiscalYearStart: number;
     gstin: string;
+    address: string;
+    phoneNumber: string;
+    email: string;
     logoUrl: string | null;
   };
 }) {
@@ -106,6 +109,40 @@ export function ProfileForm({
             maxLength={15}
           />
           <GstinHint value={values.gstin} />
+        </Field>
+        <Field
+          label="Address"
+          hint="Free-form multi-line. Appears on every invoice PDF below the organisation name."
+        >
+          <textarea
+            value={values.address}
+            onChange={(e) => set("address", e.target.value)}
+            placeholder={"465 Saikiripa Colony Indore\nIndore Madhya Pradesh 452010\nIndia"}
+            rows={3}
+            className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+          />
+        </Field>
+        <Field
+          label="Phone"
+          hint="Shown on the invoice PDF for customer reference."
+        >
+          <Input
+            value={values.phoneNumber}
+            onChange={(e) => set("phoneNumber", e.target.value)}
+            placeholder="9399771515"
+            type="tel"
+          />
+        </Field>
+        <Field
+          label="Email"
+          hint="Shown on the invoice PDF — typically accounts@yourdomain.com."
+        >
+          <Input
+            value={values.email}
+            onChange={(e) => set("email", e.target.value)}
+            placeholder="accounts@yourdomain.com"
+            type="email"
+          />
         </Field>
       </div>
       <div className="flex justify-end pt-2 border-t">
