@@ -67,10 +67,17 @@ export default async function ProjectsPage({
     }),
     // Used to decide between empty state and "no results for filter"
     db.project.count({ where: { organizationId: organization.id } }),
-    // Active projects list — used by the Start Timer modal in the toolbar.
+    // Active projects + their tasks — used by the Start Timer modal.
     db.project.findMany({
       where: { organizationId: organization.id, status: { in: ["active", "on_hold"] } },
-      select: { id: true, name: true },
+      select: {
+        id: true,
+        name: true,
+        tasks: {
+          select: { id: true, name: true, billable: true },
+          orderBy: { sortOrder: "asc" },
+        },
+      },
       orderBy: { name: "asc" },
     }),
   ]);
