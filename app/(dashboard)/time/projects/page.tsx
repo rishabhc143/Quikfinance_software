@@ -57,7 +57,7 @@ export default async function ProjectsPage({
     ...(statusFilter !== "all" ? { status: statusFilter } : {}),
   };
 
-  const [total, rows, totalUnfiltered] = await Promise.all([
+  const [total, rows, totalUnfiltered, activeProjects] = await Promise.all([
     db.project.count({ where }),
     db.project.findMany({
       where,
@@ -67,6 +67,12 @@ export default async function ProjectsPage({
     }),
     // Used to decide between empty state and "no results for filter"
     db.project.count({ where: { organizationId: organization.id } }),
+    // Active projects list — used by the Start Timer modal in the toolbar.
+    db.project.findMany({
+      where: { organizationId: organization.id, status: { in: ["active", "on_hold"] } },
+      select: { id: true, name: true },
+      orderBy: { name: "asc" },
+    }),
   ]);
 
   const customerIds = Array.from(
@@ -103,7 +109,7 @@ export default async function ProjectsPage({
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
-      <ProjectsToolbar status={statusFilter} />
+      <ProjectsToolbar status={statusFilter} projects={activeProjects} />
 
       {showOnboarding ? (
         <ProjectsOnboarding />
