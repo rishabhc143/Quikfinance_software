@@ -5,7 +5,7 @@ import { requireOrganization } from "@/lib/auth-helpers";
 import { Badge } from "@/components/ui/badge";
 import { DataTable, PageHeader, EmptyState, type ColumnDef } from "@/components/shared/data-table";
 
-export const metadata = { title: "Time Entries" };
+export const metadata = { title: "Timesheet" };
 
 const COLUMNS: ColumnDef[] = [
   { key: "date", header: "Date", sortable: true },
@@ -46,7 +46,7 @@ export default async function TimeEntriesPage({ searchParams }: { searchParams: 
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-4">
-      <PageHeader title="Time Entries" ctaHref="/time/entries/new" ctaLabel="+ Log Time" />
+      <PageHeader title="Timesheet" ctaHref="/time/entries/new" ctaLabel="+ Log Time" />
       {total === 0 && !q ? (
         <EmptyState title="Log time as you work" description="Track hours per project, billable or not, and roll them into invoices later." ctaHref="/time/entries/new" ctaLabel="+ Log your first entry" />
       ) : (

@@ -78,7 +78,7 @@ const NAV: NavItem[] = [
     icon: Clock,
     children: [
       { label: "Projects", href: "/time/projects" },
-      { label: "Time Entries", href: "/time/entries" },
+      { label: "Timesheet", href: "/time/entries" },
     ],
   },
   {
