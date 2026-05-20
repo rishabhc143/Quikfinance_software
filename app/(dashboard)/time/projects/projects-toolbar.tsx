@@ -161,9 +161,6 @@ export function ProjectsToolbar({
                 <DropdownMenuItem asChild>
                   <Link href="/time/projects/import">Import Projects</Link>
                 </DropdownMenuItem>
-                <DropdownMenuItem asChild>
-                  <Link href="/time/projects/import?type=tasks">Import Tasks</Link>
-                </DropdownMenuItem>
               </DropdownMenuSubContent>
             </DropdownMenuSub>
 
