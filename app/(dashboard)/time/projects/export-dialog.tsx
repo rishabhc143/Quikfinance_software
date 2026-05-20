@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Info, Eye, EyeOff, X } from "lucide-react";
+import { Info, Eye, EyeOff } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -66,17 +66,9 @@ export function ExportProjectsDialog({
       <DialogTrigger asChild>{trigger}</DialogTrigger>
 
       <DialogContent className="sm:max-w-md p-0 gap-0 max-h-[90vh] overflow-hidden flex flex-col">
-        {/* Header */}
-        <div className="px-6 py-4 border-b flex items-center justify-between shrink-0">
+        {/* Header — DialogContent renders its own X at top-right; do not add another. */}
+        <div className="px-6 py-4 border-b shrink-0">
           <h2 className="text-base font-semibold">Export Projects</h2>
-          <button
-            type="button"
-            onClick={() => setOpen(false)}
-            className="rounded-md p-1 hover:bg-muted text-destructive"
-            aria-label="Close"
-          >
-            <X className="h-4 w-4" />
-          </button>
         </div>
 
         {/* Body */}
@@ -87,13 +79,15 @@ export function ExportProjectsDialog({
             <span>You can export your data from Quikfinance in CSV, XLS or XLSX format.</span>
           </div>
 
-          {/* Module */}
+          {/* Module — interactive but Projects is the only module wired for export today */}
           <div>
             <Label className="text-destructive mb-1.5 block">Module*</Label>
             <select
-              disabled
               value="projects"
-              className="flex h-10 w-full rounded-md border border-input bg-muted/40 px-3 text-sm cursor-not-allowed"
+              onChange={() => {
+                // No-op for v1 — other modules will land when their export routes ship.
+              }}
+              className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
             >
               <option value="projects">Projects</option>
             </select>
@@ -104,18 +98,16 @@ export function ExportProjectsDialog({
             <Label className="mb-1.5 flex items-center gap-1">
               Export Template
               <span
-                title="Pre-saved export configurations — coming soon."
+                title="Pre-saved export configurations. Custom templates land in a future release."
                 className="text-muted-foreground"
               >
                 <Info className="h-3 w-3" />
               </span>
             </Label>
             <select
-              disabled
-              defaultValue=""
-              className="flex h-10 w-full rounded-md border border-input bg-muted/40 px-3 text-sm cursor-not-allowed"
+              defaultValue="default"
+              className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
             >
-              <option value="">Select an Export Template</option>
               <option value="default">Default</option>
             </select>
           </div>
