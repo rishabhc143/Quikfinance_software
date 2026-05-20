@@ -79,7 +79,6 @@ const NAV: NavItem[] = [
     children: [
       { label: "Projects", href: "/time/projects" },
       { label: "Time Entries", href: "/time/entries" },
-      { label: "Weekly Log", href: "/time/weekly-log" },
     ],
   },
   {
