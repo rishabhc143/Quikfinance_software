@@ -28,7 +28,7 @@ export function ExportProjectsDialog({
 }) {
   const [open, setOpen] = React.useState(false);
 
-  const [format, setFormat] = React.useState<"csv" | "xls" | "xlsx">("csv");
+  const [format, setFormat] = React.useState<"csv" | "xls" | "xlsx" | "pdf">("csv");
   const [decimal, setDecimal] = React.useState<"us" | "eu">("us");
   const [includePii, setIncludePii] = React.useState(false);
   const [password, setPassword] = React.useState("");
@@ -143,6 +143,11 @@ export function ExportProjectsDialog({
                 checked={format === "xlsx"}
                 onChange={() => setFormat("xlsx")}
                 label="XLSX (Microsoft Excel)"
+              />
+              <FormatRadio
+                checked={format === "pdf"}
+                onChange={() => setFormat("pdf")}
+                label="PDF (Branded report — Quikfinance layout)"
               />
             </div>
           </div>

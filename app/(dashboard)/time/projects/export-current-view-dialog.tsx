@@ -34,7 +34,7 @@ export function ExportCurrentViewDialog({
   const sp = useSearchParams();
   const [open, setOpen] = React.useState(false);
 
-  const [format, setFormat] = React.useState<"csv" | "xls" | "xlsx">("csv");
+  const [format, setFormat] = React.useState<"csv" | "xls" | "xlsx" | "pdf">("csv");
   const [decimal, setDecimal] = React.useState<"us" | "eu">("us");
   const [password, setPassword] = React.useState("");
   const [showPassword, setShowPassword] = React.useState(false);
@@ -126,6 +126,11 @@ export function ExportCurrentViewDialog({
                 checked={format === "xlsx"}
                 onChange={() => setFormat("xlsx")}
                 label="XLSX (Microsoft Excel)"
+              />
+              <FormatRadio
+                checked={format === "pdf"}
+                onChange={() => setFormat("pdf")}
+                label="PDF (Branded report)"
               />
             </div>
           </div>
