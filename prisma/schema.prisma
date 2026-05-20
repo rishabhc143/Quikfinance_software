@@ -35,6 +35,7 @@ model User {
   bankTxnsMatched     BankTransaction[]        @relation("BankTransactionMatchedBy")
   reconciliationsCreated   Reconciliation[]    @relation("ReconciliationCreatedBy")
   reconciliationsFinalised Reconciliation[]    @relation("ReconciliationFinalisedBy")
+  projectMemberships       ProjectUser[]
 }
 
 model Account {
@@ -138,6 +139,7 @@ model Organization {
   chartOfAccounts       ChartOfAccount[]
   taxes                 Tax[]
   projects              Project[]
+  projectUsers          ProjectUser[]
   tasks                 Task[]
   timeEntries           TimeEntry[]
   documents             Document[]
@@ -2029,15 +2031,21 @@ model Project {
   id                 String              @id @default(cuid())
   organizationId     String
   name               String
+  projectCode        String?
   customerId         String?
   status             String              @default("active")
-  budget             Decimal?            @db.Decimal(18, 4)
+  billingMethod      String?             // fixed_cost | project_hours | task_hours | staff_hours
+  description        String?
+  budget             Decimal?            @db.Decimal(18, 4) // cost budget
+  revenueBudget      Decimal?            @db.Decimal(18, 4)
+  watchedByUserIds   String[]            @default([])
   startDate          DateTime?
   endDate            DateTime?
   createdAt          DateTime            @default(now())
   organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   tasks              Task[]
   timeEntries        TimeEntry[]
+  members            ProjectUser[]
   /// ACCT-A.3.b — per-line dimensions on Manual Journals + ledger.
   manualJournalLines ManualJournalLine[] @relation("ManualJournalLineProject")
   journalEntryLines  JournalEntryLine[]  @relation("JournalEntryLineProject")
@@ -2050,10 +2058,26 @@ model Task {
   name           String
   description    String?
   status         String       @default("todo")
+  billable       Boolean      @default(true)
+  sortOrder      Int          @default(0)
   hourlyRate     Decimal?     @db.Decimal(18, 4)
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   project        Project      @relation(fields: [projectId], references: [id])
   timeEntries    TimeEntry[]
+}
+
+model ProjectUser {
+  id             String       @id @default(cuid())
+  organizationId String
+  projectId      String
+  userId         String
+  createdAt      DateTime     @default(now())
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project        Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, userId])
+  @@index([organizationId])
 }
 
 model TimeEntry {
