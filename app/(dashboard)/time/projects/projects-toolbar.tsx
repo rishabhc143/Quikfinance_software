@@ -3,7 +3,14 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ChevronDown, Plus, MoreHorizontal, RefreshCw, ArrowUpDown } from "lucide-react";
+import {
+  ChevronDown,
+  Plus,
+  MoreHorizontal,
+  Download,
+  Upload,
+  Settings,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -12,6 +19,9 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
 } from "@/components/ui/dropdown-menu";
 import { StartTimerDialog } from "./start-timer-dialog";
 
@@ -59,10 +69,6 @@ export function ProjectsToolbar({
     params.delete("page");
     const qs = params.toString();
     router.push(qs ? `/time/projects?${qs}` : "/time/projects");
-  }
-
-  function refresh() {
-    router.refresh();
   }
 
   return (
@@ -131,40 +137,71 @@ export function ProjectsToolbar({
           </DropdownMenu>
         </div>
 
-        {/* 3-dot menu */}
+        {/* 3-dot menu — Import / Export / Preferences */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="outline" size="sm" className="px-2">
               <MoreHorizontal className="h-4 w-4" />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-44">
-            <DropdownMenuLabel className="text-xs uppercase tracking-wider text-muted-foreground">
-              Sort by
-            </DropdownMenuLabel>
+          <DropdownMenuContent align="end" className="w-52">
+            {/* Import submenu */}
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger>
+                <Download className="h-3.5 w-3.5 mr-2 text-blue-600" />
+                Import
+              </DropdownMenuSubTrigger>
+              <DropdownMenuSubContent className="w-48">
+                <DropdownMenuLabel className="text-xs uppercase tracking-wider text-muted-foreground">
+                  Import from CSV
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem asChild>
+                  <Link href="/time/projects/import">Import Projects</Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link href="/time/projects/import?type=tasks">Import Tasks</Link>
+                </DropdownMenuItem>
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
+
+            {/* Export submenu */}
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger>
+                <Upload className="h-3.5 w-3.5 mr-2 text-blue-600" />
+                Export
+              </DropdownMenuSubTrigger>
+              <DropdownMenuSubContent className="w-48">
+                <DropdownMenuLabel className="text-xs uppercase tracking-wider text-muted-foreground">
+                  Export to CSV
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem asChild>
+                  <a href="/time/projects/export" download>
+                    Export Projects
+                  </a>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <a
+                    href={`/time/projects/export?${new URLSearchParams(
+                      sp.toString()
+                    ).toString()}`}
+                    download
+                  >
+                    Export Current View
+                  </a>
+                </DropdownMenuItem>
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
+
             <DropdownMenuSeparator />
+
+            {/* Preferences — direct link */}
             <DropdownMenuItem asChild>
-              <Link href="/time/projects?sort=name&dir=asc">
-                <ArrowUpDown className="h-3.5 w-3.5 mr-2" />
-                Project Name
+              <Link href="/settings/modules/timesheet">
+                <Settings className="h-3.5 w-3.5 mr-2 text-blue-600" />
+                Preferences
               </Link>
-            </DropdownMenuItem>
-            <DropdownMenuItem asChild>
-              <Link href="/time/projects?sort=createdAt&dir=desc">
-                <ArrowUpDown className="h-3.5 w-3.5 mr-2" />
-                Newest First
-              </Link>
-            </DropdownMenuItem>
-            <DropdownMenuItem asChild>
-              <Link href="/time/projects?sort=startDate&dir=desc">
-                <ArrowUpDown className="h-3.5 w-3.5 mr-2" />
-                Start Date
-              </Link>
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onSelect={refresh}>
-              <RefreshCw className="h-3.5 w-3.5 mr-2" />
-              Refresh List
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
