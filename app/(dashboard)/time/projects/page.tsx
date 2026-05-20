@@ -7,7 +7,6 @@ import {
   Timer,
   Receipt,
   FileText,
-  PlayCircle,
   Smartphone,
   Apple,
   Monitor,
@@ -133,22 +132,9 @@ export default async function ProjectsPage({
 function ProjectsOnboarding() {
   return (
     <div className="space-y-12 py-8">
-      {/* Hero: video card + CTA */}
+      {/* Hero: CTA */}
       <div className="flex flex-col items-center text-center max-w-xl mx-auto">
-        <div className="relative w-full max-w-md rounded-lg border bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 p-6 flex items-center gap-4 shadow-sm">
-          <div className="h-12 w-12 rounded-full bg-emerald-500/90 flex items-center justify-center shrink-0">
-            <PlayCircle className="h-7 w-7 text-white" />
-          </div>
-          <div className="text-left flex-1">
-            <div className="text-xs uppercase tracking-wider text-blue-600 font-semibold">
-              Quikfinance
-            </div>
-            <div className="text-sm font-medium mt-0.5">How to create a project</div>
-            <div className="text-[11px] text-muted-foreground mt-0.5">Tutorial coming soon</div>
-          </div>
-        </div>
-
-        <h2 className="text-2xl font-semibold mt-8">Create your first project</h2>
+        <h2 className="text-2xl font-semibold">Create your first project</h2>
         <p className="text-sm text-muted-foreground mt-2">
           Keep track of time you spend on various projects.
         </p>
