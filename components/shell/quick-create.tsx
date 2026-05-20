@@ -16,7 +16,6 @@ const GROUPS: Group[] = [
       { label: "Currency Adjustment", href: "/accountant/currency-adjustments/new" },
       { label: "Budget", href: "/accountant/budgets/new" },
       { label: "Log Time", href: "/time/entries/new" },
-      { label: "Weekly Log", href: "/time/weekly-log" },
     ],
   },
   {

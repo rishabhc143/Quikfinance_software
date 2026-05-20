@@ -3,14 +3,13 @@ import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ArrowRight, FolderKanban, Clock, Calendar } from "lucide-react";
+import { ArrowRight, FolderKanban, Clock } from "lucide-react";
 
 export const metadata = { title: "Time Tracking" };
 
 const TILES = [
   { href: "/time/projects", label: "Projects", icon: FolderKanban, complete: true },
   { href: "/time/entries", label: "Time Entries", icon: Clock, complete: true },
-  { href: "/time/weekly-log", label: "Weekly Log", icon: Calendar, complete: true },
 ];
 
 export default async function TimePage() {
