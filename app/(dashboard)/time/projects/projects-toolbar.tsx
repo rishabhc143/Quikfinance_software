@@ -24,6 +24,7 @@ import {
   DropdownMenuSubTrigger,
 } from "@/components/ui/dropdown-menu";
 import { StartTimerDialog } from "./start-timer-dialog";
+import { ExportProjectsDialog } from "./export-dialog";
 
 /**
  * Top toolbar for /time/projects — matches the reference layout:
@@ -173,24 +174,25 @@ export function ProjectsToolbar({
               </DropdownMenuSubTrigger>
               <DropdownMenuSubContent className="w-48">
                 <DropdownMenuLabel className="text-xs uppercase tracking-wider text-muted-foreground">
-                  Export to CSV
+                  Export to file
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem asChild>
-                  <a href="/time/projects/export" download>
-                    Export Projects
-                  </a>
-                </DropdownMenuItem>
-                <DropdownMenuItem asChild>
-                  <a
-                    href={`/time/projects/export?${new URLSearchParams(
-                      sp.toString()
-                    ).toString()}`}
-                    download
-                  >
-                    Export Current View
-                  </a>
-                </DropdownMenuItem>
+                <ExportProjectsDialog
+                  scope="all"
+                  trigger={
+                    <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
+                      Export Projects
+                    </DropdownMenuItem>
+                  }
+                />
+                <ExportProjectsDialog
+                  scope="current"
+                  trigger={
+                    <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
+                      Export Current View
+                    </DropdownMenuItem>
+                  }
+                />
               </DropdownMenuSubContent>
             </DropdownMenuSub>
 

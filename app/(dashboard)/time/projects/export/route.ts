@@ -3,15 +3,23 @@ import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
 import { toCsv, csvResponse, csvDateSuffix } from "@/lib/reports/csv-export";
+import { toXlsx, xlsxResponse } from "@/lib/reports/xlsx-export";
 import { billingMethodLabel } from "../constants";
 
+const MAX_ROWS = 25_000;
+
 /**
- * CSV export of Projects. Honours the same `status`/`q` URL filters as
- * the list page, so "Export Current View" produces a file that matches
- * what the user sees on screen.
+ * CSV / XLSX export of Projects. Honours the Export Projects dialog's
+ * configuration via URL params + the list page's `status`/`q` filters
+ * so "Export Current View" produces a file matching what's on screen.
  *
- * `?status=active|inactive|completed|cancelled` — filter by status
- * `?q=<text>`                                 — name contains text
+ * Query params:
+ *   ?format=csv|xls|xlsx      (default csv; xls falls back to xlsx)
+ *   ?decimal=us|eu            (us = 1234567.89 / eu = 1234567,89)
+ *   ?includePii=true|false    (default false; when false, drops customer
+ *                              name + description columns)
+ *   ?status=active|...        (list page filter forwarded)
+ *   ?q=<text>                 (list page filter forwarded)
  */
 export async function GET(req: Request) {
   const { organization } = await requireOrganization();
@@ -20,6 +28,13 @@ export async function GET(req: Request) {
   const q = (searchParams.get("q") ?? "").trim();
   const status = (searchParams.get("status") ?? "all").toLowerCase();
   const VALID = new Set(["active", "inactive", "completed", "cancelled"]);
+
+  const formatParam = (searchParams.get("format") ?? "csv").toLowerCase();
+  // XLS (legacy 97-2004) is served as XLSX for v1 — Excel opens both.
+  const isXlsx = formatParam === "xlsx" || formatParam === "xls";
+
+  const decimal = (searchParams.get("decimal") ?? "us").toLowerCase();
+  const includePii = searchParams.get("includePii") === "true";
 
   const where: Prisma.ProjectWhereInput = {
     organizationId: organization.id,
@@ -30,12 +45,13 @@ export async function GET(req: Request) {
   const rows = await db.project.findMany({
     where,
     orderBy: { name: "asc" },
+    take: MAX_ROWS,
   });
 
-  // Hydrate customer names for the rows we have.
-  const customerIds = Array.from(
-    new Set(rows.map((r) => r.customerId).filter(Boolean) as string[])
-  );
+  // Hydrate customer names only if we'll emit them.
+  const customerIds = includePii
+    ? Array.from(new Set(rows.map((r) => r.customerId).filter(Boolean) as string[]))
+    : [];
   const customers =
     customerIds.length > 0
       ? await db.contact.findMany({
@@ -45,38 +61,64 @@ export async function GET(req: Request) {
       : [];
   const customerMap = new Map(customers.map((c) => [c.id, c.displayName]));
 
-  const csvRows = rows.map((p) => ({
-    "Project Name": p.name,
-    "Project Code": p.projectCode ?? "",
-    "Customer Name": p.customerId ? customerMap.get(p.customerId) ?? "" : "",
-    "Status": p.status,
-    "Billing Method": billingMethodLabel(p.billingMethod),
-    "Description": p.description ?? "",
-    "Cost Budget": p.budget ? Number(p.budget).toFixed(2) : "",
-    "Revenue Budget": p.revenueBudget ? Number(p.revenueBudget).toFixed(2) : "",
-    "Start Date": p.startDate ? format(p.startDate, "yyyy-MM-dd") : "",
-    "End Date": p.endDate ? format(p.endDate, "yyyy-MM-dd") : "",
-    "Created At": format(p.createdAt, "yyyy-MM-dd"),
-  }));
+  const fmtNum = (n: number | null): string => {
+    if (n === null || n === undefined) return "";
+    if (decimal === "eu") {
+      return n
+        .toLocaleString("de-DE", {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        })
+        .replace(/\./g, ""); // de-DE uses dot as thousands sep; strip for clean CSV
+    }
+    return n.toFixed(2);
+  };
 
-  const csv = toCsv(csvRows, [
-    "Project Name",
-    "Project Code",
-    "Customer Name",
-    "Status",
-    "Billing Method",
-    "Description",
-    "Cost Budget",
-    "Revenue Budget",
-    "Start Date",
-    "End Date",
-    "Created At",
-  ]);
+  const dataRows = rows.map((p) => {
+    const base: Record<string, string | number | null | undefined> = {
+      "Project Name": p.name,
+      "Project Code": p.projectCode ?? "",
+      "Status": p.status,
+      "Billing Method": billingMethodLabel(p.billingMethod),
+      "Cost Budget": fmtNum(p.budget ? Number(p.budget) : null),
+      "Revenue Budget": fmtNum(p.revenueBudget ? Number(p.revenueBudget) : null),
+      "Start Date": p.startDate ? format(p.startDate, "yyyy-MM-dd") : "",
+      "End Date": p.endDate ? format(p.endDate, "yyyy-MM-dd") : "",
+      "Created At": format(p.createdAt, "yyyy-MM-dd"),
+    };
+    if (includePii) {
+      base["Customer Name"] = p.customerId ? customerMap.get(p.customerId) ?? "" : "";
+      base["Description"] = p.description ?? "";
+    }
+    return base;
+  });
+
+  const cols: string[] = ["Project Name", "Project Code"];
+  if (includePii) cols.push("Customer Name");
+  cols.push("Status", "Billing Method");
+  if (includePii) cols.push("Description");
+  cols.push("Cost Budget", "Revenue Budget", "Start Date", "End Date", "Created At");
 
   const suffix = csvDateSuffix(new Date());
-  const filename = status === "all" && !q
-    ? `projects-${suffix}`
-    : `projects-${status === "all" ? "filtered" : status}-${suffix}`;
+  const baseName =
+    status === "all" && !q
+      ? `projects-${suffix}`
+      : `projects-${status === "all" ? "filtered" : status}-${suffix}`;
 
-  return csvResponse(filename, csv);
+  if (isXlsx) {
+    const buf = await toXlsx({
+      sheetName: "Projects",
+      columns: cols.map((c) => ({
+        key: c,
+        header: c,
+        // Width hints for the wider text columns.
+        width: c === "Description" ? 40 : c === "Billing Method" ? 24 : 18,
+      })),
+      rows: dataRows,
+    });
+    return xlsxResponse(baseName, buf);
+  }
+
+  const csv = toCsv(dataRows, cols);
+  return csvResponse(baseName, csv);
 }
