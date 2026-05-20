@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useSearchParams } from "next/navigation";
 import { Info, Eye, EyeOff, X } from "lucide-react";
 import {
   Dialog,
@@ -13,24 +14,28 @@ import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 
 /**
- * ExportProjectsDialog — the full-featured Export Projects modal.
+ * ExportCurrentViewDialog — the simpler sibling of ExportProjectsDialog.
  *
- * Drops any active filters (always exports the whole org). For the
- * filter-aware variant see `ExportCurrentViewDialog`.
+ * Matches the reference "Export Current View" modal:
+ *   - No Module dropdown (implicit: current page = Projects list)
+ *   - No Export Template
+ *   - No Include PII checkbox
+ *   - 10,000 row cap instead of 25,000
+ *   - Banner explains "visible columns only"
  *
- * `trigger` is the menu item that opens this dialog — we pass it
- * through so the DropdownMenuItem stays as the trigger element.
+ * Forwards the list page's `?status` + `?q` filters so the exported
+ * file matches what's on screen.
  */
-export function ExportProjectsDialog({
+export function ExportCurrentViewDialog({
   trigger,
 }: {
   trigger: React.ReactNode;
 }) {
+  const sp = useSearchParams();
   const [open, setOpen] = React.useState(false);
 
   const [format, setFormat] = React.useState<"csv" | "xls" | "xlsx">("csv");
   const [decimal, setDecimal] = React.useState<"us" | "eu">("us");
-  const [includePii, setIncludePii] = React.useState(false);
   const [password, setPassword] = React.useState("");
   const [showPassword, setShowPassword] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
@@ -41,9 +46,17 @@ export function ExportProjectsDialog({
       const params = new URLSearchParams();
       params.set("format", format);
       params.set("decimal", decimal);
-      params.set("includePii", includePii ? "true" : "false");
+      // Current-view export only includes the visible (non-PII) columns by default.
+      params.set("includePii", "false");
+      // Row cap for current view is 10k, not 25k.
+      params.set("maxRows", "10000");
 
-      // Trigger file download via temporary anchor.
+      // Forward current page filters.
+      const status = sp.get("status");
+      const q = sp.get("q");
+      if (status) params.set("status", status);
+      if (q) params.set("q", q);
+
       const url = `/time/projects/export?${params.toString()}`;
       const a = document.createElement("a");
       a.href = url;
@@ -68,7 +81,7 @@ export function ExportProjectsDialog({
       <DialogContent className="sm:max-w-md p-0 gap-0 max-h-[90vh] overflow-hidden flex flex-col">
         {/* Header */}
         <div className="px-6 py-4 border-b flex items-center justify-between shrink-0">
-          <h2 className="text-base font-semibold">Export Projects</h2>
+          <h2 className="text-base font-semibold">Export Current View</h2>
           <button
             type="button"
             onClick={() => setOpen(false)}
@@ -84,40 +97,10 @@ export function ExportProjectsDialog({
           {/* Info banner */}
           <div className="rounded-md border border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-950/30 px-3 py-2 text-xs flex items-start gap-2">
             <Info className="h-3.5 w-3.5 text-blue-600 shrink-0 mt-0.5" />
-            <span>You can export your data from Quikfinance in CSV, XLS or XLSX format.</span>
-          </div>
-
-          {/* Module */}
-          <div>
-            <Label className="text-destructive mb-1.5 block">Module*</Label>
-            <select
-              disabled
-              value="projects"
-              className="flex h-10 w-full rounded-md border border-input bg-muted/40 px-3 text-sm cursor-not-allowed"
-            >
-              <option value="projects">Projects</option>
-            </select>
-          </div>
-
-          {/* Export Template */}
-          <div>
-            <Label className="mb-1.5 flex items-center gap-1">
-              Export Template
-              <span
-                title="Pre-saved export configurations — coming soon."
-                className="text-muted-foreground"
-              >
-                <Info className="h-3 w-3" />
-              </span>
-            </Label>
-            <select
-              disabled
-              defaultValue=""
-              className="flex h-10 w-full rounded-md border border-input bg-muted/40 px-3 text-sm cursor-not-allowed"
-            >
-              <option value="">Select an Export Template</option>
-              <option value="default">Default</option>
-            </select>
+            <span>
+              Only the current view with its visible columns will be exported
+              from Quikfinance in CSV or XLS format.
+            </span>
           </div>
 
           {/* Decimal Format */}
@@ -154,19 +137,6 @@ export function ExportProjectsDialog({
               />
             </div>
           </div>
-
-          {/* Include PII */}
-          <label className="inline-flex items-start gap-2 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={includePii}
-              onChange={(e) => setIncludePii(e.target.checked)}
-              className="h-4 w-4 mt-0.5 rounded border-input text-blue-600 focus:ring-blue-500"
-            />
-            <span className="text-sm">
-              Include Sensitive Personally Identifiable Information (PII) while exporting.
-            </span>
-          </label>
 
           {/* File Protection Password */}
           <div>
@@ -208,7 +178,7 @@ export function ExportProjectsDialog({
           {/* Note */}
           <div className="text-xs text-muted-foreground border-t pt-3">
             <span className="font-semibold">Note: </span>You can export only the
-            first 25,000 rows. If you have more rows, please contact support to
+            first 10,000 rows. If you have more rows, please contact support to
             initiate a full data backup of your Quikfinance organization.
           </div>
         </div>
