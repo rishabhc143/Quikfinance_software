@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useSearchParams } from "next/navigation";
-import { Info, Eye, EyeOff, X } from "lucide-react";
+import { Info, Eye, EyeOff } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -79,17 +79,9 @@ export function ExportCurrentViewDialog({
       <DialogTrigger asChild>{trigger}</DialogTrigger>
 
       <DialogContent className="sm:max-w-md p-0 gap-0 max-h-[90vh] overflow-hidden flex flex-col">
-        {/* Header */}
-        <div className="px-6 py-4 border-b flex items-center justify-between shrink-0">
+        {/* Header — DialogContent renders its own X at top-right; do not add another. */}
+        <div className="px-6 py-4 border-b shrink-0">
           <h2 className="text-base font-semibold">Export Current View</h2>
-          <button
-            type="button"
-            onClick={() => setOpen(false)}
-            className="rounded-md p-1 hover:bg-muted text-destructive"
-            aria-label="Close"
-          >
-            <X className="h-4 w-4" />
-          </button>
         </div>
 
         {/* Body */}
