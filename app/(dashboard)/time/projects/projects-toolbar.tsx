@@ -9,7 +9,6 @@ import {
   MoreHorizontal,
   Download,
   Upload,
-  Settings,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -192,15 +191,8 @@ export function ProjectsToolbar({
               </DropdownMenuSubContent>
             </DropdownMenuSub>
 
-            <DropdownMenuSeparator />
-
-            {/* Preferences — direct link */}
-            <DropdownMenuItem asChild>
-              <Link href="/settings/modules/timesheet">
-                <Settings className="h-3.5 w-3.5 mr-2 text-blue-600" />
-                Preferences
-              </Link>
-            </DropdownMenuItem>
+            {/* Preferences dropped — destination page was a stub; we'll
+                re-add when real per-module settings exist. */}
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
