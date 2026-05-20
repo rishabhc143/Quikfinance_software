@@ -309,16 +309,18 @@ function LifecycleDiagram() {
       <h3 className="text-center text-lg font-semibold mb-8">
         Life cycle of a Timesheet
       </h3>
-      <div className="mx-auto max-w-5xl px-4">
-        <div className="flex items-center justify-center gap-2 flex-wrap">
+      {/* Horizontal scroll container — diagram never wraps; scrolls
+          on viewports narrower than its content. */}
+      <div className="mx-auto max-w-6xl px-4 overflow-x-auto">
+        <div className="flex items-center justify-center gap-2 min-w-max py-2">
           <Node icon={FolderOpen} label="Project" />
           <Connector />
           <Node icon={FileSpreadsheet} label="Time Sheet" />
           <Connector />
           <Node icon={Clock} label="Log Time For Tasks" tone="purple" />
-          <Connector />
-          {/* Branch */}
-          <div className="flex flex-col gap-3">
+          <BranchConnector />
+          {/* Branch column — two rows diverging from Log Time For Tasks */}
+          <div className="flex flex-col gap-3 shrink-0">
             <div className="flex items-center gap-2">
               <Node icon={ReceiptText} label="Billable" tone="green" />
               <Connector />
@@ -332,6 +334,22 @@ function LifecycleDiagram() {
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * BranchConnector — a small visual that draws a horizontal line from
+ * the trunk into the branch column, with vertical strokes hinting at
+ * the up/down split. Pure CSS, no SVG, kept simple.
+ */
+function BranchConnector() {
+  return (
+    <div className="relative h-12 w-8 shrink-0">
+      {/* Horizontal stub from the trunk */}
+      <div className="absolute left-0 top-1/2 right-0 border-t border-dashed border-slate-300 dark:border-slate-700" />
+      {/* Vertical line through the branch point */}
+      <div className="absolute right-0 top-0 bottom-0 border-r border-dashed border-slate-300 dark:border-slate-700" />
     </div>
   );
 }
@@ -365,7 +383,7 @@ function Node({
 
 function Connector() {
   return (
-    <div className="border-t border-dashed border-slate-300 dark:border-slate-700 w-6 shrink-0" />
+    <div className="border-t border-dashed border-slate-300 dark:border-slate-700 w-8 shrink-0" />
   );
 }
 
