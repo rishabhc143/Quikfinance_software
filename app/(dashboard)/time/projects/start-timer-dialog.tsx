@@ -1,8 +1,9 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Timer, Link2, Play, Square } from "lucide-react";
+import { Timer, Play, Square } from "lucide-react";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -13,13 +14,16 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { createTimeEntryAction } from "../entries/actions";
 
-type ProjectOption = { id: string; name: string };
+type TaskOption = { id: string; name: string; billable: boolean };
+type ProjectOption = { id: string; name: string; tasks: TaskOption[] };
 
-const STORAGE_KEY = "quikfinance:active-timer:v1";
+const STORAGE_KEY = "quikfinance:active-timer:v2";
 
 type StoredTimer = {
   startedAt: number; // epoch ms
   projectId: string;
+  taskId: string;
+  billable: boolean;
   notes: string;
 };
 
@@ -58,23 +62,24 @@ function formatElapsed(ms: number): string {
 
 /**
  * StartTimerDialog — modal that lets the user start a running timer
- * against a project, with notes. While running:
- *  - Timer ticks every 1s.
- *  - State is persisted to localStorage so reloads keep it alive.
- *  - "Start Timer" becomes a red "Stop Timer".
- *  - Stopping calls `createTimeEntryAction` to write a TimeEntry with
- *    the elapsed hours (computed as ms / 3600000, max 24).
+ * against a project + task, with billable flag and notes.
+ *
+ * - Required: Project Name, Task Name
+ * - Billable defaults to the selected task's `billable`
+ * - Timer ticks every 1s while running
+ * - State persisted to localStorage; reload-safe
  */
 export function StartTimerDialog({ projects }: { projects: ProjectOption[] }) {
   const router = useRouter();
   const [open, setOpen] = React.useState(false);
 
-  // Running-timer state (persists via localStorage)
   const [stored, setStored] = React.useState<StoredTimer | null>(null);
   const [now, setNow] = React.useState<number>(() => Date.now());
 
   // Draft form state — used when no timer is running yet
   const [projectId, setProjectId] = React.useState<string>("");
+  const [taskId, setTaskId] = React.useState<string>("");
+  const [billable, setBillable] = React.useState<boolean>(true);
   const [notes, setNotes] = React.useState<string>("");
   const [busy, setBusy] = React.useState(false);
 
@@ -84,6 +89,8 @@ export function StartTimerDialog({ projects }: { projects: ProjectOption[] }) {
     if (t) {
       setStored(t);
       setProjectId(t.projectId);
+      setTaskId(t.taskId);
+      setBillable(t.billable);
       setNotes(t.notes);
     }
   }, []);
@@ -98,14 +105,59 @@ export function StartTimerDialog({ projects }: { projects: ProjectOption[] }) {
   const running = stored != null;
   const elapsedMs = running ? now - stored.startedAt : 0;
 
+  const selectedProject = projects.find((p) => p.id === projectId) ?? null;
+  const taskOptions = selectedProject?.tasks ?? [];
+
+  // When project changes, reset task selection + propagate billable default
+  // from the first task (or true if no tasks).
+  function onProjectChange(nextProjectId: string) {
+    setProjectId(nextProjectId);
+    const nextProject = projects.find((p) => p.id === nextProjectId);
+    const firstTask = nextProject?.tasks[0];
+    if (firstTask) {
+      setTaskId(firstTask.id);
+      setBillable(firstTask.billable);
+    } else {
+      setTaskId("");
+      setBillable(true);
+    }
+    if (running) {
+      writeStoredTimer({
+        ...stored!,
+        projectId: nextProjectId,
+        taskId: firstTask?.id ?? "",
+        billable: firstTask?.billable ?? true,
+      });
+    }
+  }
+
+  function onTaskChange(nextTaskId: string) {
+    setTaskId(nextTaskId);
+    const t = taskOptions.find((tt) => tt.id === nextTaskId);
+    if (t) setBillable(t.billable);
+    if (running) {
+      writeStoredTimer({
+        ...stored!,
+        taskId: nextTaskId,
+        billable: t?.billable ?? billable,
+      });
+    }
+  }
+
   function startTimer() {
     if (!projectId) {
-      toast.error("Pick a project before starting the timer.");
+      toast.error("Project Name is required.");
+      return;
+    }
+    if (!taskId) {
+      toast.error("Task Name is required.");
       return;
     }
     const t: StoredTimer = {
       startedAt: Date.now(),
       projectId,
+      taskId,
+      billable,
       notes,
     };
     writeStoredTimer(t);
@@ -125,11 +177,13 @@ export function StartTimerDialog({ projects }: { projects: ProjectOption[] }) {
     try {
       const fd = new FormData();
       fd.set("projectId", stored.projectId);
+      fd.set("taskId", stored.taskId);
       fd.set("date", new Date().toISOString().slice(0, 10));
       fd.set("hours", hours.toFixed(4));
       fd.set("description", stored.notes || "Logged via timer");
+      fd.set("billable", stored.billable ? "true" : "false");
       await createTimeEntryAction(fd);
-      // createTimeEntryAction redirects on success → control may not reach here.
+      // Redirect on success → control may not reach here.
       writeStoredTimer(null);
       setStored(null);
       setOpen(false);
@@ -138,7 +192,6 @@ export function StartTimerDialog({ projects }: { projects: ProjectOption[] }) {
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Couldn't save time entry";
       if (msg.includes("NEXT_REDIRECT")) {
-        // Redirect succeeded — clean up local state.
         writeStoredTimer(null);
         setStored(null);
         setOpen(false);
@@ -157,8 +210,9 @@ export function StartTimerDialog({ projects }: { projects: ProjectOption[] }) {
       setOpen(false);
       return;
     }
-    // Reset the draft.
     setProjectId("");
+    setTaskId("");
+    setBillable(true);
     setNotes("");
     setOpen(false);
   }
@@ -168,9 +222,14 @@ export function StartTimerDialog({ projects }: { projects: ProjectOption[] }) {
     writeStoredTimer(null);
     setStored(null);
     setProjectId("");
+    setTaskId("");
+    setBillable(true);
     setNotes("");
     setOpen(false);
   }
+
+  const projectHasNoTasks = selectedProject != null && taskOptions.length === 0;
+  const canStart = projectId !== "" && taskId !== "" && !projectHasNoTasks;
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -182,11 +241,7 @@ export function StartTimerDialog({ projects }: { projects: ProjectOption[] }) {
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
                 <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
               </span>
-              <span className="tabular-nums text-xs">
-                {formatElapsed(elapsedMs).replace(/h |m |s/g, (m) =>
-                  m.trim() === "" ? " " : m
-                )}
-              </span>
+              <span className="tabular-nums text-xs">{formatElapsed(elapsedMs)}</span>
             </>
           ) : (
             <>
@@ -211,24 +266,16 @@ export function StartTimerDialog({ projects }: { projects: ProjectOption[] }) {
 
         {/* Body */}
         <div className="p-6 space-y-4">
-          {/* Project picker */}
+          {/* Project Name */}
           <div>
-            <div className="flex items-center gap-1.5 text-sm text-blue-600 font-medium mb-1.5">
-              <Link2 className="h-3.5 w-3.5" />
-              Associate Project
-              <span className="text-destructive">*</span>
-            </div>
+            <Label className="mb-1.5 block text-destructive">
+              Project Name<span className="ml-0.5">*</span>
+            </Label>
             <select
               value={projectId}
-              onChange={(e) => {
-                setProjectId(e.target.value);
-                if (running) {
-                  // Persist project change mid-timer.
-                  writeStoredTimer({ ...stored!, projectId: e.target.value });
-                }
-              }}
+              onChange={(e) => onProjectChange(e.target.value)}
               disabled={running}
-              className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm disabled:opacity-60"
+              className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm disabled:opacity-60 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
             >
               <option value="">Select a project</option>
               {projects.map((p) => (
@@ -240,13 +287,60 @@ export function StartTimerDialog({ projects }: { projects: ProjectOption[] }) {
             {projects.length === 0 && (
               <p className="text-xs text-muted-foreground mt-1">
                 You don&apos;t have any projects yet.{" "}
-                <a href="/time/projects/new" className="text-blue-600 hover:text-blue-700">
+                <Link href="/time/projects/new" className="text-blue-600 hover:text-blue-700">
                   Create one first
-                </a>
+                </Link>
                 .
               </p>
             )}
           </div>
+
+          {/* Task Name */}
+          <div>
+            <Label className="mb-1.5 block text-destructive">
+              Task Name<span className="ml-0.5">*</span>
+            </Label>
+            <select
+              value={taskId}
+              onChange={(e) => onTaskChange(e.target.value)}
+              disabled={running || !selectedProject || projectHasNoTasks}
+              className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm disabled:opacity-60"
+            >
+              <option value="">Select task</option>
+              {taskOptions.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
+              ))}
+            </select>
+            {projectHasNoTasks && selectedProject && (
+              <p className="text-xs text-amber-700 dark:text-amber-400 mt-1">
+                No tasks for this project.{" "}
+                <Link
+                  href={`/time/projects/${selectedProject.id}/tasks/new`}
+                  className="text-blue-600 hover:text-blue-700"
+                >
+                  Add a task first
+                </Link>
+                .
+              </p>
+            )}
+          </div>
+
+          {/* Billable */}
+          <label className="inline-flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={billable}
+              onChange={(e) => {
+                const next = e.target.checked;
+                setBillable(next);
+                if (running) writeStoredTimer({ ...stored!, billable: next });
+              }}
+              className="h-4 w-4 rounded border-input text-blue-600 focus:ring-blue-500"
+            />
+            <span className="text-sm">Billable</span>
+          </label>
 
           {/* Notes */}
           <div>
@@ -255,9 +349,7 @@ export function StartTimerDialog({ projects }: { projects: ProjectOption[] }) {
               value={notes}
               onChange={(e) => {
                 setNotes(e.target.value);
-                if (running) {
-                  writeStoredTimer({ ...stored!, notes: e.target.value });
-                }
+                if (running) writeStoredTimer({ ...stored!, notes: e.target.value });
               }}
               placeholder="Add notes"
               rows={3}
@@ -295,7 +387,7 @@ export function StartTimerDialog({ projects }: { projects: ProjectOption[] }) {
             <>
               <Button
                 onClick={startTimer}
-                disabled={!projectId || projects.length === 0}
+                disabled={!canStart}
                 className="bg-blue-600 hover:bg-blue-700"
               >
                 Start Timer

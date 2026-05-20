@@ -13,16 +13,23 @@ const schema = z.object({
   date: z.coerce.date(),
   hours: z.coerce.number().positive().max(24),
   description: z.string().max(500).optional().nullable(),
+  // Per-entry billable override. nullable means "not specified".
+  billable: z.boolean().optional().nullable(),
 });
 
 function parse(formData: FormData) {
   const raw = Object.fromEntries(formData.entries());
+  // FormData strings: "true" / "false" / "" → coerce manually.
+  let billable: boolean | null | undefined = undefined;
+  if (raw.billable === "true") billable = true;
+  else if (raw.billable === "false") billable = false;
   return schema.parse({
     projectId: raw.projectId,
     taskId: raw.taskId === "" ? null : raw.taskId,
     date: raw.date,
     hours: raw.hours,
     description: raw.description || null,
+    billable,
   });
 }
 
@@ -30,9 +37,28 @@ export async function createTimeEntryAction(formData: FormData) {
   const { user, organization } = await requireOrganization();
   const data = parse(formData);
   const created = await db.timeEntry.create({
-    data: { organizationId: organization.id, userId: user.id, ...data, taskId: data.taskId ?? null, description: data.description ?? null },
+    data: {
+      organizationId: organization.id,
+      userId: user.id,
+      ...data,
+      taskId: data.taskId ?? null,
+      description: data.description ?? null,
+      billable: data.billable ?? null,
+    },
   });
-  await writeAuditLog({ organizationId: organization.id, userId: user.id, action: "CREATE", entityType: "TimeEntry", entityId: created.id, after: { hours: data.hours, projectId: data.projectId } });
+  await writeAuditLog({
+    organizationId: organization.id,
+    userId: user.id,
+    action: "CREATE",
+    entityType: "TimeEntry",
+    entityId: created.id,
+    after: {
+      hours: data.hours,
+      projectId: data.projectId,
+      taskId: data.taskId ?? null,
+      billable: data.billable ?? null,
+    },
+  });
   revalidatePath("/time/entries");
   redirect("/time/entries");
 }

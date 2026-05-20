@@ -33,7 +33,11 @@ export function ProjectsToolbar({
   projects,
 }: {
   status: string;
-  projects: { id: string; name: string }[];
+  projects: {
+    id: string;
+    name: string;
+    tasks: { id: string; name: string; billable: boolean }[];
+  }[];
 }) {
   const router = useRouter();
   const sp = useSearchParams();
