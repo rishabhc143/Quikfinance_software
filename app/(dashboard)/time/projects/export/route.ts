@@ -6,7 +6,8 @@ import { toCsv, csvResponse, csvDateSuffix } from "@/lib/reports/csv-export";
 import { toXlsx, xlsxResponse } from "@/lib/reports/xlsx-export";
 import { billingMethodLabel } from "../constants";
 
-const MAX_ROWS = 25_000;
+const DEFAULT_MAX_ROWS = 25_000;
+const HARD_CAP = 25_000; // never exceed this regardless of ?maxRows
 
 /**
  * CSV / XLSX export of Projects. Honours the Export Projects dialog's
@@ -36,6 +37,14 @@ export async function GET(req: Request) {
   const decimal = (searchParams.get("decimal") ?? "us").toLowerCase();
   const includePii = searchParams.get("includePii") === "true";
 
+  // Row cap — dialogs can request 10k (current view) or 25k (full export).
+  // Clamp to HARD_CAP regardless of what they ask for.
+  const requestedMaxRows = parseInt(searchParams.get("maxRows") ?? "", 10);
+  const maxRows =
+    Number.isFinite(requestedMaxRows) && requestedMaxRows > 0
+      ? Math.min(requestedMaxRows, HARD_CAP)
+      : DEFAULT_MAX_ROWS;
+
   const where: Prisma.ProjectWhereInput = {
     organizationId: organization.id,
     ...(q ? { name: { contains: q, mode: "insensitive" } } : {}),
@@ -45,7 +54,7 @@ export async function GET(req: Request) {
   const rows = await db.project.findMany({
     where,
     orderBy: { name: "asc" },
-    take: MAX_ROWS,
+    take: maxRows,
   });
 
   // Hydrate customer names only if we'll emit them.

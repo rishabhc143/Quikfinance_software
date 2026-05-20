@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { StartTimerDialog } from "./start-timer-dialog";
 import { ExportProjectsDialog } from "./export-dialog";
+import { ExportCurrentViewDialog } from "./export-current-view-dialog";
 
 /**
  * Top toolbar for /time/projects — matches the reference layout:
@@ -178,15 +179,13 @@ export function ProjectsToolbar({
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 <ExportProjectsDialog
-                  scope="all"
                   trigger={
                     <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
                       Export Projects
                     </DropdownMenuItem>
                   }
                 />
-                <ExportProjectsDialog
-                  scope="current"
+                <ExportCurrentViewDialog
                   trigger={
                     <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
                       Export Current View
