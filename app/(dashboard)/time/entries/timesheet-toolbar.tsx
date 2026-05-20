@@ -28,6 +28,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { StartTimerDialog } from "../projects/start-timer-dialog";
 import { NewLogEntryDialog } from "./new-log-entry-dialog";
+import { ExportTimesheetsDialog } from "./export-dialog";
+import { ExportCurrentViewDialog } from "./export-current-view-dialog";
 
 type ProjectOption = {
   id: string;
@@ -193,32 +195,48 @@ export function TimesheetToolbar({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-44">
+              {/* Import submenu */}
               <DropdownMenuSub>
                 <DropdownMenuSubTrigger>
                   <Download className="h-3.5 w-3.5 mr-2 text-blue-600" />
                   Import
                 </DropdownMenuSubTrigger>
-                <DropdownMenuSubContent className="w-44">
-                  <DropdownMenuItem disabled>
-                    Import Timesheets
-                    <span className="ml-2 text-[10px] uppercase tracking-wider bg-muted px-1.5 py-0.5 rounded-sm">
-                      Soon
-                    </span>
+                <DropdownMenuSubContent className="w-48">
+                  <DropdownMenuLabel className="text-xs uppercase tracking-wider text-muted-foreground">
+                    Import from CSV
+                  </DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem asChild>
+                    <Link href="/time/entries/import">Import Timesheets</Link>
                   </DropdownMenuItem>
                 </DropdownMenuSubContent>
               </DropdownMenuSub>
+
+              {/* Export submenu */}
               <DropdownMenuSub>
                 <DropdownMenuSubTrigger>
                   <Upload className="h-3.5 w-3.5 mr-2 text-blue-600" />
                   Export
                 </DropdownMenuSubTrigger>
-                <DropdownMenuSubContent className="w-44">
-                  <DropdownMenuItem disabled>
-                    Export Timesheets
-                    <span className="ml-2 text-[10px] uppercase tracking-wider bg-muted px-1.5 py-0.5 rounded-sm">
-                      Soon
-                    </span>
-                  </DropdownMenuItem>
+                <DropdownMenuSubContent className="w-48">
+                  <DropdownMenuLabel className="text-xs uppercase tracking-wider text-muted-foreground">
+                    Export to file
+                  </DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <ExportTimesheetsDialog
+                    trigger={
+                      <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
+                        Export Timesheets
+                      </DropdownMenuItem>
+                    }
+                  />
+                  <ExportCurrentViewDialog
+                    trigger={
+                      <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
+                        Export Current View
+                      </DropdownMenuItem>
+                    }
+                  />
                 </DropdownMenuSubContent>
               </DropdownMenuSub>
             </DropdownMenuContent>
