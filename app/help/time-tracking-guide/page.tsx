@@ -228,7 +228,7 @@ export default function TimeTrackingGuidePage() {
               href="/time/entries/new"
               className="text-blue-600 hover:text-blue-700"
             >
-              Time Tracking &rarr; Time Entries &rarr; Log Time
+              Time Tracking &rarr; Timesheet &rarr; Log Time
             </Link>{" "}
             and fill in the date, project, task, hours, and a description.
             Saves the same record shape as the timer.

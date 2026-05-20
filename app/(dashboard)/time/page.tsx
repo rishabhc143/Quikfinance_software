@@ -9,7 +9,7 @@ export const metadata = { title: "Time Tracking" };
 
 const TILES = [
   { href: "/time/projects", label: "Projects", icon: FolderKanban, complete: true },
-  { href: "/time/entries", label: "Time Entries", icon: Clock, complete: true },
+  { href: "/time/entries", label: "Timesheet", icon: Clock, complete: true },
 ];
 
 export default async function TimePage() {
