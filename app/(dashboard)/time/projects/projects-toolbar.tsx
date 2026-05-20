@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ChevronDown, Play, Plus, MoreHorizontal, RefreshCw, ArrowUpDown } from "lucide-react";
+import { ChevronDown, Plus, MoreHorizontal, RefreshCw, ArrowUpDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -13,6 +13,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { StartTimerDialog } from "./start-timer-dialog";
 
 /**
  * Top toolbar for /time/projects — matches the reference layout:
@@ -27,7 +28,13 @@ import {
  * Note: no list/card view toggle by design — projects are always shown
  * as a table for clarity.
  */
-export function ProjectsToolbar({ status }: { status: string }) {
+export function ProjectsToolbar({
+  status,
+  projects,
+}: {
+  status: string;
+  projects: { id: string; name: string }[];
+}) {
   const router = useRouter();
   const sp = useSearchParams();
 
@@ -86,12 +93,7 @@ export function ProjectsToolbar({ status }: { status: string }) {
 
       {/* Right: actions */}
       <div className="flex items-center gap-2">
-        <Button asChild variant="outline" size="sm" className="gap-1.5">
-          <Link href="/time/entries/new">
-            <Play className="h-3.5 w-3.5" />
-            Start
-          </Link>
-        </Button>
+        <StartTimerDialog projects={projects} />
 
         {/* Split + New button */}
         <div className="inline-flex">
