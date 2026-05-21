@@ -12,15 +12,17 @@ import {
   Trash2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import type { FolderRow } from "@/lib/documents/folder-tree";
+import { FolderTree } from "./folder-tree";
+import { CreateFolderDialog } from "./create-folder-dialog";
 
 /**
- * DOC-D1: Inner sidebar for the Documents page (left pane of the
- * 3-pane layout). Mirrors Zoho's sidebar:
+ * DOC-D1 / D1.2: Inner sidebar for the Documents page (left pane of
+ * the 3-pane layout). Mirrors Zoho's sidebar:
  *   - "< Back" link + "Documents" heading
  *   - "All Documents" (highlighted when no filter param is set)
  *   - INBOXES section: Files / Bank Statements
- *   - FOLDERS section with "+" trigger + recursive tree (empty until
- *     PR D1.2 wires the tree renderer)
+ *   - FOLDERS section with "+" trigger + recursive tree
  *   - Trash row at bottom
  *
  * URL params drive the active view: `?inbox=files`, `?inbox=bank-statements`,
@@ -28,10 +30,10 @@ import { cn } from "@/lib/utils";
  */
 export function DocumentsSidebar({
   trashCount,
-  folderCount,
+  folders,
 }: {
   trashCount: number;
-  folderCount: number;
+  folders: FolderRow[];
 }) {
   const searchParams = useSearchParams();
   const pathname = usePathname();
@@ -43,6 +45,8 @@ export function DocumentsSidebar({
   const isFilesInbox = inbox === "files";
   const isBankInbox = inbox === "bank-statements";
   const isTrash = view === "trash";
+
+  const [createOpen, setCreateOpen] = React.useState(false);
 
   return (
     <aside className="w-full md:w-[260px] shrink-0 border-r bg-muted/20 flex flex-col">
@@ -108,36 +112,32 @@ export function DocumentsSidebar({
           <span className="text-xs font-semibold tracking-wider text-muted-foreground">
             FOLDERS
           </span>
-          {/* PR D1.2 will wire the CreateFolderDialog here. */}
           <button
             type="button"
-            disabled
-            title="Folder creation arrives in PR D1.2"
-            aria-label="Create folder (coming soon)"
-            className="inline-flex items-center justify-center h-5 w-5 rounded text-muted-foreground/60 hover:bg-muted/60 disabled:cursor-not-allowed"
+            onClick={() => setCreateOpen(true)}
+            aria-label="Create folder"
+            title="Create folder"
+            className="inline-flex items-center justify-center h-5 w-5 rounded text-muted-foreground hover:bg-muted/60 hover:text-foreground"
           >
             <Plus className="h-4 w-4" />
           </button>
         </div>
-        <div className="mt-2 px-4 text-center">
-          {folderCount === 0 ? (
-            <>
-              <p className="text-xs text-muted-foreground">
-                There are no folders.
-              </p>
-              <span
-                title="Folder creation arrives in PR D1.2"
-                className="mt-1 inline-block text-xs text-primary/60 cursor-not-allowed"
-              >
-                Create New Folder
-              </span>
-            </>
-          ) : (
+        {folders.length === 0 ? (
+          <div className="mt-2 px-4 text-center">
             <p className="text-xs text-muted-foreground">
-              {folderCount} folder{folderCount === 1 ? "" : "s"}
+              There are no folders.
             </p>
-          )}
-        </div>
+            <button
+              type="button"
+              onClick={() => setCreateOpen(true)}
+              className="mt-1 text-xs text-primary hover:underline"
+            >
+              Create New Folder
+            </button>
+          </div>
+        ) : (
+          <FolderTree folders={folders} />
+        )}
       </div>
 
       {/* Trash row pinned to bottom */}
@@ -160,6 +160,12 @@ export function DocumentsSidebar({
           ) : null}
         </Link>
       </div>
+
+      <CreateFolderDialog
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+        parentFolderId={null}
+      />
     </aside>
   );
 }
