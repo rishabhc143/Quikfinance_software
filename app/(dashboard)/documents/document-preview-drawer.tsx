@@ -18,6 +18,11 @@ import {
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { fileTypeFromMime } from "@/lib/documents/file-type";
+import {
+  asDocumentType,
+  labelForDocumentType,
+  badgeClassFor,
+} from "@/lib/documents/document-types";
 
 /**
  * DOC-D1.4: Side-drawer preview for a single document.
@@ -42,6 +47,12 @@ export type DocumentPreviewItem = {
   uploadedBy: string;
   uploadedAt: string;
   folder: string | null;
+  /** DOC-D2.1: Smart Capture classification result (may be null until
+   *  D2.2+ adds parsers — D2.1 only fills this for PDFs). */
+  documentType?: string | null;
+  /** DOC-D2.1: Full extracted text (capped at 64KB). Shown in the
+   *  Smart Capture panel of the preview drawer. Null = not extracted. */
+  extractedText?: string | null;
 };
 
 export function DocumentPreviewDrawer({
@@ -94,6 +105,7 @@ function PreviewBody({
   const bucket = fileTypeFromMime(doc.mimeType);
   const isImage = bucket === "image";
   const isPdf = bucket === "pdf";
+  const detectedType = asDocumentType(doc.documentType);
 
   return (
     <div className="flex flex-col h-full">
@@ -105,8 +117,21 @@ function PreviewBody({
           <FileText className="h-4 w-4 text-red-500 shrink-0" />
         )}
         <div className="flex-1 min-w-0">
-          <div className="text-sm font-semibold truncate" title={doc.name}>
-            {doc.name}
+          <div className="text-sm font-semibold truncate flex items-center gap-2" title={doc.name}>
+            <span className="truncate">{doc.name}</span>
+            {/* DOC-D2.1: Smart Capture detected-type badge. Only
+                renders for known types; UNKNOWN/null stays quiet. */}
+            {detectedType && detectedType !== "UNKNOWN" ? (
+              <span
+                className={cn(
+                  "shrink-0 text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded font-medium",
+                  badgeClassFor(detectedType)
+                )}
+                title="Auto-detected by Smart Capture"
+              >
+                {labelForDocumentType(detectedType)}
+              </span>
+            ) : null}
           </div>
           <div className="text-xs text-muted-foreground">
             {doc.uploadedBy} · {format(new Date(doc.uploadedAt), "dd MMM yyyy")}
@@ -186,6 +211,57 @@ function PreviewBody({
           </div>
         )}
       </div>
+
+      {/* DOC-D2.1: Smart Capture extracted-text panel.
+          Renders below the preview body when extraction produced text.
+          Collapsible to keep the drawer body real-estate generous. */}
+      {doc.extractedText ? (
+        <SmartCapturePanel
+          text={doc.extractedText}
+          type={detectedType}
+        />
+      ) : null}
     </div>
+  );
+}
+
+function SmartCapturePanel({
+  text,
+  type,
+}: {
+  text: string;
+  type: ReturnType<typeof asDocumentType>;
+}) {
+  const [expanded, setExpanded] = React.useState(false);
+  const preview = expanded ? text : text.slice(0, 500);
+  const truncated = !expanded && text.length > 500;
+
+  return (
+    <details
+      className="shrink-0 border-t bg-muted/10"
+      open={expanded}
+      onToggle={(e) => setExpanded((e.currentTarget as HTMLDetailsElement).open)}
+    >
+      <summary className="cursor-pointer select-none px-4 py-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2 hover:bg-muted/40">
+        <span>Smart Capture · Extracted Text</span>
+        {type && type !== "UNKNOWN" ? (
+          <span
+            className={cn(
+              "text-[10px] normal-case tracking-normal px-1.5 py-0.5 rounded font-medium",
+              badgeClassFor(type)
+            )}
+          >
+            Detected: {labelForDocumentType(type)}
+          </span>
+        ) : null}
+        <span className="ml-auto text-[10px] normal-case tracking-normal text-muted-foreground">
+          {text.length.toLocaleString()} chars
+        </span>
+      </summary>
+      <div className="max-h-[40vh] overflow-y-auto px-4 py-3 text-xs font-mono whitespace-pre-wrap bg-background text-foreground/80">
+        {preview}
+        {truncated ? <span className="text-muted-foreground">…</span> : null}
+      </div>
+    </details>
   );
 }

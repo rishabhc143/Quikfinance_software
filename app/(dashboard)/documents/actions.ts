@@ -9,6 +9,8 @@ import { requireOrganization } from "@/lib/auth-helpers";
 import { writeAuditLog } from "@/lib/audit";
 import { collectDescendantIds } from "@/lib/documents/folder-tree";
 import { sha256Buffer, dupWarning } from "@/lib/documents/dedup";
+import { extractPdfText } from "@/lib/documents/pdf-extract";
+import { classifyDocument } from "@/lib/documents/document-classifier";
 
 const schema = z.object({
   name: z.string().min(1).max(200),
@@ -657,6 +659,33 @@ export async function uploadDocumentsAction(
       continue;
     }
 
+    // DOC-D2.1: Smart Capture — extract + classify the file before
+    // we persist the row, so the Document gets stored WITH the
+    // extracted text / type in one write. Fail-open: extraction
+    // errors fall through to `null` fields and never block the
+    // upload.
+    let extractedText: string | null = null;
+    let documentType: string | null = null;
+    let extractedAt: Date | null = null;
+    if (file.type === "application/pdf") {
+      try {
+        extractedText = await extractPdfText(buffer);
+        if (extractedText) {
+          const classification = classifyDocument(extractedText);
+          documentType = classification.type;
+        }
+        extractedAt = new Date();
+      } catch (err) {
+        console.warn("[documents/upload] smart-capture extract failed", err);
+      }
+    }
+
+    // Auto-route bank statements into the Bank Statements inbox so
+    // the sidebar count reflects them immediately. Other types stay
+    // in Files until D2.3 wires Bill / Receipt routing.
+    const inbox =
+      documentType === "BANK_STATEMENT" ? "BANK_STATEMENTS" : "FILES";
+
     const created = await db.document.create({
       data: {
         organizationId: organization.id,
@@ -665,8 +694,11 @@ export async function uploadDocumentsAction(
         mimeType: file.type || null,
         sizeBytes: file.size,
         fileHash,
-        inbox: "FILES",
+        inbox,
         uploadedBy: user.id,
+        extractedText,
+        documentType,
+        extractedAt,
       },
     });
 
@@ -676,7 +708,12 @@ export async function uploadDocumentsAction(
       action: "CREATE",
       entityType: "Document",
       entityId: created.id,
-      after: { name: file.name, source: "files-inbox-bulk-upload" },
+      after: {
+        name: file.name,
+        source: "files-inbox-bulk-upload",
+        documentType,
+        smartCaptured: !!extractedText,
+      },
     });
 
     results.push({ fileName: file.name, status: "uploaded", id: created.id });

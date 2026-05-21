@@ -2126,6 +2126,20 @@ model Document {
   /// the "Associated To" column.
   associatedEntityType String?
   associatedEntityId   String?
+  /// DOC-D2.1: full extracted text from pdf-parse (truncated to 64KB
+  /// at the lib layer so DB rows stay reasonable). Null until the
+  /// extraction worker runs after upload.
+  extractedText        String?
+  /// DOC-D2.2+: structured fields per documentType. Shape varies by
+  /// type — bank statement: { rows: [{date, description, debit,
+  /// credit, balance}] }; bill: { vendorName, gstin, total, items[] };
+  /// etc. Null in D2.1 (no parsers yet).
+  extractedFields      Json?
+  /// DOC-D2.1: classification result from `classifyDocument` —
+  /// BANK_STATEMENT / BILL / RECEIPT / INVOICE / CONTRACT / UNKNOWN.
+  documentType         String?
+  /// DOC-D2.1: when extraction last ran. Null = not yet processed.
+  extractedAt          DateTime?
   organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   folderRef      DocumentFolder? @relation("DocumentFolder", fields: [folderId], references: [id], onDelete: SetNull)
 
@@ -2133,6 +2147,7 @@ model Document {
   @@index([organizationId, inbox, deletedAt])
   @@index([organizationId, fileHash])
   @@index([organizationId, associatedEntityType, associatedEntityId])
+  @@index([organizationId, documentType, deletedAt])
 }
 
 /// DOC-D1: Recursive folder tree powering the Documents sidebar.
