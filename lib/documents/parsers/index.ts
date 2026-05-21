@@ -12,6 +12,10 @@
 import { detectBank } from "./detect-bank";
 import { parseHdfcStatement } from "./hdfc";
 import { parseIciciStatement } from "./icici";
+import { parseAxisStatement } from "./axis";
+import { parseSbiStatement } from "./sbi";
+import { parseKotakStatement } from "./kotak";
+import { parseIdfcStatement } from "./idfc";
 import { parseBill, type ParsedBill } from "./bill";
 import { parseReceipt, type ParsedReceipt } from "./receipt";
 import type { ParsedBankStatement } from "./bank-statement-types";
@@ -35,14 +39,19 @@ export function parseBankStatement(
         result = parseIciciStatement(text);
         break;
       case "AXIS":
+        result = parseAxisStatement(text);
+        break;
       case "SBI":
+        result = parseSbiStatement(text);
+        break;
       case "KOTAK":
+        result = parseKotakStatement(text);
+        break;
       case "IDFC":
+        result = parseIdfcStatement(text);
+        break;
       case "UNKNOWN":
       default:
-        // D2.4 adds Axis / SBI / Kotak / IDFC parsers. Until then we
-        // surface bank: UNKNOWN with zero rows so the UI can still
-        // show the bank name in the badge.
         result = null;
         break;
     }
