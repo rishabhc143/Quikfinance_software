@@ -1,61 +1,127 @@
-import Link from "next/link";
-import { format } from "date-fns";
-import { ExternalLink } from "lucide-react";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
-import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { parseFileTypeParam, fileTypeFromMime } from "@/lib/documents/file-type";
+import { DocumentsShell } from "./documents-shell";
+import type { DocumentTableRow } from "./documents-table";
 
 export const metadata = { title: "Documents" };
+export const dynamic = "force-dynamic";
 
-export default async function DocumentsPage() {
+/**
+ * DOC-D1: Documents page server component.
+ *
+ * Renders the 3-pane shell (sidebar + toolbar + filter + table). URL
+ * params drive the filter:
+ *   - ?view=trash         → show only soft-deleted rows
+ *   - ?inbox=files        → Files inbox
+ *   - ?inbox=bank-statements → Bank Statements inbox (placeholder
+ *     until Phase D2 Smart Capture populates it)
+ *   - ?folderId=<id>      → drill into a folder (D1.2)
+ *   - ?fileType=<bucket>  → narrow to one MIME bucket
+ *
+ * Default (no params) = "All Documents" excluding Trash.
+ *
+ * Wraps the DB work in try/catch so the page never 500s in the
+ * narrow window between deploy + migration on prod (same pattern
+ * used by `/getting-started`).
+ */
+export default async function DocumentsPage({
+  searchParams,
+}: {
+  searchParams?: {
+    view?: string;
+    inbox?: string;
+    folderId?: string;
+    fileType?: string;
+  };
+}) {
   const { organization } = await requireOrganization();
-  const docs = await db.document.findMany({
-    where: { organizationId: organization.id },
-    orderBy: { createdAt: "desc" },
-  });
+  const params = searchParams ?? {};
+  const showTrash = params.view === "trash";
+  const fileTypeFilter = parseFileTypeParam(params.fileType);
+
+  let rows: DocumentTableRow[] = [];
+  let trashCount = 0;
+  let folderCount = 0;
+
+  try {
+    // Fetch all documents matching the view (Trash vs Live).
+    const docs = await db.document.findMany({
+      where: {
+        organizationId: organization.id,
+        deletedAt: showTrash ? { not: null } : null,
+        ...(params.inbox === "files" ? { inbox: "FILES" } : {}),
+        ...(params.inbox === "bank-statements"
+          ? { inbox: "BANK_STATEMENTS" }
+          : {}),
+        ...(params.folderId ? { folderId: params.folderId } : {}),
+      },
+      orderBy: { createdAt: "desc" },
+      take: 500,
+    });
+
+    // Look up uploader display names in one batch (small set; org-scoped).
+    const uploaderIds = Array.from(
+      new Set(docs.map((d) => d.uploadedBy).filter((x): x is string => !!x))
+    );
+    const uploaders = uploaderIds.length
+      ? await db.user.findMany({
+          where: { id: { in: uploaderIds } },
+          select: { id: true, name: true, email: true },
+        })
+      : [];
+    const uploaderById = new Map(uploaders.map((u) => [u.id, u]));
+
+    // Apply file-type filter at this layer (post-DB, since MIME is
+    // grouped by helper, not stored as a bucket).
+    const filteredDocs = fileTypeFilter
+      ? docs.filter((d) => fileTypeFromMime(d.mimeType) === fileTypeFilter)
+      : docs;
+
+    rows = filteredDocs.map((d) => {
+      const uploader = d.uploadedBy ? uploaderById.get(d.uploadedBy) : null;
+      return {
+        id: d.id,
+        name: d.name,
+        url: d.url,
+        mimeType: d.mimeType,
+        uploadedBy: uploader?.name || uploader?.email || "System",
+        uploadedAt: d.createdAt.toISOString(),
+        // Associated To column is wired in PR D1.4 — for now just
+        // render the polymorphic columns as-is, or "—" when unset.
+        associatedTo:
+          d.associatedEntityType && d.associatedEntityId
+            ? `${d.associatedEntityType}`
+            : null,
+        folder: d.folder ?? null,
+      };
+    });
+
+    // Sidebar counts.
+    [trashCount, folderCount] = await Promise.all([
+      db.document.count({
+        where: {
+          organizationId: organization.id,
+          deletedAt: { not: null },
+        },
+      }),
+      db.documentFolder.count({
+        where: {
+          organizationId: organization.id,
+          deletedAt: null,
+        },
+      }),
+    ]);
+  } catch (err) {
+    console.error("[documents] data fetch failed", err);
+    // Fall through with empty arrays; UI shows empty state.
+  }
+
   return (
-    <div className="p-6 max-w-5xl mx-auto space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-semibold">Documents</h1>
-          <p className="text-sm text-muted-foreground">{docs.length} files attached to this organization.</p>
-        </div>
-        <Button asChild><Link href="/documents/new">+ Add document</Link></Button>
-      </div>
-      {docs.length === 0 ? (
-        <Card>
-          <CardContent className="py-12 text-center text-sm text-muted-foreground space-y-3">
-            <p>Drop receipts, contracts, statements, and supporting files here.</p>
-            <p className="text-xs">Upload files directly (up to 10 MB) or paste a URL for files hosted elsewhere.</p>
-            <Button asChild><Link href="/documents/new">+ Add your first document</Link></Button>
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="rounded-md border bg-background">
-          <table className="w-full text-sm">
-            <thead className="bg-muted/30 text-xs uppercase tracking-wider text-muted-foreground">
-              <tr><th className="text-left p-3">Name</th><th className="text-left p-3">Folder</th><th className="text-left p-3">Type</th><th className="text-left p-3">Uploaded</th><th /></tr>
-            </thead>
-            <tbody className="divide-y">
-              {docs.map((d) => (
-                <tr key={d.id}>
-                  <td className="p-3 font-medium">{d.name}</td>
-                  <td className="p-3">{d.folder ? <Badge variant="outline">{d.folder}</Badge> : "—"}</td>
-                  <td className="p-3 text-xs text-muted-foreground">{d.mimeType ?? "—"}</td>
-                  <td className="p-3 text-xs text-muted-foreground">{format(d.createdAt, "dd MMM yyyy")}</td>
-                  <td className="p-3 text-right">
-                    <a href={d.url} target="_blank" rel="noreferrer" className="text-primary hover:underline inline-flex items-center gap-1 text-xs">
-                      Open <ExternalLink className="h-3 w-3" />
-                    </a>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </div>
+    <DocumentsShell
+      rows={rows}
+      trashCount={trashCount}
+      folderCount={folderCount}
+    />
   );
 }
