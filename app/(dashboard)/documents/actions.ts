@@ -1188,6 +1188,193 @@ export async function createExpenseFromDocumentAction(input: {
   return { ok: true, expenseId: created.id };
 }
 
+// ───────────────────── BANK STATEMENTS INBOX: direct drop ─────────────────────
+
+/**
+ * Direct drag-drop action for the Bank Statements inbox.
+ *
+ * Differs from `uploadDocumentsAction` in two ways:
+ *   1. Forces `inbox = "BANK_STATEMENTS"` regardless of classifier
+ *      output — the user explicitly chose this inbox, so we trust
+ *      that intent over the heuristic.
+ *   2. Forces `documentType = "BANK_STATEMENT"` so the bank-statement
+ *      parser runs on every PDF dropped here (instead of routing
+ *      through the generic classifier). If `parseBankStatement`
+ *      can't recognise the layout, `extractedFields` stays null —
+ *      the doc still lands in the inbox so the user can see it.
+ *
+ * Same dedup + MIME guards + per-file result list as the generic
+ * action.
+ */
+export async function uploadBankStatementsAction(
+  formData: FormData
+): Promise<UploadDocumentsResult> {
+  const { user, organization } = await requireOrganization();
+
+  const files: File[] = [];
+  for (const [key, value] of formData.entries()) {
+    if (key.startsWith("file_") && value instanceof File && value.size > 0) {
+      files.push(value);
+    }
+  }
+  if (files.length === 0) {
+    return {
+      ok: false,
+      results: [
+        {
+          fileName: "(none)",
+          status: "error",
+          message: "Choose at least one file to upload.",
+        },
+      ],
+    };
+  }
+  if (!process.env.BLOB_READ_WRITE_TOKEN) {
+    return {
+      ok: false,
+      results: files.map((f) => ({
+        fileName: f.name,
+        status: "error" as const,
+        message:
+          "Direct file upload is not configured on this deployment. Ask your admin to add BLOB_READ_WRITE_TOKEN to the environment.",
+      })),
+    };
+  }
+
+  const results: UploadDocumentItemResult[] = [];
+
+  for (const file of files) {
+    if (file.size > MAX_BYTES) {
+      results.push({
+        fileName: file.name,
+        status: "error",
+        message: `File is too large (${(file.size / 1024 / 1024).toFixed(1)} MB). Maximum is 10 MB.`,
+      });
+      continue;
+    }
+    if (file.type && !ALLOWED_MIMES.includes(file.type)) {
+      results.push({
+        fileName: file.name,
+        status: "error",
+        message: `File type "${file.type}" is not allowed. Drop a PDF, image, or CSV/XLS export of your bank statement.`,
+      });
+      continue;
+    }
+
+    let buffer: Buffer;
+    try {
+      const ab = await file.arrayBuffer();
+      buffer = Buffer.from(ab);
+    } catch (err) {
+      console.error("[bank-statements/upload] failed to read buffer", err);
+      results.push({
+        fileName: file.name,
+        status: "error",
+        message: "Couldn't read the file. Try again.",
+      });
+      continue;
+    }
+    const fileHash = sha256Buffer(buffer);
+
+    const existing = await db.document.findFirst({
+      where: { organizationId: organization.id, fileHash, deletedAt: null },
+      orderBy: { createdAt: "desc" },
+      select: { id: true, name: true, createdAt: true },
+    });
+    if (existing) {
+      results.push({
+        fileName: file.name,
+        status: "duplicate",
+        existingId: existing.id,
+        existingName: existing.name,
+        message: dupWarning(existing.name, existing.createdAt),
+      });
+      continue;
+    }
+
+    // Force documentType + parse — even when classifier might disagree.
+    // The user dropped this here intentionally.
+    let extractedText: string | null = null;
+    let extractedFields: ParsedBankStatement | null = null;
+    let extractedAt: Date | null = null;
+    if (file.type === "application/pdf") {
+      try {
+        extractedText = await extractPdfText(buffer);
+        if (extractedText) {
+          const parsed = parseByDocumentType(extractedText, "BANK_STATEMENT");
+          if (parsed && "rows" in parsed) {
+            extractedFields = parsed as ParsedBankStatement;
+          }
+        }
+        extractedAt = new Date();
+      } catch (err) {
+        console.warn(
+          "[bank-statements/upload] smart-capture extract failed",
+          err
+        );
+      }
+    }
+
+    const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+    const blobKey = `org-${organization.id}/${Date.now()}-${safeName}`;
+    let blobUrl: string;
+    try {
+      const blob = await put(blobKey, buffer, {
+        access: "public",
+        addRandomSuffix: false,
+        contentType: file.type || undefined,
+      });
+      blobUrl = blob.url;
+    } catch (err) {
+      console.error("[bank-statements/upload] vercel blob put failed", err);
+      results.push({
+        fileName: file.name,
+        status: "error",
+        message: "Upload failed. Check your connection and try again.",
+      });
+      continue;
+    }
+
+    const created = await db.document.create({
+      data: {
+        organizationId: organization.id,
+        name: file.name,
+        url: blobUrl,
+        mimeType: file.type || null,
+        sizeBytes: file.size,
+        fileHash,
+        inbox: "BANK_STATEMENTS",
+        documentType: "BANK_STATEMENT",
+        extractedText,
+        extractedFields:
+          extractedFields as unknown as Prisma.InputJsonValue,
+        extractedAt,
+        uploadedBy: user.id,
+      },
+    });
+
+    await writeAuditLog({
+      organizationId: organization.id,
+      userId: user.id,
+      action: "CREATE",
+      entityType: "Document",
+      entityId: created.id,
+      after: {
+        name: file.name,
+        source: "bank-statements-inbox-direct-drop",
+        parsed: !!extractedFields,
+        rowCount: extractedFields?.rows.length ?? 0,
+      },
+    });
+
+    results.push({ fileName: file.name, status: "uploaded", id: created.id });
+  }
+
+  revalidatePath("/documents");
+  const anyOk = results.some((r) => r.status === "uploaded");
+  return { ok: anyOk, results };
+}
+
 // ───────────────────── DOC-D3.1: Inbox email actions ─────────────────────
 
 /**
