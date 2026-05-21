@@ -1,7 +1,10 @@
 "use client";
 
 import * as React from "react";
-import { useSearchParams } from "next/navigation";
+import Link from "next/link";
+import { useSearchParams, usePathname } from "next/navigation";
+import { ChevronRight } from "lucide-react";
+import type { FolderRow } from "@/lib/documents/folder-tree";
 import { DocumentsSidebar } from "./documents-sidebar";
 import { DocumentsToolbar } from "./documents-toolbar";
 import { FileTypeFilter } from "./file-type-filter";
@@ -16,20 +19,22 @@ import {
  * pre-filters rows, client just renders the right title + sidebar
  * active state).
  *
- * Receives already-filtered rows from the server (`page.tsx`) — no
- * client-side fetching. Keeps the table snappy and the request shape
- * predictable.
+ * D1.2 adds folder breadcrumb above the table when the user has
+ * drilled into a folder.
  */
 export function DocumentsShell({
   rows,
   trashCount,
-  folderCount,
+  folders,
+  folderBreadcrumb,
 }: {
   rows: DocumentTableRow[];
   trashCount: number;
-  folderCount: number;
+  folders: FolderRow[];
+  folderBreadcrumb: Array<{ id: string; name: string }>;
 }) {
   const searchParams = useSearchParams();
+  const pathname = usePathname();
   const inbox = searchParams.get("inbox");
   const view = searchParams.get("view");
 
@@ -37,16 +42,56 @@ export function DocumentsShell({
   if (view === "trash") title = "Trash";
   else if (inbox === "files") title = "Files";
   else if (inbox === "bank-statements") title = "Bank Statements";
+  else if (folderBreadcrumb.length > 0) {
+    title = folderBreadcrumb[folderBreadcrumb.length - 1].name;
+  }
 
   return (
     <div className="flex h-[calc(100vh-3.5rem)] overflow-hidden">
-      <DocumentsSidebar
-        trashCount={trashCount}
-        folderCount={folderCount}
-      />
+      <DocumentsSidebar trashCount={trashCount} folders={folders} />
 
       <main className="flex-1 flex flex-col min-w-0 bg-background">
         <DocumentsToolbar title={title} />
+
+        {/* Breadcrumb shows the folder path when drilled in. */}
+        {folderBreadcrumb.length > 0 ? (
+          <nav
+            aria-label="Folder breadcrumb"
+            className="px-6 py-2 border-b bg-muted/10 text-xs"
+          >
+            <ol className="flex items-center gap-1 flex-wrap text-muted-foreground">
+              <li>
+                <Link href={pathname} className="hover:underline">
+                  All Documents
+                </Link>
+              </li>
+              {folderBreadcrumb.map((crumb, idx) => {
+                const isLast = idx === folderBreadcrumb.length - 1;
+                return (
+                  <React.Fragment key={crumb.id}>
+                    <li>
+                      <ChevronRight className="h-3 w-3" />
+                    </li>
+                    <li>
+                      {isLast ? (
+                        <span className="font-medium text-foreground">
+                          {crumb.name}
+                        </span>
+                      ) : (
+                        <Link
+                          href={`${pathname}?folderId=${crumb.id}`}
+                          className="hover:underline"
+                        >
+                          {crumb.name}
+                        </Link>
+                      )}
+                    </li>
+                  </React.Fragment>
+                );
+              })}
+            </ol>
+          </nav>
+        ) : null}
 
         <div className="px-6 py-2.5 border-b bg-muted/10">
           <FileTypeFilter />
