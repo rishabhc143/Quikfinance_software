@@ -64,6 +64,12 @@ export type DocumentTableRow = {
   uploadedAt: string; // ISO
   associatedTo: AssociatedToCell | null;
   folder: string | null;
+  /** DOC-D2.1: Smart Capture detected type. Surfaced as a small badge
+   *  on the row + in the preview drawer header. */
+  documentType?: string | null;
+  /** DOC-D2.1: Extracted text (capped 64KB). Passed to the preview
+   *  drawer so users can scan the Smart Capture output. */
+  extractedText?: string | null;
 };
 
 function iconFor(bucket: FileTypeBucket) {
@@ -133,6 +139,8 @@ export function DocumentsTable({
       uploadedBy: r.uploadedBy,
       uploadedAt: r.uploadedAt,
       folder: r.folder,
+      documentType: r.documentType ?? null,
+      extractedText: r.extractedText ?? null,
     });
   }
 

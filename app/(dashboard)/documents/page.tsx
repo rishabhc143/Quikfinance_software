@@ -147,6 +147,10 @@ export default async function DocumentsPage({
         uploadedAt: d.createdAt.toISOString(),
         associatedTo: aCell,
         folder: folderName,
+        // DOC-D2.1: Smart Capture fields forwarded to the preview
+        // drawer. Null on legacy / non-PDF / extraction-failed rows.
+        documentType: d.documentType,
+        extractedText: d.extractedText,
       };
     });
 
