@@ -12,15 +12,18 @@ import {
   DocumentsTable,
   type DocumentTableRow,
 } from "./documents-table";
+import { FilesInbox } from "./files-inbox";
 
 /**
- * DOC-D1: Client-side wrapper for the Documents 3-pane shell. Owns
- * the title resolution off `?inbox=` / `?view=` / `?folderId=` (server
- * pre-filters rows, client just renders the right title + sidebar
- * active state).
+ * DOC-D1 / D1.2 / D1.3: Client-side wrapper for the Documents 3-pane
+ * shell. Owns the title resolution off `?inbox=` / `?view=` /
+ * `?folderId=` (server pre-filters rows, client renders the title +
+ * sidebar active state).
  *
- * D1.2 adds folder breadcrumb above the table when the user has
- * drilled into a folder.
+ * - `?inbox=files` → renders <FilesInbox> (drag-drop + email stub),
+ *   matches the user-shared screenshot exactly.
+ * - `?inbox=bank-statements` → Phase D2 placeholder.
+ * - default / folder / trash → the regular 5-column documents table.
  */
 export function DocumentsShell({
   rows,
@@ -93,13 +96,24 @@ export function DocumentsShell({
           </nav>
         ) : null}
 
-        <div className="px-6 py-2.5 border-b bg-muted/10">
-          <FileTypeFilter />
-        </div>
+        {/* Files inbox has its own drag-drop layout — no file-type
+            filter on top because the surface IS an upload area. */}
+        {inbox !== "files" ? (
+          <div className="px-6 py-2.5 border-b bg-muted/10">
+            <FileTypeFilter />
+          </div>
+        ) : null}
 
-        {/* Bank Statements inbox is a Phase D2 surface — show a
-            friendly placeholder until Smart Capture ships. */}
-        {inbox === "bank-statements" ? (
+        {inbox === "files" ? (
+          <FilesInbox
+            rows={rows.map((r) => ({
+              id: r.id,
+              name: r.name,
+              mimeType: r.mimeType,
+            }))}
+          />
+        ) : inbox === "bank-statements" ? (
+          /* Phase D2 placeholder until Smart Capture ships. */
           <div className="flex-1 flex flex-col items-center justify-center px-6 py-16 text-center">
             <p className="text-base font-medium">
               Bank statements inbox is coming soon
