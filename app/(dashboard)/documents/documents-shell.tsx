@@ -13,6 +13,7 @@ import {
   type DocumentTableRow,
 } from "./documents-table";
 import { FilesInbox } from "./files-inbox";
+import { InboxEmailCard } from "./inbox-email-card";
 
 /**
  * DOC-D1 / D1.2 / D1.3 / D1.4: Client-side wrapper for the Documents
@@ -118,17 +119,37 @@ export function DocumentsShell({
             }))}
           />
         ) : inbox === "bank-statements" ? (
-          /* Phase D2 placeholder until Smart Capture ships. */
-          <div className="flex-1 flex flex-col items-center justify-center px-6 py-16 text-center">
-            <p className="text-base font-medium">
-              Bank statements inbox is coming soon
-            </p>
-            <p className="text-sm text-muted-foreground mt-2 max-w-md">
-              Quikfinance Smart Capture will land here in Phase D2.
-              Drop any HDFC/ICICI/Axis/SBI/Kotak PDF and we&apos;ll
-              auto-extract transactions for one-click import — free,
-              no credits.
-            </p>
+          /* DOC-D3.1: Bank Statements inbox now shows the live email
+              address (when configured) + the existing table of
+              auto-routed statements. Removes the old "Coming soon"
+              placeholder — Phase D2 already ships the parsing, D3.1
+              ships the email-forwarding workflow. */
+          <div className="flex-1 overflow-y-auto">
+            <div className="px-8 py-6 max-w-5xl mx-auto w-full space-y-4">
+              <div>
+                <h2 className="text-base font-semibold">
+                  Bank Statements
+                </h2>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Auto-routed here when Smart Capture detects a
+                  bank-statement PDF. Forward statements straight to
+                  your inbox address below — we&apos;ll parse the
+                  transactions and let you import them to Banking with
+                  one click.
+                </p>
+              </div>
+              <InboxEmailCard />
+              {rows.length > 0 ? (
+                <div className="-mx-8">
+                  <DocumentsTable rows={rows} trashView={trashView} />
+                </div>
+              ) : (
+                <div className="rounded-lg border-2 border-dashed bg-background px-6 py-10 text-center text-sm text-muted-foreground">
+                  No bank statements yet. Upload one via the Files
+                  inbox or forward it to the address above.
+                </div>
+              )}
+            </div>
           </div>
         ) : (
           <DocumentsTable rows={rows} trashView={trashView} />

@@ -90,6 +90,9 @@ model PasswordResetToken {
 
 // ───────────────────────── ORGANIZATIONS ─────────────────────────
 
+// DOC-D3.1: Organization.inboxEmailToken — secure random token used
+// as the local-part of the per-org Smart Capture inbox address
+// (<token>.secure@<INBOX_DOMAIN>). Generated lazily on first request.
 model Organization {
   id                    String                   @id @default(cuid())
   name                  String
@@ -104,6 +107,12 @@ model Organization {
   phoneNumber           String?
   email                 String?
   logoUrl               String?
+  /// DOC-D3.1: secure random token used as the local-part of the
+  /// per-org Smart Capture inbox address (e.g.
+  /// `<token>.secure@inbox.quikfinance.app`). Generated lazily on
+  /// first request via `getOrCreateInboxToken`. Unique when set;
+  /// null for orgs that haven't yet configured email-forwarding.
+  inboxEmailToken       String?                  @unique
   planTier              String                   @default("trial")
   trialEndsAt           DateTime?
   createdAt             DateTime                 @default(now())
