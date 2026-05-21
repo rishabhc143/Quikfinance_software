@@ -151,6 +151,11 @@ export default async function DocumentsPage({
         // drawer. Null on legacy / non-PDF / extraction-failed rows.
         documentType: d.documentType,
         extractedText: d.extractedText,
+        // DOC-D2.2: Parsed bank statement (JSONB). Non-null only for
+        // BANK_STATEMENT docs whose layout matched HDFC/ICICI parser
+        // heuristics. UI renders Transactions table + Import button
+        // when present.
+        extractedFields: d.extractedFields,
       };
     });
 

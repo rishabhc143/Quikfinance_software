@@ -70,6 +70,10 @@ export type DocumentTableRow = {
   /** DOC-D2.1: Extracted text (capped 64KB). Passed to the preview
    *  drawer so users can scan the Smart Capture output. */
   extractedText?: string | null;
+  /** DOC-D2.2: Parsed bank statement (or null for non-statements /
+   *  unparsed layouts). Drawer renders the Transactions table + Import
+   *  button when this is non-null. */
+  extractedFields?: unknown;
 };
 
 function iconFor(bucket: FileTypeBucket) {
@@ -141,6 +145,7 @@ export function DocumentsTable({
       folder: r.folder,
       documentType: r.documentType ?? null,
       extractedText: r.extractedText ?? null,
+      extractedFields: r.extractedFields ?? null,
     });
   }
 

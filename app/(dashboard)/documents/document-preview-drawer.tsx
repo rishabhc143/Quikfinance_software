@@ -23,6 +23,13 @@ import {
   labelForDocumentType,
   badgeClassFor,
 } from "@/lib/documents/document-types";
+import {
+  isParsedBankStatement,
+  type ParsedBankStatement,
+} from "@/lib/documents/parsers/bank-statement-types";
+import { Landmark } from "lucide-react";
+import { ImportToBankDialog } from "./import-to-bank-dialog";
+import { listBankAccountsForImportAction } from "./actions";
 
 /**
  * DOC-D1.4: Side-drawer preview for a single document.
@@ -53,6 +60,11 @@ export type DocumentPreviewItem = {
   /** DOC-D2.1: Full extracted text (capped at 64KB). Shown in the
    *  Smart Capture panel of the preview drawer. Null = not extracted. */
   extractedText?: string | null;
+  /** DOC-D2.2: Parsed bank statement (ParsedBankStatement JSON) when
+   *  the document is a bank statement with a recognised layout.
+   *  Drawer renders the Transactions table + "Import to Bank" button
+   *  when non-null. */
+  extractedFields?: unknown;
 };
 
 export function DocumentPreviewDrawer({
@@ -212,6 +224,17 @@ function PreviewBody({
         )}
       </div>
 
+      {/* DOC-D2.2: Bank statement transactions panel — renders only
+          when we have a parsed ParsedBankStatement on this row.
+          Shows the table + an "Import to Bank" button. */}
+      {isParsedBankStatement(doc.extractedFields) ? (
+        <BankStatementTransactionsPanel
+          documentId={doc.id}
+          documentName={doc.name}
+          parsed={doc.extractedFields as unknown as ParsedBankStatement}
+        />
+      ) : null}
+
       {/* DOC-D2.1: Smart Capture extracted-text panel.
           Renders below the preview body when extraction produced text.
           Collapsible to keep the drawer body real-estate generous. */}
@@ -222,6 +245,142 @@ function PreviewBody({
         />
       ) : null}
     </div>
+  );
+}
+
+/**
+ * DOC-D2.2: Renders the parsed transactions table inside the preview
+ * drawer + the "Import to Bank" trigger. On Import click, fetches the
+ * org's bank accounts and opens <ImportToBankDialog>.
+ */
+function BankStatementTransactionsPanel({
+  documentId,
+  documentName,
+  parsed,
+}: {
+  documentId: string;
+  documentName: string;
+  parsed: ParsedBankStatement;
+}) {
+  const [open, setOpen] = React.useState(true);
+  const [dialogOpen, setDialogOpen] = React.useState(false);
+  const [bankAccounts, setBankAccounts] = React.useState<
+    Array<{ id: string; label: string }> | null
+  >(null);
+  const [loadingAccounts, setLoadingAccounts] = React.useState(false);
+
+  async function onClickImport() {
+    setLoadingAccounts(true);
+    try {
+      const accounts = await listBankAccountsForImportAction();
+      setBankAccounts(accounts);
+      setDialogOpen(true);
+    } finally {
+      setLoadingAccounts(false);
+    }
+  }
+
+  // Format INR for display (lakh grouping).
+  function inr(n: number | undefined): string {
+    if (n == null) return "";
+    return n.toLocaleString("en-IN", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+  }
+
+  return (
+    <details
+      className="shrink-0 border-t bg-muted/10"
+      open={open}
+      onToggle={(e) =>
+        setOpen((e.currentTarget as HTMLDetailsElement).open)
+      }
+    >
+      <summary className="cursor-pointer select-none px-4 py-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2 hover:bg-muted/40">
+        <Landmark className="h-3.5 w-3.5" />
+        <span>Smart Capture · Transactions</span>
+        <span className="text-[10px] normal-case tracking-normal px-1.5 py-0.5 rounded font-medium bg-blue-100 text-blue-800">
+          {parsed.bank}
+        </span>
+        <span className="ml-auto text-[10px] normal-case tracking-normal text-muted-foreground">
+          {parsed.rows.length} row{parsed.rows.length === 1 ? "" : "s"}
+        </span>
+        <Button
+          size="sm"
+          onClick={(e) => {
+            e.preventDefault();
+            void onClickImport();
+          }}
+          disabled={loadingAccounts}
+          className="ml-2 h-7 text-xs normal-case tracking-normal"
+        >
+          {loadingAccounts ? (
+            <Loader2 className="h-3 w-3 animate-spin" />
+          ) : (
+            "Import to Bank"
+          )}
+        </Button>
+      </summary>
+      <div className="max-h-[50vh] overflow-y-auto border-t bg-background">
+        {parsed.period ? (
+          <div className="px-4 py-2 text-xs text-muted-foreground border-b">
+            Period: {parsed.period.from} → {parsed.period.to}
+            {parsed.accountNumber
+              ? ` · A/C ••••${parsed.accountNumber.slice(-4)}`
+              : ""}
+            {parsed.openingBalance != null
+              ? ` · Opening ${inr(parsed.openingBalance)}`
+              : ""}
+            {parsed.closingBalance != null
+              ? ` · Closing ${inr(parsed.closingBalance)}`
+              : ""}
+          </div>
+        ) : null}
+        <table className="w-full text-xs">
+          <thead className="bg-muted/20 text-[10px] uppercase tracking-wider text-muted-foreground">
+            <tr>
+              <th className="text-left px-3 py-1.5">Date</th>
+              <th className="text-left px-3 py-1.5">Description</th>
+              <th className="text-right px-3 py-1.5">Debit</th>
+              <th className="text-right px-3 py-1.5">Credit</th>
+              <th className="text-right px-3 py-1.5">Balance</th>
+            </tr>
+          </thead>
+          <tbody>
+            {parsed.rows.map((r, i) => (
+              <tr key={i} className="border-t">
+                <td className="px-3 py-1.5 whitespace-nowrap tabular-nums">
+                  {r.date}
+                </td>
+                <td className="px-3 py-1.5 truncate max-w-[280px]" title={r.description}>
+                  {r.description}
+                </td>
+                <td className="px-3 py-1.5 text-right tabular-nums text-destructive">
+                  {r.debit != null ? inr(r.debit) : ""}
+                </td>
+                <td className="px-3 py-1.5 text-right tabular-nums text-emerald-600">
+                  {r.credit != null ? inr(r.credit) : ""}
+                </td>
+                <td className="px-3 py-1.5 text-right tabular-nums text-muted-foreground">
+                  {r.balance != null ? inr(r.balance) : ""}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {bankAccounts !== null ? (
+        <ImportToBankDialog
+          open={dialogOpen}
+          onOpenChange={setDialogOpen}
+          documentId={documentId}
+          documentName={documentName}
+          rowCount={parsed.rows.length}
+          bankAccounts={bankAccounts}
+        />
+      ) : null}
+    </details>
   );
 }
 
