@@ -8,12 +8,17 @@ import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
 import { writeAuditLog } from "@/lib/audit";
+import { nextDocumentNumber } from "@/lib/next-number";
 import { collectDescendantIds } from "@/lib/documents/folder-tree";
 import { sha256Buffer, dupWarning } from "@/lib/documents/dedup";
 import { extractPdfText } from "@/lib/documents/pdf-extract";
 import { classifyDocument } from "@/lib/documents/document-classifier";
-import { parseBankStatement } from "@/lib/documents/parsers";
-import type { ParsedBankStatement } from "@/lib/documents/parsers";
+import {
+  parseByDocumentType,
+  type ParsedBankStatement,
+  type ParsedBill,
+  type ParsedReceipt,
+} from "@/lib/documents/parsers";
 
 const schema = z.object({
   name: z.string().min(1).max(200),
@@ -670,20 +675,23 @@ export async function uploadDocumentsAction(
     let extractedText: string | null = null;
     let documentType: string | null = null;
     let extractedAt: Date | null = null;
-    let extractedFields: ParsedBankStatement | null = null;
+    let extractedFields:
+      | ParsedBankStatement
+      | ParsedBill
+      | ParsedReceipt
+      | null = null;
     if (file.type === "application/pdf") {
       try {
         extractedText = await extractPdfText(buffer);
         if (extractedText) {
           const classification = classifyDocument(extractedText);
           documentType = classification.type;
-          // DOC-D2.2: If we detected a bank statement, also parse
-          // its transactions into structured rows for the preview
-          // drawer + "Import to Bank" button. Fail-open: parser
-          // returns null on unknown banks / empty rows.
-          if (documentType === "BANK_STATEMENT") {
-            extractedFields = parseBankStatement(extractedText);
-          }
+          // DOC-D2.2 / D2.3: Route to the right parser based on the
+          // detected type. Bank statements → transaction rows; bills
+          // / invoices → vendor + GSTIN + total + line items;
+          // receipts → vendor + date + total + paid-via. Fail-open
+          // when parser returns null.
+          extractedFields = parseByDocumentType(extractedText, documentType);
         }
         extractedAt = new Date();
       } catch (err) {
@@ -950,4 +958,232 @@ export async function importStatementToBankAction(input: {
     skipped: batchResult.skipped,
     batchId: batchResult.batchId,
   };
+}
+
+// ───────────────────── DOC-D2.3: Create Bill / Expense from Document ─────────────────────
+
+/**
+ * Light helper used by the Create-Bill picker dialog: search vendors
+ * (Contact type = VENDOR) by displayName substring. Limited to 25
+ * results to keep the dropdown snappy.
+ */
+export async function searchVendorsForDocAction(
+  query: string
+): Promise<Array<{ id: string; label: string; gstin: string | null }>> {
+  const { organization } = await requireOrganization();
+  const rows = await db.contact.findMany({
+    where: {
+      organizationId: organization.id,
+      type: "VENDOR",
+      deletedAt: null,
+      OR: query
+        ? [
+            { displayName: { contains: query, mode: "insensitive" } },
+            { gstin: { contains: query, mode: "insensitive" } },
+          ]
+        : undefined,
+    },
+    select: { id: true, displayName: true, gstin: true },
+    orderBy: { displayName: "asc" },
+    take: 25,
+  });
+  return rows.map((r) => ({
+    id: r.id,
+    label: r.displayName,
+    gstin: r.gstin,
+  }));
+}
+
+/**
+ * DOC-D2.3: Create a DRAFT Bill prefilled from the document's parsed
+ * fields. User picks the vendor + overrides any fields in the dialog
+ * before submit. Action creates the Bill row + a single line item
+ * carrying the total (line item splits land in D2.5).
+ *
+ * Returns the new Bill's id so the UI can redirect to the edit page
+ * where the user can fine-tune line items, taxes, etc.
+ */
+export async function createBillFromDocumentAction(input: {
+  documentId: string;
+  vendorId: string;
+  billNumber?: string;
+  issueDate?: string; // yyyy-MM-dd
+  dueDate?: string;
+  total: number;
+  notes?: string;
+}): Promise<{ ok: true; billId: string } | { ok: false; error: string }> {
+  const { user, organization } = await requireOrganization();
+
+  const doc = await db.document.findFirst({
+    where: {
+      id: input.documentId,
+      organizationId: organization.id,
+      deletedAt: null,
+    },
+    select: { id: true, name: true, documentType: true },
+  });
+  if (!doc) return { ok: false, error: "Document not found." };
+
+  const vendor = await db.contact.findFirst({
+    where: {
+      id: input.vendorId,
+      organizationId: organization.id,
+      type: "VENDOR",
+      deletedAt: null,
+    },
+    select: { id: true, displayName: true },
+  });
+  if (!vendor) return { ok: false, error: "Vendor not found." };
+
+  if (!Number.isFinite(input.total) || input.total <= 0) {
+    return { ok: false, error: "Total must be a positive number." };
+  }
+
+  const billNumber =
+    input.billNumber?.trim() ||
+    (await nextDocumentNumber(organization.id, "bill"));
+  const issueDate = input.issueDate
+    ? new Date(input.issueDate)
+    : new Date();
+  const dueDate = input.dueDate
+    ? new Date(input.dueDate)
+    : new Date(issueDate.getTime() + 30 * 24 * 60 * 60 * 1000);
+
+  const created = await db.bill.create({
+    data: {
+      organizationId: organization.id,
+      number: billNumber,
+      contactId: vendor.id,
+      status: "DRAFT",
+      issueDate,
+      dueDate,
+      subtotal: new Prisma.Decimal(input.total),
+      total: new Prisma.Decimal(input.total),
+      notes: input.notes?.slice(0, 2000) ?? `Created from Smart Capture · ${doc.name}`,
+    },
+  });
+
+  // Link the document to the new bill via the polymorphic
+  // associatedEntityType pair so the ASSOCIATED TO column lights up.
+  await db.document.update({
+    where: { id: doc.id },
+    data: {
+      associatedEntityType: "Bill",
+      associatedEntityId: created.id,
+    },
+  });
+
+  await writeAuditLog({
+    organizationId: organization.id,
+    userId: user.id,
+    action: "CREATE",
+    entityType: "Bill",
+    entityId: created.id,
+    after: {
+      source: "documents-smart-capture",
+      documentId: doc.id,
+      number: billNumber,
+      total: input.total,
+    },
+  });
+
+  revalidatePath("/documents");
+  revalidatePath("/purchases/bills");
+  return { ok: true, billId: created.id };
+}
+
+/**
+ * DOC-D2.3: Create an Expense prefilled from a parsed receipt.
+ * Lighter than Bill (no line items, no tax breakdown — Expense is a
+ * single-line record). User picks vendor + category in the dialog.
+ *
+ * Returns the new Expense's id so the UI can redirect.
+ */
+export async function createExpenseFromDocumentAction(input: {
+  documentId: string;
+  vendorId?: string;
+  category: string;
+  date?: string; // yyyy-MM-dd
+  amount: number;
+  reference?: string;
+  notes?: string;
+}): Promise<{ ok: true; expenseId: string } | { ok: false; error: string }> {
+  const { user, organization } = await requireOrganization();
+
+  const doc = await db.document.findFirst({
+    where: {
+      id: input.documentId,
+      organizationId: organization.id,
+      deletedAt: null,
+    },
+    select: { id: true, name: true },
+  });
+  if (!doc) return { ok: false, error: "Document not found." };
+
+  if (!Number.isFinite(input.amount) || input.amount <= 0) {
+    return { ok: false, error: "Amount must be a positive number." };
+  }
+  if (!input.category?.trim()) {
+    return { ok: false, error: "Category is required." };
+  }
+
+  let contactId: string | undefined;
+  if (input.vendorId) {
+    const vendor = await db.contact.findFirst({
+      where: {
+        id: input.vendorId,
+        organizationId: organization.id,
+        type: "VENDOR",
+        deletedAt: null,
+      },
+      select: { id: true },
+    });
+    if (!vendor) return { ok: false, error: "Vendor not found." };
+    contactId = vendor.id;
+  }
+
+  const number = await nextDocumentNumber(organization.id, "expense");
+  const date = input.date ? new Date(input.date) : new Date();
+
+  const created = await db.expense.create({
+    data: {
+      organizationId: organization.id,
+      number,
+      date,
+      category: input.category.trim().slice(0, 80),
+      amount: new Prisma.Decimal(input.amount),
+      contactId,
+      reference: input.reference?.slice(0, 80) ?? null,
+      notes:
+        input.notes?.slice(0, 2000) ??
+        `Created from Smart Capture · ${doc.name}`,
+      status: "RECORDED",
+    },
+  });
+
+  await db.document.update({
+    where: { id: doc.id },
+    data: {
+      associatedEntityType: "Expense",
+      associatedEntityId: created.id,
+    },
+  });
+
+  await writeAuditLog({
+    organizationId: organization.id,
+    userId: user.id,
+    action: "CREATE",
+    entityType: "Expense",
+    entityId: created.id,
+    after: {
+      source: "documents-smart-capture",
+      documentId: doc.id,
+      category: input.category,
+      amount: input.amount,
+    },
+  });
+
+  revalidatePath("/documents");
+  revalidatePath("/purchases/expenses");
+  return { ok: true, expenseId: created.id };
 }

@@ -27,8 +27,15 @@ import {
   isParsedBankStatement,
   type ParsedBankStatement,
 } from "@/lib/documents/parsers/bank-statement-types";
-import { Landmark } from "lucide-react";
+import { isParsedBill, type ParsedBill } from "@/lib/documents/parsers/bill";
+import {
+  isParsedReceipt,
+  type ParsedReceipt,
+} from "@/lib/documents/parsers/receipt";
+import { Landmark, Receipt as ReceiptIcon, Wallet } from "lucide-react";
 import { ImportToBankDialog } from "./import-to-bank-dialog";
+import { CreateBillFromDocumentDialog } from "./create-bill-from-document-dialog";
+import { CreateExpenseFromDocumentDialog } from "./create-expense-from-document-dialog";
 import { listBankAccountsForImportAction } from "./actions";
 
 /**
@@ -235,6 +242,27 @@ function PreviewBody({
         />
       ) : null}
 
+      {/* DOC-D2.3: Parsed-bill panel — for BILL / INVOICE document
+          types whose parsed fields include vendor / GSTIN / total. */}
+      {detectedType !== "BANK_STATEMENT" &&
+      isParsedBill(doc.extractedFields) ? (
+        <BillDetailsPanel
+          documentId={doc.id}
+          documentName={doc.name}
+          parsed={doc.extractedFields as unknown as ParsedBill}
+        />
+      ) : null}
+
+      {/* DOC-D2.3: Parsed-receipt panel — for RECEIPT documents. */}
+      {detectedType === "RECEIPT" &&
+      isParsedReceipt(doc.extractedFields) ? (
+        <ReceiptDetailsPanel
+          documentId={doc.id}
+          documentName={doc.name}
+          parsed={doc.extractedFields as unknown as ParsedReceipt}
+        />
+      ) : null}
+
       {/* DOC-D2.1: Smart Capture extracted-text panel.
           Renders below the preview body when extraction produced text.
           Collapsible to keep the drawer body real-estate generous. */}
@@ -421,6 +449,165 @@ function SmartCapturePanel({
         {preview}
         {truncated ? <span className="text-muted-foreground">…</span> : null}
       </div>
+    </details>
+  );
+}
+
+/**
+ * DOC-D2.3: Renders parsed Bill / Invoice details + a "Create Bill"
+ * button that opens the CreateBillFromDocumentDialog.
+ */
+function BillDetailsPanel({
+  documentId,
+  documentName,
+  parsed,
+}: {
+  documentId: string;
+  documentName: string;
+  parsed: ParsedBill;
+}) {
+  const [dialogOpen, setDialogOpen] = React.useState(false);
+
+  function inr(n: number | undefined): string {
+    if (n == null) return "—";
+    return `₹${n.toLocaleString("en-IN", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })}`;
+  }
+
+  return (
+    <details className="shrink-0 border-t bg-muted/10" open>
+      <summary className="cursor-pointer select-none px-4 py-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2 hover:bg-muted/40">
+        <ReceiptIcon className="h-3.5 w-3.5" />
+        <span>Smart Capture · Bill Details</span>
+        <Button
+          size="sm"
+          onClick={(e) => {
+            e.preventDefault();
+            setDialogOpen(true);
+          }}
+          className="ml-auto h-7 text-xs normal-case tracking-normal"
+        >
+          Create Bill
+        </Button>
+      </summary>
+      <div className="max-h-[40vh] overflow-y-auto border-t bg-background px-4 py-3 text-sm">
+        <dl className="grid grid-cols-[110px_1fr] gap-y-1.5 gap-x-3">
+          <dt className="text-muted-foreground">Vendor</dt>
+          <dd className="font-medium">{parsed.vendorName ?? "—"}</dd>
+          <dt className="text-muted-foreground">GSTIN</dt>
+          <dd className="font-mono text-xs">{parsed.gstin ?? "—"}</dd>
+          <dt className="text-muted-foreground">Bill #</dt>
+          <dd>{parsed.billNumber ?? "—"}</dd>
+          <dt className="text-muted-foreground">Issue date</dt>
+          <dd>{parsed.issueDate ?? "—"}</dd>
+          <dt className="text-muted-foreground">Due date</dt>
+          <dd>{parsed.dueDate ?? "—"}</dd>
+          <dt className="text-muted-foreground">Sub-total</dt>
+          <dd className="tabular-nums">{inr(parsed.subTotal)}</dd>
+          <dt className="text-muted-foreground">Tax</dt>
+          <dd className="tabular-nums">{inr(parsed.taxAmount)}</dd>
+          <dt className="text-muted-foreground font-semibold">Total</dt>
+          <dd className="tabular-nums font-semibold">{inr(parsed.total)}</dd>
+        </dl>
+        {parsed.lineItems.length > 0 ? (
+          <div className="mt-3">
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">
+              Line items ({parsed.lineItems.length})
+            </p>
+            <ul className="text-xs divide-y border rounded">
+              {parsed.lineItems.slice(0, 10).map((it, i) => (
+                <li
+                  key={i}
+                  className="flex items-center justify-between px-2 py-1.5"
+                >
+                  <span className="truncate" title={it.description}>
+                    {it.description}
+                  </span>
+                  <span className="tabular-nums shrink-0 ml-2">
+                    {inr(it.amount)}
+                  </span>
+                </li>
+              ))}
+              {parsed.lineItems.length > 10 ? (
+                <li className="px-2 py-1.5 text-muted-foreground text-center">
+                  +{parsed.lineItems.length - 10} more
+                </li>
+              ) : null}
+            </ul>
+          </div>
+        ) : null}
+      </div>
+      <CreateBillFromDocumentDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        documentId={documentId}
+        documentName={documentName}
+        parsed={parsed}
+      />
+    </details>
+  );
+}
+
+/**
+ * DOC-D2.3: Renders parsed Receipt details + a "Create Expense"
+ * button.
+ */
+function ReceiptDetailsPanel({
+  documentId,
+  documentName,
+  parsed,
+}: {
+  documentId: string;
+  documentName: string;
+  parsed: ParsedReceipt;
+}) {
+  const [dialogOpen, setDialogOpen] = React.useState(false);
+
+  function inr(n: number | undefined): string {
+    if (n == null) return "—";
+    return `₹${n.toLocaleString("en-IN", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })}`;
+  }
+
+  return (
+    <details className="shrink-0 border-t bg-muted/10" open>
+      <summary className="cursor-pointer select-none px-4 py-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2 hover:bg-muted/40">
+        <Wallet className="h-3.5 w-3.5" />
+        <span>Smart Capture · Receipt Details</span>
+        <Button
+          size="sm"
+          onClick={(e) => {
+            e.preventDefault();
+            setDialogOpen(true);
+          }}
+          className="ml-auto h-7 text-xs normal-case tracking-normal"
+        >
+          Create Expense
+        </Button>
+      </summary>
+      <div className="max-h-[40vh] overflow-y-auto border-t bg-background px-4 py-3 text-sm">
+        <dl className="grid grid-cols-[110px_1fr] gap-y-1.5 gap-x-3">
+          <dt className="text-muted-foreground">Vendor</dt>
+          <dd className="font-medium">{parsed.vendorName ?? "—"}</dd>
+          <dt className="text-muted-foreground">Date</dt>
+          <dd>{parsed.date ?? "—"}</dd>
+          <dt className="text-muted-foreground">Paid via</dt>
+          <dd>{parsed.paidVia ?? "—"}</dd>
+          <dt className="text-muted-foreground font-semibold">Total</dt>
+          <dd className="tabular-nums font-semibold">{inr(parsed.total)}</dd>
+        </dl>
+      </div>
+      <CreateExpenseFromDocumentDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        documentId={documentId}
+        documentName={documentName}
+        parsed={parsed}
+      />
     </details>
   );
 }
