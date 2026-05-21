@@ -8,6 +8,7 @@ import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
 import { writeAuditLog } from "@/lib/audit";
 import { collectDescendantIds } from "@/lib/documents/folder-tree";
+import { sha256Buffer, dupWarning } from "@/lib/documents/dedup";
 
 const schema = z.object({
   name: z.string().min(1).max(200),
@@ -386,4 +387,192 @@ export async function softDeleteFolderAction(
 
   revalidatePath("/documents");
   return { ok: true, deletedCount: result.folders + result.documents };
+}
+
+// ───────────────────── DOC-D1.3: Multi-file upload + dedup ─────────────────────
+//
+// Replaces the single-file `uploadDocumentAction` flow for the Files
+// inbox. Accepts N files via FormData (`file_0`, `file_1`, …), runs
+// each through the same size + MIME guards, computes a SHA-256, and
+// short-circuits any whose hash already exists in this org. Returns
+// per-file results so the client can surface dup warnings + errors
+// alongside successes.
+
+export type UploadDocumentItemResult =
+  | { fileName: string; status: "uploaded"; id: string }
+  | {
+      fileName: string;
+      status: "duplicate";
+      existingId: string;
+      existingName: string;
+      message: string;
+    }
+  | { fileName: string; status: "error"; message: string };
+
+export type UploadDocumentsResult = {
+  ok: boolean;
+  results: UploadDocumentItemResult[];
+};
+
+/**
+ * Multi-file upload action triggered from the Files inbox drag-drop.
+ *
+ * Per-file pipeline:
+ *   1. Size + MIME guard (same caps as `uploadDocumentAction`)
+ *   2. Read buffer + SHA-256
+ *   3. Lookup `(orgId, fileHash)` in DB — if present, mark duplicate
+ *      and skip Vercel Blob upload (saves bandwidth + storage)
+ *   4. Otherwise upload to Vercel Blob and create a Document row with
+ *      `inbox = "FILES"` + `fileHash`
+ *   5. Append a result entry
+ *
+ * The action never throws — it returns a result list so the client
+ * can render per-file success / duplicate / error feedback.
+ *
+ * If `BLOB_READ_WRITE_TOKEN` is missing (local dev), every file
+ * surfaces as an error. Matches the fail-open pattern of
+ * `uploadDocumentAction`.
+ */
+export async function uploadDocumentsAction(
+  formData: FormData
+): Promise<UploadDocumentsResult> {
+  const { user, organization } = await requireOrganization();
+
+  const files: File[] = [];
+  for (const [key, value] of formData.entries()) {
+    if (key.startsWith("file_") && value instanceof File && value.size > 0) {
+      files.push(value);
+    }
+  }
+
+  if (files.length === 0) {
+    return {
+      ok: false,
+      results: [
+        {
+          fileName: "(none)",
+          status: "error",
+          message: "Choose at least one file to upload.",
+        },
+      ],
+    };
+  }
+
+  if (!process.env.BLOB_READ_WRITE_TOKEN) {
+    return {
+      ok: false,
+      results: files.map((f) => ({
+        fileName: f.name,
+        status: "error" as const,
+        message:
+          "Direct file upload is not configured on this deployment. Ask your admin to add BLOB_READ_WRITE_TOKEN to the environment.",
+      })),
+    };
+  }
+
+  const results: UploadDocumentItemResult[] = [];
+
+  for (const file of files) {
+    if (file.size > MAX_BYTES) {
+      results.push({
+        fileName: file.name,
+        status: "error",
+        message: `File is too large (${(file.size / 1024 / 1024).toFixed(1)} MB). Maximum is 10 MB.`,
+      });
+      continue;
+    }
+    if (file.type && !ALLOWED_MIMES.includes(file.type)) {
+      results.push({
+        fileName: file.name,
+        status: "error",
+        message: `File type "${file.type}" is not allowed. Supported: PDF, JPG, PNG, WEBP, HEIC, CSV, XLS, XLSX.`,
+      });
+      continue;
+    }
+
+    // Compute SHA-256 to check for an existing row before uploading.
+    let buffer: Buffer;
+    try {
+      const ab = await file.arrayBuffer();
+      buffer = Buffer.from(ab);
+    } catch (err) {
+      console.error("[documents/upload] failed to read file buffer", err);
+      results.push({
+        fileName: file.name,
+        status: "error",
+        message: "Couldn't read the file. Try again.",
+      });
+      continue;
+    }
+    const fileHash = sha256Buffer(buffer);
+
+    const existing = await db.document.findFirst({
+      where: {
+        organizationId: organization.id,
+        fileHash,
+        deletedAt: null,
+      },
+      orderBy: { createdAt: "desc" },
+      select: { id: true, name: true, createdAt: true },
+    });
+    if (existing) {
+      results.push({
+        fileName: file.name,
+        status: "duplicate",
+        existingId: existing.id,
+        existingName: existing.name,
+        message: dupWarning(existing.name, existing.createdAt),
+      });
+      continue;
+    }
+
+    // Namespace by org so blobs are easy to audit and clean up.
+    const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+    const blobKey = `org-${organization.id}/${Date.now()}-${safeName}`;
+    let blobUrl: string;
+    try {
+      const blob = await put(blobKey, buffer, {
+        access: "public",
+        addRandomSuffix: false,
+        contentType: file.type || undefined,
+      });
+      blobUrl = blob.url;
+    } catch (err) {
+      console.error("[documents/upload] Vercel Blob put failed", err);
+      results.push({
+        fileName: file.name,
+        status: "error",
+        message: "Upload failed. Check your connection and try again.",
+      });
+      continue;
+    }
+
+    const created = await db.document.create({
+      data: {
+        organizationId: organization.id,
+        name: file.name,
+        url: blobUrl,
+        mimeType: file.type || null,
+        sizeBytes: file.size,
+        fileHash,
+        inbox: "FILES",
+        uploadedBy: user.id,
+      },
+    });
+
+    await writeAuditLog({
+      organizationId: organization.id,
+      userId: user.id,
+      action: "CREATE",
+      entityType: "Document",
+      entityId: created.id,
+      after: { name: file.name, source: "files-inbox-bulk-upload" },
+    });
+
+    results.push({ fileName: file.name, status: "uploaded", id: created.id });
+  }
+
+  revalidatePath("/documents");
+  const anyOk = results.some((r) => r.status === "uploaded");
+  return { ok: anyOk, results };
 }
