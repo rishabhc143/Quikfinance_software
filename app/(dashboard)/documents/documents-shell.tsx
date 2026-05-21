@@ -15,26 +15,31 @@ import {
 import { FilesInbox } from "./files-inbox";
 
 /**
- * DOC-D1 / D1.2 / D1.3: Client-side wrapper for the Documents 3-pane
- * shell. Owns the title resolution off `?inbox=` / `?view=` /
+ * DOC-D1 / D1.2 / D1.3 / D1.4: Client-side wrapper for the Documents
+ * 3-pane shell. Owns the title resolution off `?inbox=` / `?view=` /
  * `?folderId=` (server pre-filters rows, client renders the title +
  * sidebar active state).
  *
  * - `?inbox=files` → renders <FilesInbox> (drag-drop + email stub),
  *   matches the user-shared screenshot exactly.
  * - `?inbox=bank-statements` → Phase D2 placeholder.
- * - default / folder / trash → the regular 5-column documents table.
+ * - `?view=trash` → table with Restore + Permanently Delete actions
+ *   (`trashView` prop forwarded to the table).
+ * - default / folder → the regular 5-column documents table with
+ *   Move-to-Trash action.
  */
 export function DocumentsShell({
   rows,
   trashCount,
   folders,
   folderBreadcrumb,
+  trashView = false,
 }: {
   rows: DocumentTableRow[];
   trashCount: number;
   folders: FolderRow[];
   folderBreadcrumb: Array<{ id: string; name: string }>;
+  trashView?: boolean;
 }) {
   const searchParams = useSearchParams();
   const pathname = usePathname();
@@ -126,7 +131,7 @@ export function DocumentsShell({
             </p>
           </div>
         ) : (
-          <DocumentsTable rows={rows} />
+          <DocumentsTable rows={rows} trashView={trashView} />
         )}
       </main>
     </div>
