@@ -4,7 +4,6 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import {
   UploadCloud,
-  Mail,
   Loader2,
   CheckCircle2,
   AlertCircle,
@@ -14,6 +13,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { uploadDocumentsAction, type UploadDocumentItemResult } from "./actions";
+import { InboxEmailCard } from "./inbox-email-card";
 
 /**
  * DOC-D1.3: Files inbox surface — matches the user-shared Zoho
@@ -140,26 +140,11 @@ export function FilesInbox({ rows }: { rows: Array<{ id: string; name: string; m
         </div>
       </div>
 
-      {/* Upload Files via Email — D3 stub */}
-      <div className="mt-4 rounded-lg border bg-muted/20 px-5 py-4 flex items-center gap-4">
-        <div className="shrink-0 h-10 w-10 rounded-md bg-orange-100 flex items-center justify-center">
-          <Mail className="h-5 w-5 text-orange-500" />
-        </div>
-        <div className="flex-1">
-          <p className="text-sm font-semibold">Upload Files via Email</p>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            <span
-              title="Email-forwarding inbox arrives in Phase D3"
-              className="text-primary/60 cursor-not-allowed"
-            >
-              Configure email address
-            </span>{" "}
-            to escape the process of uploading documents manually.{" "}
-            <span className="ml-1 inline-block text-[10px] uppercase tracking-wide bg-muted px-1.5 py-0.5 rounded">
-              Coming soon
-            </span>
-          </p>
-        </div>
+      {/* DOC-D3.1: Inbox-email card replaces the old stub. Renders
+          the live per-org address when configured, or a "Coming soon"
+          hint when the operator hasn't set INBOUND_EMAIL_DOMAIN. */}
+      <div className="mt-4">
+        <InboxEmailCard />
       </div>
 
       {/* Upload result breakdown */}
