@@ -12,9 +12,13 @@
 import { detectBank } from "./detect-bank";
 import { parseHdfcStatement } from "./hdfc";
 import { parseIciciStatement } from "./icici";
+import { parseBill, type ParsedBill } from "./bill";
+import { parseReceipt, type ParsedReceipt } from "./receipt";
 import type { ParsedBankStatement } from "./bank-statement-types";
 
 export type { ParsedBankStatement, BankTransactionRow } from "./bank-statement-types";
+export { parseBill, isParsedBill, type ParsedBill, type ParsedBillLineItem } from "./bill";
+export { parseReceipt, isParsedReceipt, type ParsedReceipt } from "./receipt";
 
 export function parseBankStatement(
   text: string | null | undefined
@@ -53,4 +57,34 @@ export function parseBankStatement(
     return null;
   }
   return result;
+}
+
+/**
+ * DOC-D2.3: Run the right parser for a given document type. Returns
+ * the structured fields that go into `Document.extractedFields`.
+ *
+ * documentType comes from the classifier (BANK_STATEMENT / BILL /
+ * INVOICE / RECEIPT / CONTRACT / UNKNOWN).
+ */
+export function parseByDocumentType(
+  text: string | null | undefined,
+  documentType: string | null | undefined
+): ParsedBankStatement | ParsedBill | ParsedReceipt | null {
+  if (!text) return null;
+  try {
+    switch (documentType) {
+      case "BANK_STATEMENT":
+        return parseBankStatement(text);
+      case "BILL":
+      case "INVOICE":
+        return parseBill(text);
+      case "RECEIPT":
+        return parseReceipt(text);
+      default:
+        return null;
+    }
+  } catch (err) {
+    console.warn(`[parseByDocumentType] ${documentType} parser threw`, err);
+    return null;
+  }
 }
