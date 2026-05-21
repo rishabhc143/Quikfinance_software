@@ -143,6 +143,7 @@ model Organization {
   tasks                 Task[]
   timeEntries           TimeEntry[]
   documents             Document[]
+  documentFolders       DocumentFolder[]
   auditLogs             AuditLog[]
   notifications         Notification[]
   apiKeys               ApiKey[]
@@ -2106,10 +2107,49 @@ model Document {
   url            String
   mimeType       String?
   sizeBytes      Int?
+  /// DOC-D1 legacy: pre-DocumentFolder string tag, kept for back-compat.
+  /// New uploads write `folderId` instead and leave this null.
   folder         String?
   uploadedBy     String?
   createdAt      DateTime     @default(now())
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  /// DOC-D1: soft-delete for the Trash sidebar item.
+  deletedAt      DateTime?
+  /// DOC-D1: FK to the recursive folder tree.
+  folderId       String?
+  /// DOC-D1: inbox bucket — "FILES" (default) or "BANK_STATEMENTS"
+  /// (populated by Phase D2 Smart Capture).
+  inbox          String?
+  /// DOC-D1: SHA-256 hex of file contents for dedup detection.
+  fileHash       String?
+  /// DOC-D1: polymorphic association — matches AuditLog pattern. Lets
+  /// a document link to an Invoice / Bill / Contact / etc. Rendered as
+  /// the "Associated To" column.
+  associatedEntityType String?
+  associatedEntityId   String?
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  folderRef      DocumentFolder? @relation("DocumentFolder", fields: [folderId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, folderId, deletedAt])
+  @@index([organizationId, inbox, deletedAt])
+  @@index([organizationId, fileHash])
+  @@index([organizationId, associatedEntityType, associatedEntityId])
+}
+
+/// DOC-D1: Recursive folder tree powering the Documents sidebar.
+/// Mirrors the ChartOfAccount.parentId self-reference pattern.
+model DocumentFolder {
+  id             String           @id @default(cuid())
+  organizationId String
+  name           String
+  parentFolderId String?
+  createdAt      DateTime         @default(now())
+  deletedAt      DateTime?
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  parent         DocumentFolder?  @relation("FolderHierarchy", fields: [parentFolderId], references: [id], onDelete: SetNull)
+  children       DocumentFolder[] @relation("FolderHierarchy")
+  documents      Document[]       @relation("DocumentFolder")
+
+  @@index([organizationId, parentFolderId, deletedAt])
 }
 
 // ───────────────────────── AUDIT / NOTIFICATIONS ─────────────────────────
