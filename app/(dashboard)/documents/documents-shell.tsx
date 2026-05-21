@@ -13,7 +13,7 @@ import {
   type DocumentTableRow,
 } from "./documents-table";
 import { FilesInbox } from "./files-inbox";
-import { InboxEmailCard } from "./inbox-email-card";
+import { BankStatementsInbox } from "./bank-statements-inbox";
 
 /**
  * DOC-D1 / D1.2 / D1.3 / D1.4: Client-side wrapper for the Documents
@@ -119,38 +119,13 @@ export function DocumentsShell({
             }))}
           />
         ) : inbox === "bank-statements" ? (
-          /* DOC-D3.1: Bank Statements inbox now shows the live email
-              address (when configured) + the existing table of
-              auto-routed statements. Removes the old "Coming soon"
-              placeholder — Phase D2 already ships the parsing, D3.1
-              ships the email-forwarding workflow. */
-          <div className="flex-1 overflow-y-auto">
-            <div className="px-8 py-6 max-w-5xl mx-auto w-full space-y-4">
-              <div>
-                <h2 className="text-base font-semibold">
-                  Bank Statements
-                </h2>
-                <p className="text-sm text-muted-foreground mt-1">
-                  Auto-routed here when Smart Capture detects a
-                  bank-statement PDF. Forward statements straight to
-                  your inbox address below — we&apos;ll parse the
-                  transactions and let you import them to Banking with
-                  one click.
-                </p>
-              </div>
-              <InboxEmailCard />
-              {rows.length > 0 ? (
-                <div className="-mx-8">
-                  <DocumentsTable rows={rows} trashView={trashView} />
-                </div>
-              ) : (
-                <div className="rounded-lg border-2 border-dashed bg-background px-6 py-10 text-center text-sm text-muted-foreground">
-                  No bank statements yet. Upload one via the Files
-                  inbox or forward it to the address above.
-                </div>
-              )}
-            </div>
-          </div>
+          /* Bank Statements inbox is now directly functional — has
+              its own drag-drop area scoped to bank-statement PDFs.
+              <BankStatementsInbox /> handles upload + parse via
+              uploadBankStatementsAction which forces inbox +
+              documentType so the parser runs even when the heuristic
+              classifier would have skipped it. */
+          <BankStatementsInbox rows={rows} />
         ) : (
           <DocumentsTable rows={rows} trashView={trashView} />
         )}
