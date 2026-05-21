@@ -2,6 +2,11 @@ import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
 import { parseFileTypeParam, fileTypeFromMime } from "@/lib/documents/file-type";
 import { getFolderPath, type FolderRow } from "@/lib/documents/folder-tree";
+import {
+  asAssociatedEntityType,
+  buildAssociatedToCell,
+  type AssociatedEntityType,
+} from "@/lib/documents/associated-to";
 import { DocumentsShell } from "./documents-shell";
 import type { DocumentTableRow } from "./documents-table";
 
@@ -9,12 +14,12 @@ export const metadata = { title: "Documents" };
 export const dynamic = "force-dynamic";
 
 /**
- * DOC-D1 / D1.2: Documents page server component.
+ * DOC-D1 / D1.2 / D1.4: Documents page server component.
  *
  * Renders the 3-pane shell (sidebar + toolbar + breadcrumb + filter +
  * table). URL params drive the filter:
- *   - ?view=trash            → soft-deleted rows
- *   - ?inbox=files           → Files inbox
+ *   - ?view=trash            → soft-deleted rows (Restore + Purge actions)
+ *   - ?inbox=files           → Files inbox (drag-drop surface)
  *   - ?inbox=bank-statements → Bank Statements inbox (D2 placeholder)
  *   - ?folderId=<id>         → drill into a folder
  *   - ?fileType=<bucket>     → narrow to one MIME bucket
@@ -91,6 +96,24 @@ export default async function DocumentsPage({
     // folder name (not just the id) for D1.2-uploaded documents.
     const folderById = new Map(folders.map((f) => [f.id, f.name]));
 
+    // DOC-D1.4: Batch-resolve associated entities so the ASSOCIATED
+    // TO column can show the real name (not just the type). Groups
+    // IDs by type, runs one Prisma query per type, builds a Map for
+    // O(1) lookups when assembling rows below.
+    const idsByType = new Map<AssociatedEntityType, Set<string>>();
+    for (const d of docs) {
+      const t = asAssociatedEntityType(d.associatedEntityType);
+      if (!t || !d.associatedEntityId) continue;
+      const set = idsByType.get(t);
+      if (set) set.add(d.associatedEntityId);
+      else idsByType.set(t, new Set([d.associatedEntityId]));
+    }
+
+    const nameMap = await resolveAssociatedNames(
+      organization.id,
+      idsByType
+    );
+
     // Apply file-type filter at this layer (post-DB, since MIME is
     // grouped by helper, not stored as a bucket).
     const filteredDocs = fileTypeFilter
@@ -104,6 +127,17 @@ export default async function DocumentsPage({
       const folderName = d.folderId
         ? folderById.get(d.folderId) ?? null
         : d.folder ?? null;
+
+      const aType = asAssociatedEntityType(d.associatedEntityType);
+      const aCell =
+        aType && d.associatedEntityId
+          ? buildAssociatedToCell(
+              aType,
+              d.associatedEntityId,
+              nameMap.get(`${aType}:${d.associatedEntityId}`)
+            )
+          : null;
+
       return {
         id: d.id,
         name: d.name,
@@ -111,10 +145,7 @@ export default async function DocumentsPage({
         mimeType: d.mimeType,
         uploadedBy: uploader?.name || uploader?.email || "System",
         uploadedAt: d.createdAt.toISOString(),
-        associatedTo:
-          d.associatedEntityType && d.associatedEntityId
-            ? `${d.associatedEntityType}`
-            : null,
+        associatedTo: aCell,
         folder: folderName,
       };
     });
@@ -137,6 +168,116 @@ export default async function DocumentsPage({
       trashCount={trashCount}
       folders={folders}
       folderBreadcrumb={folderBreadcrumb}
+      trashView={showTrash}
     />
   );
+}
+
+/**
+ * DOC-D1.4: Resolve display names for associated entities, batched
+ * per type. Returns a `Map<"Type:id", name>` for O(1) lookup.
+ *
+ * Each branch is a small org-scoped Prisma query selecting the
+ * minimum fields needed (display name + id). Missing rows fall
+ * through and the cell helper substitutes the id.
+ *
+ * Wrapped in try/catch per type so a missing/renamed table doesn't
+ * 500 the page — the row just falls back to the bare id.
+ */
+async function resolveAssociatedNames(
+  organizationId: string,
+  idsByType: Map<AssociatedEntityType, Set<string>>
+): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+
+  for (const [type, idSet] of idsByType.entries()) {
+    const ids = Array.from(idSet);
+    if (ids.length === 0) continue;
+
+    try {
+      // All Sales/Purchases doc models use `number` (not modelNumber)
+      // — checked against prisma/schema.prisma. UI labels them as
+      // "Invoice#", "Bill#", "PO#", etc.
+      switch (type) {
+        case "Invoice": {
+          const rows = await db.invoice.findMany({
+            where: { id: { in: ids }, organizationId },
+            select: { id: true, number: true },
+          });
+          for (const r of rows) out.set(`Invoice:${r.id}`, r.number);
+          break;
+        }
+        case "Bill": {
+          const rows = await db.bill.findMany({
+            where: { id: { in: ids }, organizationId },
+            select: { id: true, number: true },
+          });
+          for (const r of rows) out.set(`Bill:${r.id}`, r.number);
+          break;
+        }
+        case "Contact": {
+          const rows = await db.contact.findMany({
+            where: { id: { in: ids }, organizationId },
+            select: { id: true, displayName: true },
+          });
+          for (const r of rows) out.set(`Contact:${r.id}`, r.displayName);
+          break;
+        }
+        case "Quote": {
+          const rows = await db.quote.findMany({
+            where: { id: { in: ids }, organizationId },
+            select: { id: true, number: true },
+          });
+          for (const r of rows) out.set(`Quote:${r.id}`, r.number);
+          break;
+        }
+        case "SalesOrder": {
+          const rows = await db.salesOrder.findMany({
+            where: { id: { in: ids }, organizationId },
+            select: { id: true, number: true },
+          });
+          for (const r of rows) out.set(`SalesOrder:${r.id}`, r.number);
+          break;
+        }
+        case "CreditNote": {
+          const rows = await db.creditNote.findMany({
+            where: { id: { in: ids }, organizationId },
+            select: { id: true, number: true },
+          });
+          for (const r of rows) out.set(`CreditNote:${r.id}`, r.number);
+          break;
+        }
+        case "PurchaseOrder": {
+          const rows = await db.purchaseOrder.findMany({
+            where: { id: { in: ids }, organizationId },
+            select: { id: true, number: true },
+          });
+          for (const r of rows) out.set(`PurchaseOrder:${r.id}`, r.number);
+          break;
+        }
+        case "Project": {
+          const rows = await db.project.findMany({
+            where: { id: { in: ids }, organizationId },
+            select: { id: true, name: true },
+          });
+          for (const r of rows) out.set(`Project:${r.id}`, r.name);
+          break;
+        }
+        default:
+          // Other types (Expense, ManualJournal, BankTransaction,
+          // PaymentMade, PaymentReceived, VendorCredit,
+          // DeliveryChallan) are valid but the lookup falls back to
+          // the id until those modules surface a canonical "display
+          // number" — keeps this PR small.
+          break;
+      }
+    } catch (err) {
+      console.warn(
+        `[documents] failed to resolve names for type=${type}`,
+        err
+      );
+    }
+  }
+
+  return out;
 }
