@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { put } from "@vercel/blob";
+import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
 import { writeAuditLog } from "@/lib/audit";
@@ -11,6 +12,8 @@ import { collectDescendantIds } from "@/lib/documents/folder-tree";
 import { sha256Buffer, dupWarning } from "@/lib/documents/dedup";
 import { extractPdfText } from "@/lib/documents/pdf-extract";
 import { classifyDocument } from "@/lib/documents/document-classifier";
+import { parseBankStatement } from "@/lib/documents/parsers";
+import type { ParsedBankStatement } from "@/lib/documents/parsers";
 
 const schema = z.object({
   name: z.string().min(1).max(200),
@@ -667,12 +670,20 @@ export async function uploadDocumentsAction(
     let extractedText: string | null = null;
     let documentType: string | null = null;
     let extractedAt: Date | null = null;
+    let extractedFields: ParsedBankStatement | null = null;
     if (file.type === "application/pdf") {
       try {
         extractedText = await extractPdfText(buffer);
         if (extractedText) {
           const classification = classifyDocument(extractedText);
           documentType = classification.type;
+          // DOC-D2.2: If we detected a bank statement, also parse
+          // its transactions into structured rows for the preview
+          // drawer + "Import to Bank" button. Fail-open: parser
+          // returns null on unknown banks / empty rows.
+          if (documentType === "BANK_STATEMENT") {
+            extractedFields = parseBankStatement(extractedText);
+          }
         }
         extractedAt = new Date();
       } catch (err) {
@@ -699,6 +710,8 @@ export async function uploadDocumentsAction(
         extractedText,
         documentType,
         extractedAt,
+        extractedFields:
+          extractedFields as unknown as Prisma.InputJsonValue,
       },
     });
 
@@ -722,4 +735,219 @@ export async function uploadDocumentsAction(
   revalidatePath("/documents");
   const anyOk = results.some((r) => r.status === "uploaded");
   return { ok: anyOk, results };
+}
+
+// ───────────────────── DOC-D2.2: Import bank statement to Banking ─────────────────────
+
+/**
+ * Light helper: list the org's active BankAccount rows formatted for
+ * the Import-to-Bank picker dropdown. Called client-side on dialog
+ * open so we don't have to thread the whole list through the table.
+ */
+export async function listBankAccountsForImportAction(): Promise<
+  Array<{ id: string; label: string }>
+> {
+  const { organization } = await requireOrganization();
+  const accounts = await db.bankAccount.findMany({
+    where: { organizationId: organization.id, isActive: true },
+    select: { id: true, name: true, accountNumber: true },
+    orderBy: { name: "asc" },
+  });
+  return accounts.map((a) => {
+    const masked =
+      a.accountNumber && a.accountNumber.length > 4
+        ? `••••${a.accountNumber.slice(-4)}`
+        : a.accountNumber ?? "";
+    return {
+      id: a.id,
+      label: masked ? `${a.name} (${masked})` : a.name,
+    };
+  });
+}
+
+
+/**
+ * Read the parsed rows off `Document.extractedFields`, create matching
+ * `BankTransaction` rows under the chosen BankAccount, and link them
+ * all to a fresh `BankImportBatch` so "Undo Last Import" works the
+ * same way it does for CSV uploads.
+ *
+ * Dedup: skip any row whose (date, amount, description) already
+ * exists for the same BankAccount. The `BankTransaction_dedup_idx`
+ * index covers the lookup.
+ *
+ * Returns per-document counters so the UI can render
+ * "Imported N · Skipped M".
+ */
+export async function importStatementToBankAction(input: {
+  documentId: string;
+  bankAccountId: string;
+}): Promise<
+  | { ok: true; imported: number; skipped: number; batchId: string }
+  | { ok: false; error: string }
+> {
+  const { user, organization } = await requireOrganization();
+
+  const doc = await db.document.findFirst({
+    where: {
+      id: input.documentId,
+      organizationId: organization.id,
+      deletedAt: null,
+    },
+    select: {
+      id: true,
+      name: true,
+      extractedFields: true,
+      documentType: true,
+    },
+  });
+  if (!doc) return { ok: false, error: "Document not found." };
+  if (doc.documentType !== "BANK_STATEMENT") {
+    return {
+      ok: false,
+      error: "Only bank statements can be imported to Banking.",
+    };
+  }
+
+  const parsed = doc.extractedFields as unknown as ParsedBankStatement | null;
+  if (!parsed || !Array.isArray(parsed.rows) || parsed.rows.length === 0) {
+    return {
+      ok: false,
+      error:
+        "This statement has no parsed transactions. Smart Capture couldn't read the layout — re-upload or try a CSV import.",
+    };
+  }
+
+  const bankAccount = await db.bankAccount.findFirst({
+    where: { id: input.bankAccountId, organizationId: organization.id },
+    select: { id: true },
+  });
+  if (!bankAccount) {
+    return { ok: false, error: "Bank account not found." };
+  }
+
+  // Pre-load any existing transactions in the date window to drive
+  // the dedup check. Range = min(dates) to max(dates) so we don't
+  // hit the whole table.
+  const dates = parsed.rows
+    .map((r) => new Date(r.date))
+    .filter((d) => !isNaN(d.getTime()));
+  const minDate = dates.length
+    ? new Date(Math.min(...dates.map((d) => d.getTime())))
+    : null;
+  const maxDate = dates.length
+    ? new Date(Math.max(...dates.map((d) => d.getTime())))
+    : null;
+  const existing = minDate && maxDate
+    ? await db.bankTransaction.findMany({
+        where: {
+          organizationId: organization.id,
+          bankAccountId: bankAccount.id,
+          date: { gte: minDate, lte: maxDate },
+        },
+        select: { date: true, amount: true, description: true },
+      })
+    : [];
+  // Key by `${iso}|${amount}|${description}` for O(1) lookup.
+  const existingKeys = new Set(
+    existing.map(
+      (e) =>
+        `${e.date.toISOString().slice(0, 10)}|${e.amount.toString()}|${
+          e.description ?? ""
+        }`
+    )
+  );
+
+  const batchResult = await db.$transaction(async (tx) => {
+    const batch = await tx.bankImportBatch.create({
+      data: {
+        organizationId: organization.id,
+        bankAccountId: bankAccount.id,
+        uploadedById: user.id,
+        fileName: doc.name,
+        rowCount: 0, // updated below
+        duplicateCount: 0, // updated below
+      },
+    });
+
+    let imported = 0;
+    let skipped = 0;
+    for (const row of parsed.rows) {
+      const date = new Date(row.date);
+      if (isNaN(date.getTime())) {
+        skipped += 1;
+        continue;
+      }
+      const amount =
+        row.credit && row.credit > 0
+          ? row.credit
+          : row.debit && row.debit > 0
+            ? row.debit
+            : 0;
+      if (amount <= 0) {
+        skipped += 1;
+        continue;
+      }
+      const type = row.credit && row.credit > 0 ? "CREDIT" : "DEBIT";
+      const description = row.description.slice(0, 500);
+      const key = `${row.date}|${amount}|${description}`;
+      if (existingKeys.has(key)) {
+        skipped += 1;
+        continue;
+      }
+      await tx.bankTransaction.create({
+        data: {
+          organizationId: organization.id,
+          bankAccountId: bankAccount.id,
+          date,
+          description,
+          amount: new Prisma.Decimal(amount),
+          type,
+          importBatchId: batch.id,
+        },
+      });
+      imported += 1;
+    }
+
+    await tx.bankImportBatch.update({
+      where: { id: batch.id },
+      data: { rowCount: imported, duplicateCount: skipped },
+    });
+
+    return { imported, skipped, batchId: batch.id };
+  });
+
+  await writeAuditLog({
+    organizationId: organization.id,
+    userId: user.id,
+    action: "CREATE",
+    entityType: "BankImportBatch",
+    entityId: batchResult.batchId,
+    after: {
+      source: "documents-smart-capture",
+      documentId: doc.id,
+      imported: batchResult.imported,
+      skipped: batchResult.skipped,
+    },
+  });
+
+  // Link the document back to the bank account it was imported into
+  // — surfaces as "Associated To" in the documents table.
+  await db.document.update({
+    where: { id: doc.id },
+    data: {
+      associatedEntityType: "BankAccount",
+      associatedEntityId: bankAccount.id,
+    },
+  });
+
+  revalidatePath("/documents");
+  revalidatePath("/banking");
+
+  return {
+    ok: true,
+    imported: batchResult.imported,
+    skipped: batchResult.skipped,
+    batchId: batchResult.batchId,
+  };
 }
