@@ -1,75 +1,129 @@
-import Link from "next/link";
-import { ArrowLeft, AlertCircle, Download } from "lucide-react";
-import { format } from "date-fns";
+import * as React from "react";
+import { AlertCircle } from "lucide-react";
+import { format, parse, isValid } from "date-fns";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { formatMoney } from "@/lib/money";
+import { ReportShell } from "@/components/reports/report-shell";
+import { ReportFilterStrip } from "@/components/reports/report-filter-strip";
+import { ReportBasisDropdown } from "@/components/reports/report-basis-dropdown";
+import { ReportToolbar } from "@/components/reports/report-toolbar";
+import { parseReportBasis, REPORT_BASIS_LABEL } from "@/lib/reports/report-basis";
 import {
   aggregateLedgerLines,
-  trialBalanceImbalance,
   type AccountBucket,
 } from "@/lib/reports/ledger-aggregation";
+import { buildTrialBalance } from "@/lib/reports/trial-balance";
+import { getRecentReportActivity } from "@/lib/reports/activity";
+import { getExistingSchedule } from "@/lib/reports/scheduled";
+import type { CustomizeColumnDescriptor } from "@/components/reports/customize-report-drawer";
 
 export const metadata = { title: "Trial Balance" };
 
-const TYPE_LABEL: Record<AccountBucket, string> = {
-  ASSET: "Assets",
-  LIABILITY: "Liabilities",
-  EQUITY: "Equity",
-  INCOME: "Income",
-  OTHER_INCOME: "Other Income",
-  EXPENSE: "Expenses",
-  COST_OF_GOODS_SOLD: "Cost of Goods Sold",
-  OTHER_EXPENSE: "Other Expenses",
-};
-
-const TYPE_ORDER: AccountBucket[] = [
-  "ASSET",
-  "LIABILITY",
-  "EQUITY",
-  "INCOME",
-  "OTHER_INCOME",
-  "EXPENSE",
-  "COST_OF_GOODS_SOLD",
-  "OTHER_EXPENSE",
-];
+/**
+ * RPT-TB — Trial Balance.
+ *
+ * Zoho-parity rebuild (Item #2): drops the bare HTML form / manual
+ * CSV button in favour of the shared `ReportShell` + `ReportToolbar`
+ * stack used by P&L, Balance Sheet, Cash Flow, and AR Aging Details.
+ *
+ * Shows a 5-group rollup (Assets / Liabilities / Equities / Income /
+ * Expense) with a single Net Debit OR Net Credit column entry per
+ * account. Imbalance amber banner appears when Σ DR ≠ Σ CR.
+ */
 
 /**
- * RPT-A — Trial Balance. Aggregates every JournalEntryLine into one
- * row per ChartOfAccount, sorted by accounting type then code.
- *
- * The "imbalance" line at the bottom is expected to be non-zero in
- * v1 because many domain records (Invoice, Bill, etc.) don't yet
- * post to the JE. That stays surfaced so users can spot real
- * misposts vs the known gap. RPT-B will close the gap.
+ * DOC-TB: Column descriptors for the shared Customize Report drawer.
+ * Account Code is OFF by default to match Zoho's 3-column layout
+ * (Account / Net Debit / Net Credit). User can switch it on via the
+ * Customize → Show/Hide Columns drawer.
  */
+const COLUMN_DESCRIPTORS: CustomizeColumnDescriptor[] = [
+  { key: "showAccountCode", label: "Account Code", defaultEnabled: false },
+  { key: "showAccount", label: "Account", defaultEnabled: true },
+  { key: "showNetDebit", label: "Net Debit", defaultEnabled: true },
+  { key: "showNetCredit", label: "Net Credit", defaultEnabled: true },
+];
+
+/** Map a column display key to its show<X> URL param. */
+const COL_PARAM_BY_KEY = {
+  accountCode: "showAccountCode",
+  account: "showAccount",
+  netDebit: "showNetDebit",
+  netCredit: "showNetCredit",
+} as const;
+
+function isVisible(
+  searchParams: Record<string, string | undefined> | undefined,
+  paramKey: string,
+  defaultVisible: boolean
+): boolean {
+  const v = searchParams?.[paramKey];
+  if (v === undefined) return defaultVisible;
+  return v !== "0";
+}
+
 export default async function TrialBalancePage({
   searchParams,
 }: {
-  searchParams?: { asOf?: string };
+  searchParams?: Record<string, string | undefined>;
 }) {
-  const { organization } = await requireOrganization();
+  const { organization, user } = await requireOrganization();
   const cur = organization.currency;
-  const asOf = searchParams?.asOf ? new Date(searchParams.asOf) : new Date();
 
-  const lines = await db.journalEntryLine.findMany({
-    where: {
-      journalEntry: {
-        organizationId: organization.id,
-        date: { lte: asOf },
+  // Parse "As of Date" — defaults to today. We accept yyyy-MM-dd.
+  const asOf = parseAsOf(searchParams?.asOf);
+  const basis = parseReportBasis(searchParams ?? {});
+
+  // Column visibility from Customize drawer
+  const showAccountCode = isVisible(
+    searchParams,
+    COL_PARAM_BY_KEY.accountCode,
+    false
+  );
+  const showAccount = isVisible(
+    searchParams,
+    COL_PARAM_BY_KEY.account,
+    true
+  );
+  const showNetDebit = isVisible(
+    searchParams,
+    COL_PARAM_BY_KEY.netDebit,
+    true
+  );
+  const showNetCredit = isVisible(
+    searchParams,
+    COL_PARAM_BY_KEY.netCredit,
+    true
+  );
+
+  // Compute the trial balance + pre-fetch shared toolbar data in
+  // parallel so the report renders fast even with cold caches.
+  const [lines, activityRows, existingSchedule] = await Promise.all([
+    db.journalEntryLine.findMany({
+      where: {
+        journalEntry: {
+          organizationId: organization.id,
+          date: { lte: asOf },
+        },
       },
-    },
-    select: {
-      debit: true,
-      credit: true,
-      accountId: true,
-      account: {
-        select: { id: true, name: true, code: true, type: true },
+      select: {
+        debit: true,
+        credit: true,
+        accountId: true,
+        account: {
+          select: { id: true, name: true, code: true, type: true },
+        },
       },
-    },
-  });
+    }),
+    getRecentReportActivity(organization.id, "trial-balance", 20),
+    getExistingSchedule({
+      organizationId: organization.id,
+      userId: user.id,
+      reportKey: "trial-balance",
+    }),
+  ]);
 
   const rows = aggregateLedgerLines(
     lines.map((l) => ({
@@ -84,148 +138,219 @@ export default async function TrialBalancePage({
     }))
   );
 
-  // Stable sort: account type bucket, then code (numeric where possible), then name.
-  rows.sort((a, b) => {
-    const ta = TYPE_ORDER.indexOf(a.accountType);
-    const tb = TYPE_ORDER.indexOf(b.accountType);
-    if (ta !== tb) return ta - tb;
-    const ca = a.accountCode ?? "";
-    const cb = b.accountCode ?? "";
-    if (ca !== cb) return ca.localeCompare(cb, undefined, { numeric: true });
-    return a.accountName.localeCompare(b.accountName);
-  });
+  const tb = buildTrialBalance(rows);
 
-  const totalDebit = rows.reduce((s, r) => s + r.totalDebit, 0);
-  const totalCredit = rows.reduce((s, r) => s + r.totalCredit, 0);
-  const imbalance = trialBalanceImbalance(rows);
+  // Preserve current filters for export links + Customize drawer
+  // (matches how P&L / AR Aging build their exportParams).
+  const exportParams = new URLSearchParams();
+  exportParams.set("asOf", format(asOf, "yyyy-MM-dd"));
+  exportParams.set("basis", basis);
+  if (!showAccountCode) exportParams.set("showAccountCode", "0");
+  if (!showAccount) exportParams.set("showAccount", "0");
+  if (!showNetDebit) exportParams.set("showNetDebit", "0");
+  if (!showNetCredit) exportParams.set("showNetCredit", "0");
+
+  const asOfDisplay = format(asOf, "dd/MM/yyyy");
+  const visibleColCount =
+    (showAccountCode ? 1 : 0) +
+    (showAccount ? 1 : 0) +
+    (showNetDebit ? 1 : 0) +
+    (showNetCredit ? 1 : 0);
 
   return (
-    <div className="p-6 max-w-5xl mx-auto space-y-4">
-      <div className="flex items-center gap-2">
-        <Button asChild variant="ghost" size="icon">
-          <Link href="/reports">
-            <ArrowLeft className="h-4 w-4" />
-          </Link>
-        </Button>
-        <div>
-          <h1 className="text-xl font-semibold">Trial Balance</h1>
-          <p className="text-sm text-muted-foreground">
-            As of {format(asOf, "dd MMM yyyy")}
-          </p>
+    <ReportShell
+      title="Trial Balance"
+      subtitle={
+        <span className="flex items-center gap-1.5">
+          <span className="text-muted-foreground">Accountant</span>
+          <span className="text-muted-foreground">•</span>
+          <span>As of {asOfDisplay}</span>
+        </span>
+      }
+      range={
+        <ReportFilterStrip>
+          <AsOfDateForm asOf={asOf} basis={basis} />
+          <ReportBasisDropdown defaultBasis={basis} />
+        </ReportFilterStrip>
+      }
+      actions={
+        <ReportToolbar
+          reportKey="trial-balance"
+          reportTitle="Trial Balance"
+          fiscalYearStartMonth={organization.fiscalYearStart}
+          exportBaseUrl="/reports/trial-balance/export"
+          exportParams={exportParams.toString()}
+          columns={COLUMN_DESCRIPTORS}
+          activityRows={activityRows}
+          existingSchedule={existingSchedule}
+        />
+      }
+    >
+      <Card className="p-0 overflow-hidden">
+        {/* Centered report header (org / title / basis / as-of) */}
+        <div className="text-center space-y-1 pt-8 pb-6">
+          <div className="text-sm text-muted-foreground">
+            {organization.name}
+          </div>
+          <h2 className="text-xl font-semibold">Trial Balance</h2>
+          <div className="text-sm">
+            <span className="text-muted-foreground">Basis: </span>
+            <span className="font-medium">{REPORT_BASIS_LABEL[basis]}</span>
+          </div>
+          <div className="text-sm">
+            <span className="text-muted-foreground">As of </span>
+            <span className="font-medium">{asOfDisplay}</span>
+          </div>
         </div>
-        <div className="ml-auto">
-          <Button asChild variant="outline" size="sm" className="gap-1">
-            <a
-              href={`/reports/trial-balance/export?asOf=${asOf
-                .toISOString()
-                .slice(0, 10)}`}
-            >
-              <Download className="h-4 w-4" /> Download CSV
-            </a>
-          </Button>
-        </div>
-      </div>
 
-      <form
-        className="flex items-center gap-2 text-sm"
-        action="/reports/trial-balance"
-      >
-        <label>
-          As of{" "}
-          <input
-            type="date"
-            name="asOf"
-            defaultValue={format(asOf, "yyyy-MM-dd")}
-            className="ml-1 h-9 rounded-md border border-input bg-background px-3 text-sm"
-          />
-        </label>
-        <Button type="submit" size="sm" variant="outline">
-          Apply
-        </Button>
-      </form>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Account balances</CardTitle>
-        </CardHeader>
-        <CardContent className="p-0">
-          {rows.length === 0 ? (
-            <div className="p-8 text-sm text-center text-muted-foreground">
-              No journal entries posted yet. As you Categorise bank lines
-              (BNK-D) or post Manual Journals, accounts will appear here.
-            </div>
-          ) : (
-            <table className="w-full text-sm">
-              <thead className="bg-muted/30 text-xs uppercase tracking-wider text-muted-foreground">
-                <tr>
-                  <th className="text-left p-3">Code</th>
-                  <th className="text-left p-3">Account</th>
-                  <th className="text-left p-3">Type</th>
-                  <th className="text-right p-3">Debit</th>
-                  <th className="text-right p-3">Credit</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y">
-                {rows.map((r) => (
-                  <tr key={r.accountId}>
-                    <td className="p-3 font-mono text-xs">
-                      {r.accountCode ?? "—"}
-                    </td>
-                    <td className="p-3">{r.accountName}</td>
-                    <td className="p-3 text-xs text-muted-foreground">
-                      {TYPE_LABEL[r.accountType]}
-                    </td>
-                    <td className="p-3 text-right tabular-nums">
-                      {r.totalDebit > 0 ? formatMoney(r.totalDebit, cur) : ""}
-                    </td>
-                    <td className="p-3 text-right tabular-nums">
-                      {r.totalCredit > 0 ? formatMoney(r.totalCredit, cur) : ""}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot className="bg-muted/30">
-                <tr>
-                  <td colSpan={3} className="p-3 font-medium">
-                    Totals
-                  </td>
-                  <td className="p-3 text-right tabular-nums font-semibold">
-                    {formatMoney(totalDebit, cur)}
-                  </td>
-                  <td className="p-3 text-right tabular-nums font-semibold">
-                    {formatMoney(totalCredit, cur)}
-                  </td>
-                </tr>
-              </tfoot>
-            </table>
-          )}
-        </CardContent>
-      </Card>
-
-      {imbalance > 0.005 ? (
-        <Card className="border-amber-500/40 bg-amber-50/50 dark:bg-amber-950/20">
-          <CardContent className="pt-6 text-sm flex items-start gap-3">
+        {tb.imbalance > 0.005 ? (
+          <div className="mx-6 mb-4 rounded-md border border-amber-500/40 bg-amber-50/50 dark:bg-amber-950/20 p-3 text-sm flex items-start gap-2">
             <AlertCircle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
             <div>
               <div className="font-medium text-amber-900 dark:text-amber-200">
-                Imbalance: {formatMoney(imbalance, cur)}
+                Imbalance: {formatMoney(tb.imbalance, cur)}
               </div>
               <p className="text-xs text-amber-800/80 dark:text-amber-200/80 mt-1">
-                Not every domain record posts to the ledger yet — invoices,
-                bills, and payment receipts will be wired in RPT-B. Bank
-                Categorise (BNK-D) and Transaction Rule fires (BNK-E)
-                already do. The gap above is the unposted amount, not a bug.
+                Σ Debit ≠ Σ Credit. Not every domain record posts to the
+                journal yet (invoices, bills, payments) — Bank Categorise +
+                Manual Journals do. The gap above is the unposted amount.
               </p>
             </div>
-          </CardContent>
-        </Card>
-      ) : rows.length > 0 ? (
-        <Card className="border-emerald-500/40 bg-emerald-50/50 dark:bg-emerald-950/20">
-          <CardContent className="pt-6 text-sm text-emerald-900 dark:text-emerald-200">
-            Balanced — debits equal credits.
-          </CardContent>
-        </Card>
-      ) : null}
-    </div>
+          </div>
+        ) : null}
+
+        {tb.groups.length === 0 ? (
+          <div className="px-6 pb-8 text-sm text-center text-muted-foreground">
+            No journal entries posted yet. Categorise bank lines or post
+            Manual Journals to see balances here.
+          </div>
+        ) : (
+          <table className="w-full text-sm">
+            <thead className="bg-muted/30 text-[10px] uppercase tracking-wider text-muted-foreground">
+              <tr>
+                {showAccountCode ? (
+                  <th className="text-left p-3 w-24">Code</th>
+                ) : null}
+                {showAccount ? (
+                  <th className="text-left p-3">Account</th>
+                ) : null}
+                {showNetDebit ? (
+                  <th className="text-right p-3 w-40">Net Debit</th>
+                ) : null}
+                {showNetCredit ? (
+                  <th className="text-right p-3 w-40">Net Credit</th>
+                ) : null}
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {tb.groups.map((g) => (
+                <React.Fragment key={g.groupKey}>
+                  {/* Group header row */}
+                  <tr className="bg-muted/10">
+                    <td
+                      colSpan={visibleColCount}
+                      className="px-3 py-2 font-semibold text-sm"
+                    >
+                      {g.groupLabel}
+                    </td>
+                  </tr>
+                  {/* Account rows */}
+                  {g.rows.map((r) => (
+                    <tr key={r.accountId} className="hover:bg-muted/30">
+                      {showAccountCode ? (
+                        <td className="p-3 pl-6 font-mono text-xs text-muted-foreground">
+                          {r.accountCode ?? ""}
+                        </td>
+                      ) : null}
+                      {showAccount ? (
+                        <td className="p-3 pl-6">{r.accountName}</td>
+                      ) : null}
+                      {showNetDebit ? (
+                        <td className="p-3 text-right tabular-nums">
+                          {r.netDebit > 0 ? formatMoney(r.netDebit, cur) : ""}
+                        </td>
+                      ) : null}
+                      {showNetCredit ? (
+                        <td className="p-3 text-right tabular-nums">
+                          {r.netCredit > 0 ? formatMoney(r.netCredit, cur) : ""}
+                        </td>
+                      ) : null}
+                    </tr>
+                  ))}
+                </React.Fragment>
+              ))}
+            </tbody>
+            <tfoot className="bg-muted/30 border-t-2">
+              <tr>
+                <td
+                  className="p-3 font-semibold"
+                  colSpan={
+                    (showAccountCode ? 1 : 0) + (showAccount ? 1 : 0) || 1
+                  }
+                >
+                  Total for Trial Balance
+                </td>
+                {showNetDebit ? (
+                  <td className="p-3 text-right tabular-nums font-semibold">
+                    {formatMoney(tb.totalDebit, cur)}
+                  </td>
+                ) : null}
+                {showNetCredit ? (
+                  <td className="p-3 text-right tabular-nums font-semibold">
+                    {formatMoney(tb.totalCredit, cur)}
+                  </td>
+                ) : null}
+              </tr>
+            </tfoot>
+          </table>
+        )}
+
+        <div className="px-6 pt-4 pb-6 text-[11px] text-muted-foreground">
+          **Amount is displayed in your base currency{" "}
+          <span className="inline-block ml-1 px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 font-medium text-[10px]">
+            {cur}
+          </span>
+        </div>
+      </Card>
+    </ReportShell>
+  );
+}
+
+/* ───────────────────────── helpers ───────────────────────── */
+
+function parseAsOf(s: string | undefined): Date {
+  if (!s) return new Date();
+  // Accept yyyy-MM-dd (from the date input) — fall back to today.
+  const d = parse(s, "yyyy-MM-dd", new Date());
+  return isValid(d) ? d : new Date();
+}
+
+/**
+ * AsOfDateForm — a thin server-rendered form pill that posts back to
+ * /reports/trial-balance preserving the basis. Sits in the
+ * `ReportFilterStrip` slot next to the basis dropdown.
+ */
+function AsOfDateForm({ asOf, basis }: { asOf: Date; basis: string }) {
+  return (
+    <form
+      method="GET"
+      action="/reports/trial-balance"
+      className="inline-flex items-center gap-2 px-2 py-1 rounded-full border bg-background text-xs"
+    >
+      <span className="text-muted-foreground">As of Date :</span>
+      <input
+        type="date"
+        name="asOf"
+        defaultValue={format(asOf, "yyyy-MM-dd")}
+        className="h-6 px-1 rounded border bg-background text-xs"
+      />
+      <input type="hidden" name="basis" value={basis} />
+      <button
+        type="submit"
+        className="text-primary hover:underline text-xs"
+      >
+        Apply
+      </button>
+    </form>
   );
 }
