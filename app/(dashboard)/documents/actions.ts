@@ -1465,55 +1465,6 @@ export async function uploadBankStatementsAction(
   return { ok: anyOk, results };
 }
 
-// ───────────────────── DOC-D3.1: Inbox email actions ─────────────────────
-
-/**
- * Fetch (or lazily generate) the per-org Smart Capture inbox email
- * address. Returns the full address or null when the operator hasn't
- * configured `INBOUND_EMAIL_DOMAIN` env (UI shows "Coming soon").
- */
-export async function getInboxEmailForOrgAction(): Promise<{
-  configured: boolean;
-  email: string | null;
-}> {
-  const { organization } = await requireOrganization();
-  const { getOrCreateInboxToken, buildInboxEmail } = await import(
-    "@/lib/documents/inbox-token"
-  );
-  const token = await getOrCreateInboxToken(organization.id);
-  const email = buildInboxEmail(token);
-  return {
-    configured: !!email,
-    email,
-  };
-}
-
-/**
- * Rotate the org's inbox token. Old email address stops resolving
- * immediately. UI should warn the user before triggering this.
- */
-export async function rotateInboxEmailAction(): Promise<{
-  ok: true;
-  email: string | null;
-}> {
-  const { user, organization } = await requireOrganization();
-  const { rotateInboxToken, buildInboxEmail } = await import(
-    "@/lib/documents/inbox-token"
-  );
-  const token = await rotateInboxToken(organization.id);
-  const email = buildInboxEmail(token);
-  await writeAuditLog({
-    organizationId: organization.id,
-    userId: user.id,
-    action: "UPDATE",
-    entityType: "Organization",
-    entityId: organization.id,
-    after: { rotatedInboxEmailToken: true },
-  });
-  revalidatePath("/documents");
-  return { ok: true, email };
-}
-
 // ───────────────────── DOC-D4.1: Password-protected PDF retry ─────────────────────
 
 /**

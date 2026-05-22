@@ -18,7 +18,6 @@ import {
   uploadBankStatementsAction,
   type UploadDocumentItemResult,
 } from "./actions";
-import { InboxEmailCard } from "./inbox-email-card";
 import {
   DocumentsTable,
   type DocumentTableRow,
@@ -171,9 +170,6 @@ export function BankStatementsInbox({
             support is on the roadmap.)
           </div>
         </div>
-
-        {/* Inbox-email card — surfaces the per-org forwarding address */}
-        <InboxEmailCard />
 
         {/* Upload results breakdown */}
         {results.length > 0 ? (

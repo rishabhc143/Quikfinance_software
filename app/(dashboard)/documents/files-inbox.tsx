@@ -13,7 +13,6 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { uploadDocumentsAction, type UploadDocumentItemResult } from "./actions";
-import { InboxEmailCard } from "./inbox-email-card";
 
 /**
  * DOC-D1.3: Files inbox surface — matches the user-shared Zoho
@@ -138,13 +137,6 @@ export function FilesInbox({ rows }: { rows: Array<{ id: string; name: string; m
             }}
           />
         </div>
-      </div>
-
-      {/* DOC-D3.1: Inbox-email card replaces the old stub. Renders
-          the live per-org address when configured, or a "Coming soon"
-          hint when the operator hasn't set INBOUND_EMAIL_DOMAIN. */}
-      <div className="mt-4">
-        <InboxEmailCard />
       </div>
 
       {/* Upload result breakdown */}
