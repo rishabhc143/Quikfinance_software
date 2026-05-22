@@ -56,6 +56,10 @@ export type ParsedBankStatement = {
   openingBalance?: number;
   closingBalance?: number;
   rows: BankTransactionRow[];
+  /** DOC-D4.4: Tracks which parser produced this result. Stored inside
+   *  the JSONB so no migration is needed. Absent on pre-D4.4 rows —
+   *  treat absence as "heuristic". */
+  _meta?: { parserSource: "heuristic" | "llm" | "manual" };
 };
 
 /**

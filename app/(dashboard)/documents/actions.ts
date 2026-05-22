@@ -19,6 +19,10 @@ import {
   type ParsedBill,
   type ParsedReceipt,
 } from "@/lib/documents/parsers";
+import {
+  parseBankStatementWithLLM,
+  isLlmFallbackEnabled,
+} from "@/lib/documents/parsers/llm-fallback";
 
 const schema = z.object({
   name: z.string().min(1).max(200),
@@ -698,6 +702,26 @@ export async function uploadDocumentsAction(
           // receipts → vendor + date + total + paid-via. Fail-open
           // when parser returns null.
           extractedFields = parseByDocumentType(extractedText, documentType);
+          // DOC-D4.4: Claude fallback when heuristic returns null OR empty rows
+          // on a bank statement. No-op when ANTHROPIC_API_KEY isn't set.
+          let parserSource: "heuristic" | "llm" | "manual" = "heuristic";
+          const isBankStmtA = documentType === "BANK_STATEMENT";
+          const heuristicEmptyA =
+            !extractedFields ||
+            ("rows" in extractedFields && extractedFields.rows.length === 0);
+          if (isBankStmtA && heuristicEmptyA && isLlmFallbackEnabled()) {
+            const llm = await parseBankStatementWithLLM(extractedText);
+            if (llm && llm.rows.length > 0) {
+              extractedFields = llm;
+              parserSource = "llm";
+            }
+          }
+          if (extractedFields && "rows" in extractedFields) {
+            extractedFields = {
+              ...extractedFields,
+              _meta: { parserSource },
+            } as ParsedBankStatement;
+          }
         } else if (result.kind === "needs-password") {
           needsPassword = true;
         }
@@ -1318,9 +1342,24 @@ export async function uploadBankStatementsAction(
         const result = await extractPdfTextWithPassword(buffer);
         if (result.kind === "ok") {
           extractedText = result.text;
-          const parsed = parseByDocumentType(extractedText, "BANK_STATEMENT");
-          if (parsed && "rows" in parsed) {
-            extractedFields = parsed as ParsedBankStatement;
+          let parsedB = parseByDocumentType(extractedText, "BANK_STATEMENT");
+          // DOC-D4.4: Claude fallback when heuristic returns null OR empty rows.
+          let parserSourceB: "heuristic" | "llm" | "manual" = "heuristic";
+          const heuristicEmptyB =
+            !parsedB ||
+            ("rows" in parsedB && parsedB.rows.length === 0);
+          if (heuristicEmptyB && isLlmFallbackEnabled()) {
+            const llm = await parseBankStatementWithLLM(extractedText);
+            if (llm && llm.rows.length > 0) {
+              parsedB = llm;
+              parserSourceB = "llm";
+            }
+          }
+          if (parsedB && "rows" in parsedB) {
+            extractedFields = {
+              ...parsedB,
+              _meta: { parserSource: parserSourceB },
+            } as ParsedBankStatement;
           }
         } else if (result.kind === "needs-password") {
           needsPassword = true;
@@ -1521,7 +1560,26 @@ export async function retryExtractWithPasswordAction(input: {
   // Success — classify + parse + update.
   const classification = classifyDocument(result.text);
   const documentType = classification.type;
-  const extractedFields = parseByDocumentType(result.text, documentType);
+  let extractedFields = parseByDocumentType(result.text, documentType);
+  // DOC-D4.4: Claude fallback when heuristic returns null OR empty rows.
+  let parserSourceC: "heuristic" | "llm" | "manual" = "heuristic";
+  const isBankStmtC = documentType === "BANK_STATEMENT";
+  const heuristicEmptyC =
+    !extractedFields ||
+    ("rows" in extractedFields && extractedFields.rows.length === 0);
+  if (isBankStmtC && heuristicEmptyC && isLlmFallbackEnabled()) {
+    const llm = await parseBankStatementWithLLM(result.text);
+    if (llm && llm.rows.length > 0) {
+      extractedFields = llm;
+      parserSourceC = "llm";
+    }
+  }
+  if (extractedFields && "rows" in extractedFields) {
+    extractedFields = {
+      ...extractedFields,
+      _meta: { parserSource: parserSourceC },
+    } as ParsedBankStatement;
+  }
   const inbox =
     documentType === "BANK_STATEMENT" ? "BANK_STATEMENTS" : undefined;
 
@@ -1547,6 +1605,7 @@ export async function retryExtractWithPasswordAction(input: {
     after: {
       source: "password-retry",
       documentType,
+      parserSource: parserSourceC,
       rowCount:
         extractedFields && "rows" in extractedFields
           ? extractedFields.rows.length
@@ -1556,6 +1615,81 @@ export async function retryExtractWithPasswordAction(input: {
 
   revalidatePath("/documents");
   return { ok: true, documentType };
+}
+
+// ───────────────────── DOC-D4.4: LLM fallback actions ─────────────────────
+
+/**
+ * Client-safe gate check: lets the drawer decide whether to render
+ * the "Re-run parse with AI" button before making a full round trip.
+ */
+export async function isLlmFallbackEnabledAction(): Promise<boolean> {
+  return isLlmFallbackEnabled();
+}
+
+/**
+ * Manual trigger: re-run the Claude fallback parser on a Document that
+ * already has `extractedText` but zero heuristic rows (or a failed
+ * heuristic). Updates `extractedFields` in place.
+ */
+export async function retryParseWithLLMAction(input: {
+  documentId: string;
+}): Promise<{ ok: true; rowCount: number } | { ok: false; error: string }> {
+  const { user, organization } = await requireOrganization();
+
+  if (!isLlmFallbackEnabled()) {
+    return { ok: false, error: "AI fallback is not enabled on this deployment." };
+  }
+
+  const doc = await db.document.findUnique({
+    where: { id: input.documentId },
+    select: {
+      id: true,
+      organizationId: true,
+      documentType: true,
+      extractedText: true,
+      mimeType: true,
+    },
+  });
+
+  if (!doc || doc.organizationId !== organization.id) {
+    return { ok: false, error: "Document not found." };
+  }
+  if (doc.documentType !== "BANK_STATEMENT") {
+    return { ok: false, error: "Only bank statement documents can use AI parsing." };
+  }
+  if (!doc.extractedText) {
+    return { ok: false, error: "No extracted text available to send to AI." };
+  }
+
+  const llm = await parseBankStatementWithLLM(doc.extractedText);
+  if (!llm || llm.rows.length === 0) {
+    return { ok: false, error: "AI couldn't extract rows from this document. The layout may be too unusual." };
+  }
+
+  const withMeta: ParsedBankStatement = {
+    ...llm,
+    _meta: { parserSource: "llm" },
+  };
+
+  await db.document.update({
+    where: { id: doc.id },
+    data: {
+      extractedFields: withMeta as unknown as Prisma.InputJsonValue,
+    },
+  });
+
+  await writeAuditLog({
+    organizationId: organization.id,
+    userId: user.id,
+    action: "UPDATE",
+    entityType: "Document",
+    entityId: doc.id,
+    after: { source: "llm-fallback-manual", rowCount: llm.rows.length },
+  });
+
+  revalidatePath("/documents");
+  return { ok: true, rowCount: llm.rows.length };
 }
 
 // ───────────────────── DOC-D4.2: Edit parsed bank statement ─────────────────────

@@ -58,6 +58,8 @@ import {
   retryExtractWithPasswordAction,
   updateParsedBankStatementAction,
   getBankRowMatchesAction,
+  retryParseWithLLMAction,
+  isLlmFallbackEnabledAction,
 } from "./actions";
 import { Link2, ArrowRight } from "lucide-react";
 import Link from "next/link";
@@ -358,6 +360,13 @@ function BankStatementTransactionsPanel({
     setEditedRows(parsed.rows);
   }, [parsed.rows]);
 
+  // DOC-D4.4: Check whether the LLM fallback is available on this deployment.
+  const [llmEnabled, setLlmEnabled] = React.useState(false);
+  const [llmBusy, setLlmBusy] = React.useState(false);
+  React.useEffect(() => {
+    void isLlmFallbackEnabledAction().then(setLlmEnabled);
+  }, []);
+
   // DOC-D4.2: Compute confidence on the live (edited or original) data.
   const confidence = React.useMemo(
     () => computeBankStatementConfidence({ ...parsed, rows: editing ? editedRows : parsed.rows }),
@@ -414,6 +423,19 @@ function BankStatementTransactionsPanel({
     });
   }
 
+  // DOC-D4.4: Manual trigger for the Claude fallback parser.
+  async function runWithLlm() {
+    setLlmBusy(true);
+    const r = await retryParseWithLLMAction({ documentId });
+    setLlmBusy(false);
+    if (!r.ok) {
+      toast.error(r.error);
+      return;
+    }
+    toast.success(`Parsed ${r.rowCount} rows via AI.`);
+    router.refresh();
+  }
+
   // Format INR for display (lakh grouping).
   function inr(n: number | undefined): string {
     if (n == null) return "";
@@ -450,6 +472,15 @@ function BankStatementTransactionsPanel({
         >
           {confidenceLabel(confidence.level)} ({confidence.score}/100)
         </span>
+        {/* DOC-D4.4: Violet chip when Claude generated these rows. */}
+        {parsed._meta?.parserSource === "llm" ? (
+          <span
+            className="text-[10px] normal-case tracking-normal px-1.5 py-0.5 rounded font-medium bg-violet-100 text-violet-800"
+            title="Heuristic parser couldn't read this layout — Claude generated these rows. Cost ~₹0.85 per statement."
+          >
+            AI parsed
+          </span>
+        ) : null}
         <span className="ml-auto text-[10px] normal-case tracking-normal text-muted-foreground">
           {rowsToRender.length} row{rowsToRender.length === 1 ? "" : "s"}
         </span>
@@ -502,6 +533,26 @@ function BankStatementTransactionsPanel({
               <Pencil className="h-3 w-3 mr-1" />
               Edit
             </Button>
+            {/* DOC-D4.4: Manual AI trigger — only shown when heuristic
+                returned 0 rows and the deployment has an API key. */}
+            {llmEnabled && parsed.bank === "UNKNOWN" && parsed.rows.length === 0 ? (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={(e) => {
+                  e.preventDefault();
+                  void runWithLlm();
+                }}
+                disabled={llmBusy}
+                className="h-7 text-xs normal-case tracking-normal"
+              >
+                {llmBusy ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  "Re-run parse with AI"
+                )}
+              </Button>
+            ) : null}
             <Button
               size="sm"
               onClick={(e) => {
