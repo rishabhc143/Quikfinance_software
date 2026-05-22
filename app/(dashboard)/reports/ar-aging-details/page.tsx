@@ -1,10 +1,13 @@
 import * as React from "react";
 import Link from "next/link";
-import { Download } from "lucide-react";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
 import { Button } from "@/components/ui/button";
 import { ReportShell } from "@/components/reports/report-shell";
+import { ReportToolbar } from "@/components/reports/report-toolbar";
+import type { CustomizeColumnDescriptor } from "@/components/reports/customize-report-drawer";
+import { getRecentReportActivity } from "@/lib/reports/activity";
+import { getExistingSchedule } from "@/lib/reports/scheduled";
 import { formatMoney } from "@/lib/money";
 import {
   computeArAgingDetails,
@@ -21,12 +24,39 @@ import type { InvoiceStatus } from "@prisma/client";
 import { AgingIntervalsSelect } from "@/components/reports/aging-intervals-select";
 import { GroupBySelect } from "@/components/reports/group-by-select";
 import { EntitiesPopover } from "@/components/reports/entities-popover";
-import {
-  CustomizeColumnsPopover,
-  COLUMN_DEFS,
-  ALL_COLUMN_KEYS,
-} from "@/components/reports/customize-columns-popover";
 import { MoreFiltersPopover } from "@/components/reports/more-filters-popover";
+
+/**
+ * DOC-AR-DETAILS: column descriptors for the shared Customize Report
+ * drawer. Each column is on by default; users can hide via
+ * `?show<Col>=0` in the URL (the drawer manages this).
+ */
+const COLUMN_DESCRIPTORS: CustomizeColumnDescriptor[] = [
+  { key: "showDate", label: "Date", defaultEnabled: true },
+  { key: "showDueDate", label: "Due Date", defaultEnabled: true },
+  { key: "showNumber", label: "Transaction#", defaultEnabled: true },
+  { key: "showType", label: "Type", defaultEnabled: true },
+  { key: "showStatus", label: "Status", defaultEnabled: true },
+  { key: "showCustomerName", label: "Customer Name", defaultEnabled: true },
+  { key: "showAge", label: "Age", defaultEnabled: true },
+  { key: "showAmount", label: "Amount", defaultEnabled: true },
+  { key: "showBalanceDue", label: "Balance Due", defaultEnabled: true },
+];
+
+/** Map a column key from the API ("date") to its `show<X>` URL param. */
+const COL_PARAM_BY_KEY: Record<string, string> = {
+  date: "showDate",
+  dueDate: "showDueDate",
+  number: "showNumber",
+  type: "showType",
+  status: "showStatus",
+  customerName: "showCustomerName",
+  age: "showAge",
+  amount: "showAmount",
+  balanceDue: "showBalanceDue",
+};
+
+const ALL_COLUMN_KEYS = Object.keys(COL_PARAM_BY_KEY);
 
 export const metadata = { title: "AR Aging Details" };
 
@@ -40,24 +70,9 @@ export const metadata = { title: "AR Aging Details" };
 export default async function ArAgingDetailsPage({
   searchParams,
 }: {
-  searchParams?: {
-    asOf?: string;
-    agingBy?: string;
-    intervalCount?: string;
-    intervalSize?: string;
-    sort?: string;
-    dir?: string;
-    cols?: string;
-    groupBy?: string;
-    entities?: string;
-    statuses?: string;
-    customerId?: string;
-    amountMin?: string;
-    amountMax?: string;
-    buckets?: string;
-  };
+  searchParams?: Record<string, string | undefined>;
 }) {
-  const { organization } = await requireOrganization();
+  const { organization, user } = await requireOrganization();
   const cur = organization.currency;
 
   const asOf = parseDateOrToday(searchParams?.asOf);
@@ -69,7 +84,14 @@ export default async function ArAgingDetailsPage({
   const sortDir: SortDir = searchParams?.dir === "asc" ? "asc" : "desc";
   const groupBy = parseGroupBy(searchParams?.groupBy);
   const entities = parseEntities(searchParams?.entities);
-  const cols = parseCols(searchParams?.cols);
+  // DOC-AR-DETAILS: Column visibility now flows through the shared
+  // Customize Report drawer. Each column has a `show<X>` URL param
+  // (e.g. ?showAmount=0 hides Amount). Default = all visible.
+  const cols = ALL_COLUMN_KEYS.filter((key) => {
+    const paramKey = COL_PARAM_BY_KEY[key];
+    const value = paramKey ? searchParams?.[paramKey] : undefined;
+    return value !== "0";
+  });
   const statusFilterArr = parseStatuses(searchParams?.statuses);
   const customerId = searchParams?.customerId?.trim() || undefined;
   const amountMin =
@@ -85,34 +107,43 @@ export default async function ArAgingDetailsPage({
   // Fetch invoices + credit notes + customers in parallel. The lib
   // filters on `entities` after the query so we always pull both
   // (cheap on small SMB datasets, and the type narrowing is cleaner).
-  const [invoices, creditNotes, allCustomers] = await Promise.all([
-    db.invoice.findMany({
-      where: {
+  const [invoices, creditNotes, allCustomers, activityRows, existingSchedule] =
+    await Promise.all([
+      db.invoice.findMany({
+        where: {
+          organizationId: organization.id,
+          deletedAt: null,
+          status: { in: ["SENT", "PARTIALLY_PAID", "OVERDUE"] },
+        },
+        include: { contact: { select: { displayName: true, type: true } } },
+      }),
+      db.creditNote.findMany({
+        where: {
+          organizationId: organization.id,
+          deletedAt: null,
+          status: "OPEN",
+        },
+        include: { contact: { select: { displayName: true } } },
+      }),
+      db.contact.findMany({
+        where: {
+          organizationId: organization.id,
+          type: "CUSTOMER",
+          deletedAt: null,
+        },
+        select: { id: true, displayName: true },
+        orderBy: { displayName: "asc" },
+        take: 500,
+      }),
+      // DOC-AR-DETAILS: Pre-fetch shared toolbar data so the Activity
+      // and Schedule drawers open instantly without a client round-trip.
+      getRecentReportActivity(organization.id, "ar-aging-details", 20),
+      getExistingSchedule({
         organizationId: organization.id,
-        deletedAt: null,
-        status: { in: ["SENT", "PARTIALLY_PAID", "OVERDUE"] },
-      },
-      include: { contact: { select: { displayName: true, type: true } } },
-    }),
-    db.creditNote.findMany({
-      where: {
-        organizationId: organization.id,
-        deletedAt: null,
-        status: "OPEN",
-      },
-      include: { contact: { select: { displayName: true } } },
-    }),
-    db.contact.findMany({
-      where: {
-        organizationId: organization.id,
-        type: "CUSTOMER",
-        deletedAt: null,
-      },
-      select: { id: true, displayName: true },
-      orderBy: { displayName: "asc" },
-      take: 500,
-    }),
-  ]);
+        userId: user.id,
+        reportKey: "ar-aging-details",
+      }),
+    ]);
 
   const rows = computeArAgingDetails({
     invoices: invoices.map((i) => ({
@@ -180,11 +211,17 @@ export default async function ArAgingDetailsPage({
   if (amountMin != null) baseParams.set("amountMin", String(amountMin));
   if (amountMax != null) baseParams.set("amountMax", String(amountMax));
   if (bucketFilter) baseParams.set("buckets", bucketFilter.join(","));
-  if (cols.length !== ALL_COLUMN_KEYS.length)
-    baseParams.set("cols", cols.join(","));
+  // DOC-AR-DETAILS: column visibility lives in individual show<X>=0
+  // URL params managed by the shared Customize Report drawer.
+  // Preserve any that are currently hidden so the export URL matches.
+  for (const key of ALL_COLUMN_KEYS) {
+    const paramKey = COL_PARAM_BY_KEY[key];
+    const value = paramKey ? searchParams?.[paramKey] : undefined;
+    if (value === "0") baseParams.set(paramKey, "0");
+  }
 
-  const csvHref = `/reports/ar-aging-details/export?format=csv&${baseParams.toString()}`;
-  const pdfHref = `/reports/ar-aging-details/export?format=pdf&${baseParams.toString()}`;
+  // ReportToolbar builds its own export URLs from exportBaseUrl +
+  // exportParams; we just hand over the preserved params.
 
   function sortHref(key: SortKey): string {
     const nextDir = sortBy === key && sortDir === "desc" ? "asc" : "desc";
@@ -201,18 +238,16 @@ export default async function ArAgingDetailsPage({
       title={dynamicTitle}
       subtitle={<span>As of {asOfDisplay}</span>}
       actions={
-        <>
-          <Button asChild variant="outline" size="sm" className="gap-1">
-            <a href={csvHref}>
-              <Download className="h-4 w-4" /> CSV
-            </a>
-          </Button>
-          <Button asChild variant="outline" size="sm" className="gap-1">
-            <a href={pdfHref}>
-              <Download className="h-4 w-4" /> PDF
-            </a>
-          </Button>
-        </>
+        <ReportToolbar
+          reportKey="ar-aging-details"
+          reportTitle="AR Aging Details"
+          fiscalYearStartMonth={organization.fiscalYearStart}
+          exportBaseUrl="/reports/ar-aging-details/export"
+          exportParams={baseParams.toString()}
+          columns={COLUMN_DESCRIPTORS}
+          activityRows={activityRows}
+          existingSchedule={existingSchedule}
+        />
       }
     >
       {/* Filter chip row */}
@@ -243,9 +278,19 @@ export default async function ArAgingDetailsPage({
         {bucketFilter ? (
           <input type="hidden" name="buckets" value={bucketFilter.join(",")} />
         ) : null}
-        {cols.length !== ALL_COLUMN_KEYS.length ? (
-          <input type="hidden" name="cols" value={cols.join(",")} />
-        ) : null}
+        {/* Preserve hidden columns through the Run Report form */}
+        {ALL_COLUMN_KEYS.map((key) => {
+          const paramKey = COL_PARAM_BY_KEY[key];
+          const value = paramKey ? searchParams?.[paramKey] : undefined;
+          return value === "0" ? (
+            <input
+              key={paramKey}
+              type="hidden"
+              name={paramKey}
+              value="0"
+            />
+          ) : null;
+        })}
         <input type="hidden" name="intervalCount" value={intervalCount} />
         <input type="hidden" name="intervalSize" value={intervalSize} />
 
@@ -296,9 +341,10 @@ export default async function ArAgingDetailsPage({
           intervalCount={intervalCount}
           intervalSize={intervalSize}
         />
-        <span className="ml-auto">
-          <CustomizeColumnsPopover selected={cols} />
-        </span>
+        {/* DOC-AR-DETAILS: Column visibility is now handled by the
+            shared Customize Report drawer (toolbar button at the top
+            right of ReportShell). The old in-page CustomizeColumns
+            popover was removed in #245. */}
       </div>
 
       {/* Centered company name + report title header */}
@@ -521,15 +567,6 @@ function parseEntities(s: string | undefined): Entity[] {
     .map((x) => x.trim().toLowerCase())
     .filter((x) => x === "invoice" || x === "creditnote") as Entity[];
   return parts.length === 0 ? ["invoice"] : parts;
-}
-
-function parseCols(s: string | undefined): string[] {
-  if (!s) return ALL_COLUMN_KEYS;
-  const valid = new Set(ALL_COLUMN_KEYS);
-  const parts = s.split(",").map((x) => x.trim()).filter((x) => valid.has(x));
-  if (parts.length === 0) return ALL_COLUMN_KEYS;
-  // Preserve canonical order
-  return COLUMN_DEFS.map((c) => c.key).filter((k) => parts.includes(k));
 }
 
 const VALID_STATUSES: ReadonlyArray<InvoiceStatus> = [

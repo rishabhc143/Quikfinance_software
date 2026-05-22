@@ -25,6 +25,12 @@ import {
 import { renderProfitLossPdf } from "@/lib/reports/pdf/profit-loss";
 import { renderBalanceSheetPdf } from "@/lib/reports/pdf/balance-sheet";
 import { renderCashFlowPdf } from "@/lib/reports/pdf/cash-flow";
+import { renderArAgingDetailsPdf } from "@/lib/reports/pdf/ar-aging-details";
+import {
+  computeArAgingDetails,
+  groupArAgingDetails,
+  bucketLabels,
+} from "@/lib/reports/ar-aging-details";
 import { sendReportEmail } from "@/lib/reports/email";
 import { logReportActivity } from "@/lib/reports/activity";
 
@@ -402,6 +408,90 @@ async function buildReportForKey(
     });
     return {
       attachment: { filename: `cash-flow.pdf`, content: buf },
+    };
+  }
+
+  if (reportKey === "ar-aging-details") {
+    // DOC-AR-DETAILS: Scheduled email export. Pulls all outstanding
+    // invoices + open credit notes for the org, runs the standard
+    // aging compute with the default 4x15 bucket grid, then renders
+    // the PDF using the same template as the on-screen Export → PDF.
+    const asOf = new Date();
+    const [invoices, creditNotes] = await Promise.all([
+      db.invoice.findMany({
+        where: {
+          organizationId: org.id,
+          deletedAt: null,
+          status: { in: ["SENT", "PARTIALLY_PAID", "OVERDUE"] },
+        },
+        include: { contact: { select: { displayName: true, type: true } } },
+      }),
+      db.creditNote.findMany({
+        where: {
+          organizationId: org.id,
+          deletedAt: null,
+          status: "OPEN",
+        },
+        include: { contact: { select: { displayName: true } } },
+      }),
+    ]);
+
+    const rows = computeArAgingDetails({
+      invoices: invoices.map((i) => ({
+        id: i.id,
+        number: i.number,
+        issueDate: i.issueDate,
+        dueDate: i.dueDate,
+        total: Number(i.total),
+        amountPaid: Number(i.amountPaid),
+        status: i.status,
+        contactId: i.contactId,
+        contact: i.contact,
+      })),
+      creditNotes: creditNotes.map((c) => ({
+        id: c.id,
+        number: c.number,
+        date: c.date,
+        total: Number(c.total),
+        amountApplied: Number(c.amountApplied),
+        amountRefunded: Number(c.amountRefunded),
+        status: c.status,
+        contactId: c.contactId,
+        contact: c.contact,
+      })),
+      asOf,
+      agingBy: "dueDate",
+      intervalCount: 4,
+      intervalSize: 15,
+      entities: ["invoice", "creditnote"],
+    });
+
+    const bucketsForOrdering = bucketLabels(4, 15);
+    const groups = groupArAgingDetails(rows, "none", bucketsForOrdering);
+    const grandTotal = rows.reduce((s, r) => s + r.balanceDue, 0);
+
+    const buf = await renderArAgingDetailsPdf({
+      orgName: org.name,
+      reportTitle: "AR Aging Details By Invoice Due Date",
+      asOfDisplay: format(asOf, "dd/MM/yyyy"),
+      groups,
+      flatRows: rows,
+      grandTotal,
+      cols: [
+        "date",
+        "dueDate",
+        "number",
+        "type",
+        "status",
+        "customerName",
+        "age",
+        "amount",
+        "balanceDue",
+      ],
+      groupBy: "none",
+    });
+    return {
+      attachment: { filename: `ar-aging-details.pdf`, content: buf },
     };
   }
 
