@@ -762,7 +762,7 @@ export async function uploadDocumentsAction(
  * open so we don't have to thread the whole list through the table.
  */
 export async function listBankAccountsForImportAction(): Promise<
-  Array<{ id: string; label: string }>
+  Array<{ id: string; label: string; last4: string | null }>
 > {
   const { organization } = await requireOrganization();
   const accounts = await db.bankAccount.findMany({
@@ -771,13 +771,19 @@ export async function listBankAccountsForImportAction(): Promise<
     orderBy: { name: "asc" },
   });
   return accounts.map((a) => {
-    const masked =
-      a.accountNumber && a.accountNumber.length > 4
-        ? `••••${a.accountNumber.slice(-4)}`
-        : a.accountNumber ?? "";
+    const last4 =
+      a.accountNumber && a.accountNumber.length >= 4
+        ? a.accountNumber.slice(-4)
+        : null;
+    const masked = last4 ? `••••${last4}` : a.accountNumber ?? "";
     return {
       id: a.id,
       label: masked ? `${a.name} (${masked})` : a.name,
+      // DOC-D4.2: Last 4 digits exposed so the import dialog can
+      // auto-pick the matching account when a parsed bank statement's
+      // accountNumber's last 4 match. Never expose full account
+      // number to the client.
+      last4,
     };
   });
 }
@@ -1550,4 +1556,123 @@ export async function retryExtractWithPasswordAction(input: {
 
   revalidatePath("/documents");
   return { ok: true, documentType };
+}
+
+// ───────────────────── DOC-D4.2: Edit parsed bank statement ─────────────────────
+
+/**
+ * Replace the parsed transaction rows on a Document's `extractedFields`
+ * JSONB with user-edited rows. Used when the drawer's inline editor
+ * commits.
+ *
+ * Validation:
+ *   - Document must be the org's + a BANK_STATEMENT
+ *   - Each row must have a valid yyyy-MM-dd date
+ *   - Each row must have either debit OR credit (positive number)
+ *   - Description ≤ 500 chars
+ *
+ * Returns updated row count on success.
+ */
+export async function updateParsedBankStatementAction(input: {
+  documentId: string;
+  rows: Array<{
+    date: string;
+    description: string;
+    debit?: number | null;
+    credit?: number | null;
+    balance?: number | null;
+  }>;
+}): Promise<
+  | { ok: true; rowCount: number }
+  | { ok: false; error: string }
+> {
+  const { user, organization } = await requireOrganization();
+
+  const doc = await db.document.findFirst({
+    where: {
+      id: input.documentId,
+      organizationId: organization.id,
+      deletedAt: null,
+    },
+    select: {
+      id: true,
+      documentType: true,
+      extractedFields: true,
+    },
+  });
+  if (!doc) return { ok: false, error: "Document not found." };
+  if (doc.documentType !== "BANK_STATEMENT") {
+    return { ok: false, error: "Only bank statements can be edited here." };
+  }
+
+  // Validate each row.
+  const cleaned: Array<{
+    date: string;
+    description: string;
+    debit?: number;
+    credit?: number;
+    balance?: number;
+  }> = [];
+  for (let i = 0; i < input.rows.length; i++) {
+    const r = input.rows[i];
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(r.date)) {
+      return {
+        ok: false,
+        error: `Row ${i + 1}: date must be in YYYY-MM-DD format.`,
+      };
+    }
+    const debit = typeof r.debit === "number" && r.debit > 0 ? r.debit : undefined;
+    const credit = typeof r.credit === "number" && r.credit > 0 ? r.credit : undefined;
+    if (debit == null && credit == null) {
+      return {
+        ok: false,
+        error: `Row ${i + 1}: must have either Debit or Credit.`,
+      };
+    }
+    if (debit != null && credit != null) {
+      return {
+        ok: false,
+        error: `Row ${i + 1}: can't have both Debit and Credit on the same row.`,
+      };
+    }
+    cleaned.push({
+      date: r.date,
+      description: (r.description || "").slice(0, 500),
+      ...(debit != null ? { debit } : {}),
+      ...(credit != null ? { credit } : {}),
+      ...(typeof r.balance === "number" && !Number.isNaN(r.balance)
+        ? { balance: r.balance }
+        : {}),
+    });
+  }
+
+  // Merge into existing extractedFields (preserve bank / period /
+  // accountNumber / opening / closing).
+  const existing = (doc.extractedFields ?? {}) as Record<string, unknown>;
+  const updated = {
+    ...existing,
+    rows: cleaned,
+  };
+
+  await db.document.update({
+    where: { id: doc.id },
+    data: {
+      extractedFields: updated as unknown as Prisma.InputJsonValue,
+    },
+  });
+
+  await writeAuditLog({
+    organizationId: organization.id,
+    userId: user.id,
+    action: "UPDATE",
+    entityType: "Document",
+    entityId: doc.id,
+    after: {
+      source: "parsed-bank-statement-edit",
+      rowCount: cleaned.length,
+    },
+  });
+
+  revalidatePath("/documents");
+  return { ok: true, rowCount: cleaned.length };
 }
