@@ -25,7 +25,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 import type {
-  BankStatementSource,
   BankTransactionRow,
   ParsedBankStatement,
 } from "./bank-statement-types";
@@ -120,8 +119,7 @@ export function isLlmFallbackEnabled(): boolean {
  * is the outbound API call.
  */
 export async function parseBankStatementWithLLM(
-  text: string | null | undefined,
-  _hint?: { bank?: BankStatementSource }
+  text: string | null | undefined
 ): Promise<ParsedBankStatement | null> {
   if (!isLlmFallbackEnabled()) return null;
   if (!text) return null;
