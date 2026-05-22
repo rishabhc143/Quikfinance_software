@@ -172,7 +172,8 @@ export const REPORTS: ReadonlyArray<ReportEntry> = [
     key: "ar-aging-details",
     name: "AR Aging Details",
     category: "Receivables",
-    available: false,
+    available: true,
+    href: "/reports/ar-aging-details",
   },
   {
     key: "invoice-details",
