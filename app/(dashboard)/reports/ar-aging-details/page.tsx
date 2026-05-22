@@ -1,3 +1,4 @@
+import * as React from "react";
 import Link from "next/link";
 import { Download } from "lucide-react";
 import { db } from "@/lib/db";
@@ -7,21 +8,34 @@ import { ReportShell } from "@/components/reports/report-shell";
 import { formatMoney } from "@/lib/money";
 import {
   computeArAgingDetails,
+  groupArAgingDetails,
+  bucketLabels,
   type AgingBy,
+  type ArAgingDetailRow,
+  type Entity,
+  type GroupBy,
   type SortDir,
   type SortKey,
 } from "@/lib/reports/ar-aging-details";
+import type { InvoiceStatus } from "@prisma/client";
+import { AgingIntervalsSelect } from "@/components/reports/aging-intervals-select";
+import { GroupBySelect } from "@/components/reports/group-by-select";
+import { EntitiesPopover } from "@/components/reports/entities-popover";
+import {
+  CustomizeColumnsPopover,
+  COLUMN_DEFS,
+  ALL_COLUMN_KEYS,
+} from "@/components/reports/customize-columns-popover";
+import { MoreFiltersPopover } from "@/components/reports/more-filters-popover";
 
 export const metadata = { title: "AR Aging Details" };
 
 /**
- * RPT-AR-DETAILS — AR Aging Details report page.
+ * RPT-AR-DETAILS — AR Aging Details report page (v2).
  *
- * Matches the Zoho "AR Aging Details By Invoice Due Date" view 1:1
- * for the data columns + filter chip layout. The interactive parts
- * not yet built (More Filters, Customize Columns, Group By, Entities
- * other than Invoice) are rendered as disabled chips so the UI shape
- * is honest about what the report covers today.
+ * v2 wires up all the filter / customization features that v1 shipped
+ * as info-only chips: More Filters, Customize Columns, Group By,
+ * Entities (Credit Notes), and the Aging Intervals dropdown auto-submits.
  */
 export default async function ArAgingDetailsPage({
   searchParams,
@@ -33,34 +47,72 @@ export default async function ArAgingDetailsPage({
     intervalSize?: string;
     sort?: string;
     dir?: string;
+    cols?: string;
+    groupBy?: string;
+    entities?: string;
+    statuses?: string;
+    customerId?: string;
+    amountMin?: string;
+    amountMax?: string;
+    buckets?: string;
   };
 }) {
   const { organization } = await requireOrganization();
   const cur = organization.currency;
 
-  // Parse + clamp searchParams to defensible defaults. Anything wonky
-  // (e.g. user types `?asOf=foo`) falls back silently rather than
-  // exploding the page.
-  const asOfParam = searchParams?.asOf;
-  const asOf = parseDateOrToday(asOfParam);
+  const asOf = parseDateOrToday(searchParams?.asOf);
   const agingBy: AgingBy =
     searchParams?.agingBy === "issueDate" ? "issueDate" : "dueDate";
   const intervalCount = clampInt(searchParams?.intervalCount, 4, 1, 12);
   const intervalSize = clampInt(searchParams?.intervalSize, 15, 1, 365);
   const sortBy = parseSortBy(searchParams?.sort);
   const sortDir: SortDir = searchParams?.dir === "asc" ? "asc" : "desc";
+  const groupBy = parseGroupBy(searchParams?.groupBy);
+  const entities = parseEntities(searchParams?.entities);
+  const cols = parseCols(searchParams?.cols);
+  const statusFilterArr = parseStatuses(searchParams?.statuses);
+  const customerId = searchParams?.customerId?.trim() || undefined;
+  const amountMin =
+    searchParams?.amountMin && searchParams.amountMin.trim()
+      ? Number(searchParams.amountMin)
+      : undefined;
+  const amountMax =
+    searchParams?.amountMax && searchParams.amountMax.trim()
+      ? Number(searchParams.amountMax)
+      : undefined;
+  const bucketFilter = parseBuckets(searchParams?.buckets);
 
-  // Fetch every potentially-outstanding invoice; the lib does the
-  // status + balance filtering. Including the contact saves an N+1
-  // for the customer name column.
-  const invoices = await db.invoice.findMany({
-    where: {
-      organizationId: organization.id,
-      deletedAt: null,
-      status: { in: ["SENT", "PARTIALLY_PAID", "OVERDUE"] },
-    },
-    include: { contact: { select: { displayName: true, type: true } } },
-  });
+  // Fetch invoices + credit notes + customers in parallel. The lib
+  // filters on `entities` after the query so we always pull both
+  // (cheap on small SMB datasets, and the type narrowing is cleaner).
+  const [invoices, creditNotes, allCustomers] = await Promise.all([
+    db.invoice.findMany({
+      where: {
+        organizationId: organization.id,
+        deletedAt: null,
+        status: { in: ["SENT", "PARTIALLY_PAID", "OVERDUE"] },
+      },
+      include: { contact: { select: { displayName: true, type: true } } },
+    }),
+    db.creditNote.findMany({
+      where: {
+        organizationId: organization.id,
+        deletedAt: null,
+        status: "OPEN",
+      },
+      include: { contact: { select: { displayName: true } } },
+    }),
+    db.contact.findMany({
+      where: {
+        organizationId: organization.id,
+        type: "CUSTOMER",
+        deletedAt: null,
+      },
+      select: { id: true, displayName: true },
+      orderBy: { displayName: "asc" },
+      take: 500,
+    }),
+  ]);
 
   const rows = computeArAgingDetails({
     invoices: invoices.map((i) => ({
@@ -74,15 +126,38 @@ export default async function ArAgingDetailsPage({
       contactId: i.contactId,
       contact: i.contact,
     })),
+    creditNotes: creditNotes.map((c) => ({
+      id: c.id,
+      number: c.number,
+      date: c.date,
+      total: Number(c.total),
+      amountApplied: Number(c.amountApplied),
+      amountRefunded: Number(c.amountRefunded),
+      status: c.status,
+      contactId: c.contactId,
+      contact: c.contact,
+    })),
     asOf,
     agingBy,
     intervalCount,
     intervalSize,
+    entities,
+    statusFilter: statusFilterArr,
+    customerId,
+    amountMin,
+    amountMax,
+    bucketFilter,
     sortBy,
     sortDir,
   });
 
-  // Title flips based on aging-by selection — matches Zoho.
+  const bucketsForOrdering = bucketLabels(intervalCount, intervalSize);
+  const groups = groupArAgingDetails(rows, groupBy, bucketsForOrdering);
+
+  const customerName = customerId
+    ? allCustomers.find((c) => c.id === customerId)?.displayName ?? ""
+    : "";
+
   const dynamicTitle =
     agingBy === "dueDate"
       ? "AR Aging Details By Invoice Due Date"
@@ -90,45 +165,90 @@ export default async function ArAgingDetailsPage({
 
   const asOfDisplay = formatDateForDisplay(asOf);
 
-  // Build a query string preserving current filters so the export
-  // button + sort header links land back on the same view.
-  const baseParams = new URLSearchParams({
-    asOf: isoDate(asOf),
-    agingBy,
-    intervalCount: String(intervalCount),
-    intervalSize: String(intervalSize),
-  });
-  const exportHref = `/reports/ar-aging-details/export?${baseParams.toString()}`;
+  // Build a query string preserving current filters for the export
+  // links + sortable header links.
+  const baseParams = new URLSearchParams();
+  baseParams.set("asOf", isoDate(asOf));
+  baseParams.set("agingBy", agingBy);
+  baseParams.set("intervalCount", String(intervalCount));
+  baseParams.set("intervalSize", String(intervalSize));
+  if (groupBy !== "none") baseParams.set("groupBy", groupBy);
+  if (entities.join(",") !== "invoice")
+    baseParams.set("entities", entities.join(","));
+  if (statusFilterArr) baseParams.set("statuses", statusFilterArr.join(","));
+  if (customerId) baseParams.set("customerId", customerId);
+  if (amountMin != null) baseParams.set("amountMin", String(amountMin));
+  if (amountMax != null) baseParams.set("amountMax", String(amountMax));
+  if (bucketFilter) baseParams.set("buckets", bucketFilter.join(","));
+  if (cols.length !== ALL_COLUMN_KEYS.length)
+    baseParams.set("cols", cols.join(","));
+
+  const csvHref = `/reports/ar-aging-details/export?format=csv&${baseParams.toString()}`;
+  const pdfHref = `/reports/ar-aging-details/export?format=pdf&${baseParams.toString()}`;
 
   function sortHref(key: SortKey): string {
-    const nextDir =
-      sortBy === key && sortDir === "desc" ? "asc" : "desc";
+    const nextDir = sortBy === key && sortDir === "desc" ? "asc" : "desc";
     const p = new URLSearchParams(baseParams);
     p.set("sort", key);
     p.set("dir", nextDir);
     return `?${p.toString()}`;
   }
 
+  const grandTotal = rows.reduce((s, r) => s + r.balanceDue, 0);
+
   return (
     <ReportShell
       title={dynamicTitle}
       subtitle={<span>As of {asOfDisplay}</span>}
       actions={
-        <Button asChild variant="outline" size="sm" className="gap-1">
-          <a href={exportHref}>
-            <Download className="h-4 w-4" /> Export CSV
-          </a>
-        </Button>
+        <>
+          <Button asChild variant="outline" size="sm" className="gap-1">
+            <a href={csvHref}>
+              <Download className="h-4 w-4" /> CSV
+            </a>
+          </Button>
+          <Button asChild variant="outline" size="sm" className="gap-1">
+            <a href={pdfHref}>
+              <Download className="h-4 w-4" /> PDF
+            </a>
+          </Button>
+        </>
       }
     >
-      {/* Filter chip row — matches the Zoho layout. As of + Aging By
-          are functional. Entities + More Filters are info-only for
-          v1 so the screen shape is honest. */}
+      {/* Filter chip row */}
       <form
         method="GET"
         action="/reports/ar-aging-details"
         className="flex flex-wrap items-end gap-3 pb-3 border-b"
       >
+        {/* Preserve secondary filters via hidden inputs on Run Report */}
+        {groupBy !== "none" ? (
+          <input type="hidden" name="groupBy" value={groupBy} />
+        ) : null}
+        {entities.join(",") !== "invoice" ? (
+          <input type="hidden" name="entities" value={entities.join(",")} />
+        ) : null}
+        {statusFilterArr ? (
+          <input type="hidden" name="statuses" value={statusFilterArr.join(",")} />
+        ) : null}
+        {customerId ? (
+          <input type="hidden" name="customerId" value={customerId} />
+        ) : null}
+        {amountMin != null ? (
+          <input type="hidden" name="amountMin" value={String(amountMin)} />
+        ) : null}
+        {amountMax != null ? (
+          <input type="hidden" name="amountMax" value={String(amountMax)} />
+        ) : null}
+        {bucketFilter ? (
+          <input type="hidden" name="buckets" value={bucketFilter.join(",")} />
+        ) : null}
+        {cols.length !== ALL_COLUMN_KEYS.length ? (
+          <input type="hidden" name="cols" value={cols.join(",")} />
+        ) : null}
+        <input type="hidden" name="intervalCount" value={intervalCount} />
+        <input type="hidden" name="intervalSize" value={intervalSize} />
+
         <label className="flex items-center gap-2 text-xs">
           <span className="text-muted-foreground">As of</span>
           <input
@@ -151,87 +271,37 @@ export default async function ArAgingDetailsPage({
           </select>
         </label>
 
-        <label className="flex items-center gap-2 text-xs">
-          <span className="text-muted-foreground">Entities</span>
-          <select
-            disabled
-            defaultValue="invoice"
-            className="h-8 px-2 rounded-md border bg-muted/30 text-xs cursor-not-allowed"
-            title="Credit Notes / Debit Notes coming soon"
-          >
-            <option value="invoice">Invoice</option>
-          </select>
-        </label>
+        <EntitiesPopover entities={entities} />
 
-        <span
-          className="h-8 px-3 inline-flex items-center rounded-md border bg-muted/30 text-xs text-muted-foreground cursor-not-allowed"
-          title="More Filters coming soon"
-        >
-          + More Filters
-        </span>
+        <MoreFiltersPopover
+          statuses={statusFilterArr ?? ["SENT", "PARTIALLY_PAID", "OVERDUE"]}
+          customerId={customerId ?? ""}
+          customerName={customerName}
+          amountMin={amountMin != null ? String(amountMin) : ""}
+          amountMax={amountMax != null ? String(amountMax) : ""}
+          buckets={bucketFilter ?? []}
+          bucketOptions={bucketsForOrdering}
+          customerOptions={allCustomers}
+        />
 
         <Button type="submit" size="sm" className="h-8 text-xs">
           Run Report
         </Button>
       </form>
 
-      {/* Secondary toolbar — Group By / Aging Intervals / Customize
-          Columns. Aging Intervals is functional; Group By + Customize
-          are info-only for v1. */}
+      {/* Secondary toolbar */}
       <div className="flex flex-wrap items-center gap-4 py-2 text-xs">
-        <span className="text-muted-foreground" title="Group By coming soon">
-          Group By:{" "}
-          <span className="font-medium text-foreground">None</span>
-        </span>
-
-        <form
-          method="GET"
-          action="/reports/ar-aging-details"
-          className="flex items-center gap-1.5"
-        >
-          {/* Preserve current filters when submitting interval change. */}
-          <input type="hidden" name="asOf" value={isoDate(asOf)} />
-          <input type="hidden" name="agingBy" value={agingBy} />
-          <span className="text-muted-foreground">Aging Intervals:</span>
-          <select
-            name="intervalLayout"
-            defaultValue={`${intervalCount}x${intervalSize}`}
-            className="h-7 px-1.5 rounded-md border bg-background text-xs"
-            onChange={undefined}
-          >
-            {/* These are inert without JS; for v1 we ship the static set
-                that Zoho commonly uses. Submit form on change is wired
-                via the matching hidden inputs below. */}
-            <option value="4x15">4 × 15 Days</option>
-            <option value="4x30">4 × 30 Days</option>
-            <option value="3x30">3 × 30 Days</option>
-            <option value="6x30">6 × 30 Days</option>
-          </select>
-          <input type="hidden" name="intervalCount" value={intervalCount} />
-          <input type="hidden" name="intervalSize" value={intervalSize} />
-          <Button
-            type="submit"
-            size="sm"
-            variant="ghost"
-            className="h-7 px-2 text-[10px] uppercase tracking-wider"
-          >
-            Apply
-          </Button>
-        </form>
-
-        <span
-          className="ml-auto text-muted-foreground"
-          title="Customize Report Columns coming soon"
-        >
-          Customize Report Columns{" "}
-          <span className="inline-flex items-center justify-center h-4 min-w-4 px-1 rounded-full bg-muted text-[10px]">
-            9
-          </span>
+        <GroupBySelect groupBy={groupBy} />
+        <AgingIntervalsSelect
+          intervalCount={intervalCount}
+          intervalSize={intervalSize}
+        />
+        <span className="ml-auto">
+          <CustomizeColumnsPopover selected={cols} />
         </span>
       </div>
 
-      {/* Centered company name + report title above the data table —
-          matches Zoho's print-friendly header. */}
+      {/* Centered company name + report title header */}
       <div className="text-center py-4 border-t border-b">
         <div className="text-xs text-muted-foreground">{organization.name}</div>
         <div className="text-base font-semibold mt-0.5">{dynamicTitle}</div>
@@ -248,78 +318,93 @@ export default async function ArAgingDetailsPage({
         <table className="w-full text-xs">
           <thead className="bg-muted/30 text-[10px] uppercase tracking-wider text-muted-foreground">
             <tr>
-              <th className="text-left px-3 py-2">
-                <Link href={sortHref("date")} className="hover:underline">
-                  Date {sortIndicator(sortBy, sortDir, "date")}
-                </Link>
-              </th>
-              <th className="text-left px-3 py-2">
-                <Link href={sortHref("dueDate")} className="hover:underline">
-                  Due Date {sortIndicator(sortBy, sortDir, "dueDate")}
-                </Link>
-              </th>
-              <th className="text-left px-3 py-2">Transaction#</th>
-              <th className="text-left px-3 py-2">Type</th>
-              <th className="text-left px-3 py-2">Status</th>
-              <th className="text-left px-3 py-2">
-                <Link
-                  href={sortHref("customerName")}
-                  className="hover:underline"
-                >
-                  Customer Name {sortIndicator(sortBy, sortDir, "customerName")}
-                </Link>
-              </th>
-              <th className="text-right px-3 py-2">
-                <Link href={sortHref("age")} className="hover:underline">
-                  Age {sortIndicator(sortBy, sortDir, "age")}
-                </Link>
-              </th>
-              <th className="text-right px-3 py-2">Amount</th>
-              <th className="text-right px-3 py-2">
-                <Link href={sortHref("balanceDue")} className="hover:underline">
-                  Balance Due {sortIndicator(sortBy, sortDir, "balanceDue")}
-                </Link>
-              </th>
+              {cols.includes("date") ? (
+                <th className="text-left px-3 py-2">
+                  <Link href={sortHref("date")} className="hover:underline">
+                    Date {sortIndicator(sortBy, sortDir, "date")}
+                  </Link>
+                </th>
+              ) : null}
+              {cols.includes("dueDate") ? (
+                <th className="text-left px-3 py-2">
+                  <Link href={sortHref("dueDate")} className="hover:underline">
+                    Due Date {sortIndicator(sortBy, sortDir, "dueDate")}
+                  </Link>
+                </th>
+              ) : null}
+              {cols.includes("number") ? (
+                <th className="text-left px-3 py-2">Transaction#</th>
+              ) : null}
+              {cols.includes("type") ? (
+                <th className="text-left px-3 py-2">Type</th>
+              ) : null}
+              {cols.includes("status") ? (
+                <th className="text-left px-3 py-2">Status</th>
+              ) : null}
+              {cols.includes("customerName") ? (
+                <th className="text-left px-3 py-2">
+                  <Link href={sortHref("customerName")} className="hover:underline">
+                    Customer Name {sortIndicator(sortBy, sortDir, "customerName")}
+                  </Link>
+                </th>
+              ) : null}
+              {cols.includes("age") ? (
+                <th className="text-right px-3 py-2">
+                  <Link href={sortHref("age")} className="hover:underline">
+                    Age {sortIndicator(sortBy, sortDir, "age")}
+                  </Link>
+                </th>
+              ) : null}
+              {cols.includes("amount") ? (
+                <th className="text-right px-3 py-2">Amount</th>
+              ) : null}
+              {cols.includes("balanceDue") ? (
+                <th className="text-right px-3 py-2">
+                  <Link href={sortHref("balanceDue")} className="hover:underline">
+                    Balance Due {sortIndicator(sortBy, sortDir, "balanceDue")}
+                  </Link>
+                </th>
+              ) : null}
             </tr>
           </thead>
           <tbody className="divide-y">
-            {rows.map((r) => (
-              <tr key={r.invoiceId} className="hover:bg-muted/30">
-                <td className="px-3 py-2 tabular-nums">{r.date}</td>
-                <td className="px-3 py-2 tabular-nums">{r.dueDate}</td>
-                <td className="px-3 py-2">
-                  <Link
-                    href={`/sales/invoices/${r.invoiceId}`}
-                    className="text-primary hover:underline"
-                  >
-                    {r.number}
-                  </Link>
-                </td>
-                <td className="px-3 py-2">{r.type}</td>
-                <td className="px-3 py-2">{r.status}</td>
-                <td className="px-3 py-2 font-medium">{r.customerName}</td>
-                <td className="px-3 py-2 text-right tabular-nums">
-                  {r.age <= 0 ? "—" : `${r.age} days`}
-                </td>
-                <td className="px-3 py-2 text-right tabular-nums">
-                  {formatMoney(r.amount, cur)}
-                </td>
-                <td className="px-3 py-2 text-right tabular-nums font-semibold">
-                  {formatMoney(r.balanceDue, cur)}
-                </td>
-              </tr>
-            ))}
+            {groupBy === "none"
+              ? renderRows(groups[0].rows, cols, cur)
+              : groups.map((g) => (
+                  <React.Fragment key={g.groupKey}>
+                    <tr className="bg-muted/50">
+                      <td
+                        colSpan={cols.length}
+                        className="px-3 py-1.5 font-semibold text-xs"
+                      >
+                        {g.groupLabel}
+                      </td>
+                    </tr>
+                    {renderRows(g.rows, cols, cur)}
+                    <tr className="bg-muted/20 border-t">
+                      <td
+                        colSpan={cols.length - 1}
+                        className="px-3 py-1.5 text-right text-xs font-semibold"
+                      >
+                        Subtotal — {g.groupLabel}
+                      </td>
+                      <td className="px-3 py-1.5 text-right tabular-nums font-semibold">
+                        {formatMoney(g.subtotal, cur)}
+                      </td>
+                    </tr>
+                  </React.Fragment>
+                ))}
           </tbody>
           <tfoot className="bg-muted/30 text-xs">
             <tr>
-              <td className="px-3 py-2 font-medium" colSpan={8}>
+              <td
+                className="px-3 py-2 font-medium"
+                colSpan={Math.max(1, cols.length - 1)}
+              >
                 Total ({rows.length} row{rows.length === 1 ? "" : "s"})
               </td>
               <td className="px-3 py-2 text-right tabular-nums font-semibold">
-                {formatMoney(
-                  rows.reduce((s, r) => s + r.balanceDue, 0),
-                  cur
-                )}
+                {formatMoney(grandTotal, cur)}
               </td>
             </tr>
           </tfoot>
@@ -327,6 +412,66 @@ export default async function ArAgingDetailsPage({
       )}
     </ReportShell>
   );
+}
+
+/* ───────────────────────── row rendering ───────────────────────── */
+
+function renderRows(
+  rows: ArAgingDetailRow[],
+  cols: string[],
+  cur: string
+) {
+  return rows.map((r) => (
+    <tr key={r.rowId} className="hover:bg-muted/30">
+      {cols.includes("date") ? (
+        <td className="px-3 py-2 tabular-nums">{r.date}</td>
+      ) : null}
+      {cols.includes("dueDate") ? (
+        <td className="px-3 py-2 tabular-nums">{r.dueDate}</td>
+      ) : null}
+      {cols.includes("number") ? (
+        <td className="px-3 py-2">
+          <Link
+            href={
+              r.source === "creditnote"
+                ? `/sales/credit-notes/${r.rowId}`
+                : `/sales/invoices/${r.rowId}`
+            }
+            className="text-primary hover:underline"
+          >
+            {r.number}
+          </Link>
+        </td>
+      ) : null}
+      {cols.includes("type") ? <td className="px-3 py-2">{r.type}</td> : null}
+      {cols.includes("status") ? (
+        <td className="px-3 py-2">{r.status}</td>
+      ) : null}
+      {cols.includes("customerName") ? (
+        <td className="px-3 py-2 font-medium">{r.customerName}</td>
+      ) : null}
+      {cols.includes("age") ? (
+        <td className="px-3 py-2 text-right tabular-nums">
+          {r.age <= 0 ? "—" : `${r.age} days`}
+        </td>
+      ) : null}
+      {cols.includes("amount") ? (
+        <td className="px-3 py-2 text-right tabular-nums">
+          {formatMoney(r.amount, cur)}
+        </td>
+      ) : null}
+      {cols.includes("balanceDue") ? (
+        <td
+          className={
+            "px-3 py-2 text-right tabular-nums font-semibold " +
+            (r.balanceDue < 0 ? "text-emerald-700" : "")
+          }
+        >
+          {formatMoney(r.balanceDue, cur)}
+        </td>
+      ) : null}
+    </tr>
+  ));
 }
 
 /* ───────────────────────── helpers ───────────────────────── */
@@ -364,6 +509,48 @@ function parseSortBy(s: string | undefined): SortKey {
   }
 }
 
+function parseGroupBy(s: string | undefined): GroupBy {
+  if (s === "customer" || s === "bucket" || s === "status") return s;
+  return "none";
+}
+
+function parseEntities(s: string | undefined): Entity[] {
+  if (!s) return ["invoice"];
+  const parts = s
+    .split(",")
+    .map((x) => x.trim().toLowerCase())
+    .filter((x) => x === "invoice" || x === "creditnote") as Entity[];
+  return parts.length === 0 ? ["invoice"] : parts;
+}
+
+function parseCols(s: string | undefined): string[] {
+  if (!s) return ALL_COLUMN_KEYS;
+  const valid = new Set(ALL_COLUMN_KEYS);
+  const parts = s.split(",").map((x) => x.trim()).filter((x) => valid.has(x));
+  if (parts.length === 0) return ALL_COLUMN_KEYS;
+  // Preserve canonical order
+  return COLUMN_DEFS.map((c) => c.key).filter((k) => parts.includes(k));
+}
+
+const VALID_STATUSES: ReadonlyArray<InvoiceStatus> = [
+  "SENT",
+  "PARTIALLY_PAID",
+  "OVERDUE",
+];
+
+function parseStatuses(s: string | undefined): InvoiceStatus[] | undefined {
+  if (!s) return undefined;
+  const parts = s.split(",").map((x) => x.trim()) as InvoiceStatus[];
+  const filtered = parts.filter((x) => VALID_STATUSES.includes(x));
+  return filtered.length > 0 ? filtered : undefined;
+}
+
+function parseBuckets(s: string | undefined): string[] | undefined {
+  if (!s) return undefined;
+  const parts = s.split(",").map((x) => x.trim()).filter(Boolean);
+  return parts.length > 0 ? parts : undefined;
+}
+
 function isoDate(d: Date): string {
   const y = d.getUTCFullYear();
   const m = String(d.getUTCMonth() + 1).padStart(2, "0");
@@ -371,7 +558,6 @@ function isoDate(d: Date): string {
   return `${y}-${m}-${day}`;
 }
 
-/** Indian dd/MM/yyyy display per house convention. */
 function formatDateForDisplay(d: Date): string {
   const day = String(d.getUTCDate()).padStart(2, "0");
   const month = String(d.getUTCMonth() + 1).padStart(2, "0");
