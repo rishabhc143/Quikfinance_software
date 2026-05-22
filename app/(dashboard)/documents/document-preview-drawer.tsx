@@ -32,11 +32,24 @@ import {
   isParsedReceipt,
   type ParsedReceipt,
 } from "@/lib/documents/parsers/receipt";
-import { Landmark, Receipt as ReceiptIcon, Wallet } from "lucide-react";
+import {
+  Landmark,
+  Receipt as ReceiptIcon,
+  Wallet,
+  KeyRound,
+  Eye,
+  EyeOff,
+} from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { toast } from "sonner";
+import { useRouter } from "next/navigation";
 import { ImportToBankDialog } from "./import-to-bank-dialog";
 import { CreateBillFromDocumentDialog } from "./create-bill-from-document-dialog";
 import { CreateExpenseFromDocumentDialog } from "./create-expense-from-document-dialog";
-import { listBankAccountsForImportAction } from "./actions";
+import {
+  listBankAccountsForImportAction,
+  retryExtractWithPasswordAction,
+} from "./actions";
 
 /**
  * DOC-D1.4: Side-drawer preview for a single document.
@@ -72,6 +85,9 @@ export type DocumentPreviewItem = {
    *  Drawer renders the Transactions table + "Import to Bank" button
    *  when non-null. */
   extractedFields?: unknown;
+  /** DOC-D4.1: True when pdfjs raised PasswordException during
+   *  initial extraction. Drawer surfaces a password-retry panel. */
+  needsPassword?: boolean;
 };
 
 export function DocumentPreviewDrawer({
@@ -230,6 +246,15 @@ function PreviewBody({
           </div>
         )}
       </div>
+
+      {/* DOC-D4.1: Password-protected PDF prompt — renders only when
+          the upload action flagged this Document as encrypted. */}
+      {doc.needsPassword ? (
+        <PasswordPromptPanel
+          documentId={doc.id}
+          documentName={doc.name}
+        />
+      ) : null}
 
       {/* DOC-D2.2: Bank statement transactions panel — renders only
           when we have a parsed ParsedBankStatement on this row.
@@ -608,6 +633,118 @@ function ReceiptDetailsPanel({
         documentName={documentName}
         parsed={parsed}
       />
+    </details>
+  );
+}
+
+/**
+ * DOC-D4.1: Inline password prompt for encrypted PDFs.
+ *
+ * Surfaces when the upload action detected pdfjs PasswordException +
+ * stored `needsPassword=true` on the Document. User enters the bank
+ * password, we hit `retryExtractWithPasswordAction` which fetches the
+ * encrypted PDF from Blob storage, decrypts in-memory, runs the full
+ * Smart Capture pipeline, and updates the Document row.
+ *
+ * The password is sent over HTTPS to the server action, used once,
+ * never persisted. Original encrypted PDF stays untouched in Blob.
+ */
+function PasswordPromptPanel({
+  documentId,
+  documentName,
+}: {
+  documentId: string;
+  documentName: string;
+}) {
+  const router = useRouter();
+  const [password, setPassword] = React.useState("");
+  const [showPassword, setShowPassword] = React.useState(false);
+  const [submitting, setSubmitting] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!password) {
+      setError("Enter the password to unlock.");
+      return;
+    }
+    setSubmitting(true);
+    setError(null);
+    const result = await retryExtractWithPasswordAction({
+      documentId,
+      password,
+    });
+    setSubmitting(false);
+    if (!result.ok) {
+      setError(result.error);
+      return;
+    }
+    toast.success(
+      result.documentType === "BANK_STATEMENT"
+        ? "Unlocked — Smart Capture detected a bank statement"
+        : "Unlocked — Smart Capture ran successfully"
+    );
+    setPassword("");
+    router.refresh();
+  }
+
+  return (
+    <details className="shrink-0 border-t bg-amber-50/40" open>
+      <summary className="cursor-pointer select-none px-4 py-2 text-xs font-semibold uppercase tracking-wider text-amber-900 flex items-center gap-2 hover:bg-amber-100/40">
+        <KeyRound className="h-3.5 w-3.5" />
+        <span>Smart Capture · Password-protected PDF</span>
+      </summary>
+      <div className="border-t border-amber-200 bg-amber-50/20 px-4 py-3">
+        <p className="text-xs text-amber-900 mb-3">
+          This PDF is encrypted. Smart Capture couldn&apos;t parse{" "}
+          <span className="font-medium">&ldquo;{documentName}&rdquo;</span>{" "}
+          without the password. Indian banks usually use your{" "}
+          <strong>date of birth</strong> (DDMMYYYY) or{" "}
+          <strong>customer ID</strong> as the password. Enter it below
+          to unlock — we use it once and never store it.
+        </p>
+        <form onSubmit={submit} className="flex items-center gap-2">
+          <div className="relative flex-1">
+            <Input
+              type={showPassword ? "text" : "password"}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Enter password to unlock"
+              autoComplete="off"
+              disabled={submitting}
+              className="pr-8 h-9 text-sm"
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword((s) => !s)}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              aria-label={showPassword ? "Hide password" : "Show password"}
+              tabIndex={-1}
+            >
+              {showPassword ? (
+                <EyeOff className="h-3.5 w-3.5" />
+              ) : (
+                <Eye className="h-3.5 w-3.5" />
+              )}
+            </button>
+          </div>
+          <Button
+            type="submit"
+            disabled={submitting || !password}
+            size="sm"
+            className="h-9"
+          >
+            {submitting ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              "Unlock"
+            )}
+          </Button>
+        </form>
+        {error ? (
+          <p className="text-xs text-destructive mt-2">{error}</p>
+        ) : null}
+      </div>
     </details>
   );
 }

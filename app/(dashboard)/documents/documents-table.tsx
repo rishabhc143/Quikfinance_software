@@ -74,6 +74,9 @@ export type DocumentTableRow = {
    *  unparsed layouts). Drawer renders the Transactions table + Import
    *  button when this is non-null. */
   extractedFields?: unknown;
+  /** DOC-D4.1: True when pdfjs raised PasswordException during
+   *  initial extraction. Drawer surfaces a password-retry panel. */
+  needsPassword?: boolean | null;
 };
 
 function iconFor(bucket: FileTypeBucket) {
@@ -146,6 +149,7 @@ export function DocumentsTable({
       documentType: r.documentType ?? null,
       extractedText: r.extractedText ?? null,
       extractedFields: r.extractedFields ?? null,
+      needsPassword: r.needsPassword ?? false,
     });
   }
 

@@ -30,7 +30,7 @@ import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { writeAuditLog } from "@/lib/audit";
 import { sha256Buffer } from "./dedup";
-import { extractPdfText } from "./pdf-extract";
+import { extractPdfTextWithPassword } from "./pdf-extract";
 import { classifyDocument } from "./document-classifier";
 import {
   parseByDocumentType,
@@ -169,12 +169,19 @@ export async function processInboundEmail(
       | ParsedReceipt
       | null = null;
     let extractedAt: Date | null = null;
+    let needsPassword = false;
     if (att.contentType === "application/pdf") {
       try {
-        extractedText = await extractPdfText(att.content);
-        if (extractedText) {
+        // DOC-D4.1: Inbound emails have no password context — if the
+        // PDF is encrypted we flag the Document and let the user
+        // unlock it later from the preview drawer in /documents.
+        const result = await extractPdfTextWithPassword(att.content);
+        if (result.kind === "ok") {
+          extractedText = result.text;
           documentType = classifyDocument(extractedText).type;
           extractedFields = parseByDocumentType(extractedText, documentType);
+        } else if (result.kind === "needs-password") {
+          needsPassword = true;
         }
         extractedAt = new Date();
       } catch (err) {
@@ -216,6 +223,7 @@ export async function processInboundEmail(
         extractedText,
         documentType,
         extractedAt,
+        needsPassword,
         extractedFields: extractedFields as unknown as Prisma.InputJsonValue,
       },
     });

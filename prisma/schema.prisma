@@ -2149,6 +2149,12 @@ model Document {
   documentType         String?
   /// DOC-D2.1: when extraction last ran. Null = not yet processed.
   extractedAt          DateTime?
+  /// DOC-D4.1: true when pdfjs raised PasswordException — UI surfaces
+  /// a password prompt in the preview drawer; user enters password +
+  /// triggers retryExtractWithPasswordAction which runs extraction
+  /// in-memory against the encrypted PDF in Blob storage. Cleared
+  /// when extraction succeeds.
+  needsPassword        Boolean   @default(false)
   organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   folderRef      DocumentFolder? @relation("DocumentFolder", fields: [folderId], references: [id], onDelete: SetNull)
 
