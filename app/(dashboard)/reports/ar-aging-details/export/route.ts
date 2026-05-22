@@ -1,5 +1,6 @@
 import type { NextRequest } from "next/server";
 import type { InvoiceStatus } from "@prisma/client";
+import ExcelJS from "exceljs";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
 import {
@@ -19,14 +20,28 @@ import {
   type SortKey,
 } from "@/lib/reports/ar-aging-details";
 import { renderArAgingDetailsPdf } from "@/lib/reports/pdf/ar-aging-details";
-import { ALL_COLUMN_KEYS } from "@/components/reports/customize-columns-popover";
+import { logReportActivity } from "@/lib/reports/activity";
+
+// DOC-AR-DETAILS: Column keys for the AR Aging Details report.
+// Mirrors the COL_PARAM_BY_KEY in page.tsx.
+const ALL_COLUMN_KEYS = [
+  "date",
+  "dueDate",
+  "number",
+  "type",
+  "status",
+  "customerName",
+  "age",
+  "amount",
+  "balanceDue",
+];
 
 /**
  * RPT-AR-DETAILS — CSV + PDF export. Shares filter parsing with the
  * page so the user gets exactly what they see on screen.
  */
 export async function GET(request: NextRequest) {
-  const { organization } = await requireOrganization();
+  const { organization, user } = await requireOrganization();
   const { searchParams } = new URL(request.url);
 
   const format = (searchParams.get("format") || "csv").toLowerCase();
@@ -40,7 +55,7 @@ export async function GET(request: NextRequest) {
   const sortDir: SortDir = searchParams.get("dir") === "asc" ? "asc" : "desc";
   const groupBy = parseGroupBy(searchParams.get("groupBy"));
   const entities = parseEntities(searchParams.get("entities"));
-  const cols = parseCols(searchParams.get("cols"));
+  const cols = parseColsFromSearchParams(searchParams);
   const statusFilterArr = parseStatuses(searchParams.get("statuses"));
   const customerId = searchParams.get("customerId")?.trim() || undefined;
   const amountMinRaw = searchParams.get("amountMin");
@@ -106,6 +121,8 @@ export async function GET(request: NextRequest) {
     sortDir,
   });
 
+  const filename = `ar-aging-details-${csvDateSuffix(asOf)}`;
+
   if (format === "pdf") {
     const bucketsForOrdering = bucketLabels(intervalCount, intervalSize);
     const groups = groupArAgingDetails(rows, groupBy, bucketsForOrdering);
@@ -126,12 +143,81 @@ export async function GET(request: NextRequest) {
       groupBy,
     });
 
+    // DOC-AR-DETAILS: Log the export event for the Activity drawer.
+    await logReportActivity({
+      organizationId: organization.id,
+      userId: user.id,
+      reportKey: "ar-aging-details",
+      eventType: "EXPORT_PDF",
+      eventData: { format: "PDF", filename: `${filename}.pdf` },
+    });
+
     return new Response(new Uint8Array(buf), {
       headers: {
         "Content-Type": "application/pdf",
-        "Content-Disposition": `attachment; filename="ar-aging-details-${csvDateSuffix(
-          asOf
-        )}.pdf"`,
+        "Content-Disposition": `attachment; filename="${filename}.pdf"`,
+      },
+    });
+  }
+
+  if (format === "xlsx") {
+    // DOC-AR-DETAILS: XLSX export via exceljs. Mirrors the data
+    // layout of CSV but with cell formatting (header row bold,
+    // number columns right-aligned, currency formatting).
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet("AR Aging Details");
+
+    ws.columns = [
+      { header: "Date", key: "date", width: 12 },
+      { header: "Due Date", key: "dueDate", width: 12 },
+      { header: "Transaction#", key: "number", width: 16 },
+      { header: "Type", key: "type", width: 12 },
+      { header: "Status", key: "status", width: 14 },
+      { header: "Customer Name", key: "customerName", width: 28 },
+      { header: "Age (days)", key: "age", width: 10 },
+      { header: "Bucket", key: "bucket", width: 12 },
+      { header: "Amount", key: "amount", width: 14 },
+      { header: "Balance Due", key: "balanceDue", width: 14 },
+    ];
+
+    // Header styling
+    ws.getRow(1).font = { bold: true };
+    ws.getRow(1).alignment = { vertical: "middle" };
+
+    for (const r of rows) {
+      ws.addRow({
+        date: r.date,
+        dueDate: r.dueDate,
+        number: r.number,
+        type: r.type,
+        status: r.status,
+        customerName: r.customerName,
+        age: r.age,
+        bucket: r.bucket,
+        amount: r.amount,
+        balanceDue: r.balanceDue,
+      });
+    }
+
+    // Number formatting on Amount / Balance Due columns
+    ws.getColumn("amount").numFmt = "#,##0.00";
+    ws.getColumn("balanceDue").numFmt = "#,##0.00";
+
+    const buf = await wb.xlsx.writeBuffer();
+
+    await logReportActivity({
+      organizationId: organization.id,
+      userId: user.id,
+      reportKey: "ar-aging-details",
+      eventType: "EXPORT_XLSX",
+      eventData: { format: "XLSX", filename: `${filename}.xlsx` },
+    });
+
+    return new Response(new Uint8Array(buf), {
+      headers: {
+        "Content-Type":
+          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "Content-Disposition": `attachment; filename="${filename}.xlsx"`,
       },
     });
   }
@@ -162,6 +248,14 @@ export async function GET(request: NextRequest) {
     "Amount",
     "Balance Due",
   ];
+
+  await logReportActivity({
+    organizationId: organization.id,
+    userId: user.id,
+    reportKey: "ar-aging-details",
+    eventType: "EXPORT_CSV",
+    eventData: { format: "CSV", filename: `${filename}.csv` },
+  });
 
   const csv = toCsv(csvRows, allColumns);
   return csvResponse(`ar-aging-details-${csvDateSuffix(asOf)}`, csv);
@@ -216,11 +310,29 @@ function parseEntities(s: string | null): Entity[] {
   return parts.length === 0 ? ["invoice"] : parts;
 }
 
-function parseCols(s: string | null): string[] {
-  if (!s) return ALL_COLUMN_KEYS;
-  const valid = new Set(ALL_COLUMN_KEYS);
-  const parts = s.split(",").map((x) => x.trim()).filter((x) => valid.has(x));
-  return parts.length === 0 ? ALL_COLUMN_KEYS : parts;
+// DOC-AR-DETAILS: Map an AR Aging column key ("date") to the URL
+// param the shared Customize Report drawer uses ("showDate"). Mirrors
+// COL_PARAM_BY_KEY in page.tsx.
+const COL_PARAM_BY_KEY: Record<string, string> = {
+  date: "showDate",
+  dueDate: "showDueDate",
+  number: "showNumber",
+  type: "showType",
+  status: "showStatus",
+  customerName: "showCustomerName",
+  age: "showAge",
+  amount: "showAmount",
+  balanceDue: "showBalanceDue",
+};
+
+function parseColsFromSearchParams(
+  searchParams: URLSearchParams
+): string[] {
+  return ALL_COLUMN_KEYS.filter((key) => {
+    const paramKey = COL_PARAM_BY_KEY[key];
+    const value = paramKey ? searchParams.get(paramKey) : null;
+    return value !== "0";
+  });
 }
 
 const VALID_STATUSES: ReadonlyArray<InvoiceStatus> = [
