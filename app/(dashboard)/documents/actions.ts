@@ -11,7 +11,7 @@ import { writeAuditLog } from "@/lib/audit";
 import { nextDocumentNumber } from "@/lib/next-number";
 import { collectDescendantIds } from "@/lib/documents/folder-tree";
 import { sha256Buffer, dupWarning } from "@/lib/documents/dedup";
-import { extractPdfText } from "@/lib/documents/pdf-extract";
+import { extractPdfTextWithPassword } from "@/lib/documents/pdf-extract";
 import { classifyDocument } from "@/lib/documents/document-classifier";
 import {
   parseByDocumentType,
@@ -680,10 +680,16 @@ export async function uploadDocumentsAction(
       | ParsedBill
       | ParsedReceipt
       | null = null;
+    let needsPassword = false;
     if (file.type === "application/pdf") {
       try {
-        extractedText = await extractPdfText(buffer);
-        if (extractedText) {
+        // DOC-D4.1: Use the password-aware extractor so we can detect
+        // encrypted PDFs cleanly. No password on first try; if the
+        // PDF needs one we flag the Document and the drawer prompts
+        // the user via retryExtractWithPasswordAction.
+        const result = await extractPdfTextWithPassword(buffer);
+        if (result.kind === "ok") {
+          extractedText = result.text;
           const classification = classifyDocument(extractedText);
           documentType = classification.type;
           // DOC-D2.2 / D2.3: Route to the right parser based on the
@@ -692,6 +698,8 @@ export async function uploadDocumentsAction(
           // receipts → vendor + date + total + paid-via. Fail-open
           // when parser returns null.
           extractedFields = parseByDocumentType(extractedText, documentType);
+        } else if (result.kind === "needs-password") {
+          needsPassword = true;
         }
         extractedAt = new Date();
       } catch (err) {
@@ -718,6 +726,7 @@ export async function uploadDocumentsAction(
         extractedText,
         documentType,
         extractedAt,
+        needsPassword,
         extractedFields:
           extractedFields as unknown as Prisma.InputJsonValue,
       },
@@ -1297,14 +1306,18 @@ export async function uploadBankStatementsAction(
     let extractedText: string | null = null;
     let extractedFields: ParsedBankStatement | null = null;
     let extractedAt: Date | null = null;
+    let needsPassword = false;
     if (file.type === "application/pdf") {
       try {
-        extractedText = await extractPdfText(buffer);
-        if (extractedText) {
+        const result = await extractPdfTextWithPassword(buffer);
+        if (result.kind === "ok") {
+          extractedText = result.text;
           const parsed = parseByDocumentType(extractedText, "BANK_STATEMENT");
           if (parsed && "rows" in parsed) {
             extractedFields = parsed as ParsedBankStatement;
           }
+        } else if (result.kind === "needs-password") {
+          needsPassword = true;
         }
         extractedAt = new Date();
       } catch (err) {
@@ -1349,6 +1362,7 @@ export async function uploadBankStatementsAction(
         extractedFields:
           extractedFields as unknown as Prisma.InputJsonValue,
         extractedAt,
+        needsPassword,
         uploadedBy: user.id,
       },
     });
@@ -1422,4 +1436,118 @@ export async function rotateInboxEmailAction(): Promise<{
   });
   revalidatePath("/documents");
   return { ok: true, email };
+}
+
+// ───────────────────── DOC-D4.1: Password-protected PDF retry ─────────────────────
+
+/**
+ * Retry Smart Capture extraction on an existing Document using a
+ * user-supplied password.
+ *
+ * Flow:
+ *   1. User dropped an encrypted PDF earlier; we set
+ *      `needsPassword = true` on the Document
+ *   2. Drawer surfaces a password input
+ *   3. User submits → this action runs
+ *   4. We download the encrypted PDF from Vercel Blob
+ *   5. Run `extractPdfTextWithPassword` with the password
+ *   6. On success: update `extractedText` + classify + parse + clear
+ *      `needsPassword`
+ *   7. On wrong password: return ok:false with a friendly error
+ *
+ * The original encrypted PDF stays in Blob — we don't write an
+ * unlocked copy. Subsequent downloads still require the password (we
+ * keep the user's password only in-memory for this single request).
+ */
+export async function retryExtractWithPasswordAction(input: {
+  documentId: string;
+  password: string;
+}): Promise<{ ok: true; documentType: string | null } | { ok: false; error: string }> {
+  const { user, organization } = await requireOrganization();
+
+  const doc = await db.document.findFirst({
+    where: {
+      id: input.documentId,
+      organizationId: organization.id,
+      deletedAt: null,
+    },
+    select: {
+      id: true,
+      name: true,
+      url: true,
+      mimeType: true,
+      needsPassword: true,
+    },
+  });
+  if (!doc) return { ok: false, error: "Document not found." };
+  if (doc.mimeType !== "application/pdf") {
+    return { ok: false, error: "Only PDFs can be password-decrypted." };
+  }
+  if (!input.password || input.password.length < 1) {
+    return { ok: false, error: "Password is required." };
+  }
+
+  // Download the encrypted PDF from Vercel Blob to retry extraction.
+  let buffer: Buffer;
+  try {
+    const res = await fetch(doc.url);
+    if (!res.ok) {
+      return { ok: false, error: "Couldn't fetch the file from storage." };
+    }
+    const ab = await res.arrayBuffer();
+    buffer = Buffer.from(ab);
+  } catch (err) {
+    console.error("[documents/retry-password] fetch failed", err);
+    return { ok: false, error: "Couldn't fetch the file from storage." };
+  }
+
+  const result = await extractPdfTextWithPassword(buffer, input.password);
+  if (result.kind === "needs-password") {
+    return { ok: false, error: "Incorrect password. Try again." };
+  }
+  if (result.kind === "error") {
+    return {
+      ok: false,
+      error: `Couldn't read the PDF: ${result.reason}`,
+    };
+  }
+
+  // Success — classify + parse + update.
+  const classification = classifyDocument(result.text);
+  const documentType = classification.type;
+  const extractedFields = parseByDocumentType(result.text, documentType);
+  const inbox =
+    documentType === "BANK_STATEMENT" ? "BANK_STATEMENTS" : undefined;
+
+  await db.document.update({
+    where: { id: doc.id },
+    data: {
+      extractedText: result.text,
+      documentType,
+      extractedAt: new Date(),
+      needsPassword: false,
+      ...(inbox ? { inbox } : {}),
+      extractedFields:
+        extractedFields as unknown as Prisma.InputJsonValue,
+    },
+  });
+
+  await writeAuditLog({
+    organizationId: organization.id,
+    userId: user.id,
+    action: "UPDATE",
+    entityType: "Document",
+    entityId: doc.id,
+    after: {
+      source: "password-retry",
+      documentType,
+      rowCount:
+        extractedFields && "rows" in extractedFields
+          ? extractedFields.rows.length
+          : 0,
+    },
+  });
+
+  revalidatePath("/documents");
+  return { ok: true, documentType };
 }

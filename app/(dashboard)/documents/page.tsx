@@ -156,6 +156,9 @@ export default async function DocumentsPage({
         // heuristics. UI renders Transactions table + Import button
         // when present.
         extractedFields: d.extractedFields,
+        // DOC-D4.1: True when pdfjs raised PasswordException during
+        // initial extraction. Drawer surfaces a password prompt.
+        needsPassword: d.needsPassword,
       };
     });
 
