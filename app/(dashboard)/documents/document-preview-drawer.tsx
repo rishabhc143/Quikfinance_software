@@ -43,12 +43,20 @@ import {
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
+import { Pencil, Save, XCircle } from "lucide-react";
+import {
+  computeBankStatementConfidence,
+  confidenceBadgeClass,
+  confidenceLabel,
+} from "@/lib/documents/bank-statement-confidence";
+import type { BankTransactionRow } from "@/lib/documents/parsers/bank-statement-types";
 import { ImportToBankDialog } from "./import-to-bank-dialog";
 import { CreateBillFromDocumentDialog } from "./create-bill-from-document-dialog";
 import { CreateExpenseFromDocumentDialog } from "./create-expense-from-document-dialog";
 import {
   listBankAccountsForImportAction,
   retryExtractWithPasswordAction,
+  updateParsedBankStatementAction,
 } from "./actions";
 
 /**
@@ -315,12 +323,34 @@ function BankStatementTransactionsPanel({
   documentName: string;
   parsed: ParsedBankStatement;
 }) {
+  const router = useRouter();
   const [open, setOpen] = React.useState(true);
   const [dialogOpen, setDialogOpen] = React.useState(false);
   const [bankAccounts, setBankAccounts] = React.useState<
-    Array<{ id: string; label: string }> | null
+    Array<{ id: string; label: string; last4: string | null }> | null
   >(null);
   const [loadingAccounts, setLoadingAccounts] = React.useState(false);
+
+  // DOC-D4.2: Inline edit state. When `editing` is true the cells
+  // turn into inputs; `editedRows` carries the working copy until
+  // Save commits via updateParsedBankStatementAction.
+  const [editing, setEditing] = React.useState(false);
+  const [editedRows, setEditedRows] = React.useState<BankTransactionRow[]>(
+    parsed.rows
+  );
+  const [savingEdits, setSavingEdits] = React.useState(false);
+
+  // Re-seed local edited copy when parsed.rows change (e.g. after
+  // Save → router.refresh → new server-side rows arrive).
+  React.useEffect(() => {
+    setEditedRows(parsed.rows);
+  }, [parsed.rows]);
+
+  // DOC-D4.2: Compute confidence on the live (edited or original) data.
+  const confidence = React.useMemo(
+    () => computeBankStatementConfidence({ ...parsed, rows: editing ? editedRows : parsed.rows }),
+    [parsed, editing, editedRows]
+  );
 
   async function onClickImport() {
     setLoadingAccounts(true);
@@ -333,6 +363,45 @@ function BankStatementTransactionsPanel({
     }
   }
 
+  function startEdit() {
+    setEditedRows(parsed.rows);
+    setEditing(true);
+  }
+  function cancelEdit() {
+    setEditedRows(parsed.rows);
+    setEditing(false);
+  }
+
+  async function saveEdits() {
+    setSavingEdits(true);
+    const result = await updateParsedBankStatementAction({
+      documentId,
+      rows: editedRows.map((r) => ({
+        date: r.date,
+        description: r.description,
+        debit: r.debit ?? null,
+        credit: r.credit ?? null,
+        balance: r.balance ?? null,
+      })),
+    });
+    setSavingEdits(false);
+    if (!result.ok) {
+      toast.error(result.error);
+      return;
+    }
+    toast.success(`Saved — ${result.rowCount} row${result.rowCount === 1 ? "" : "s"} updated.`);
+    setEditing(false);
+    router.refresh();
+  }
+
+  function updateRow(idx: number, patch: Partial<BankTransactionRow>) {
+    setEditedRows((prev) => {
+      const next = prev.slice();
+      next[idx] = { ...next[idx], ...patch };
+      return next;
+    });
+  }
+
   // Format INR for display (lakh grouping).
   function inr(n: number | undefined): string {
     if (n == null) return "";
@@ -342,6 +411,8 @@ function BankStatementTransactionsPanel({
     });
   }
 
+  const rowsToRender = editing ? editedRows : parsed.rows;
+
   return (
     <details
       className="shrink-0 border-t bg-muted/10"
@@ -350,30 +421,92 @@ function BankStatementTransactionsPanel({
         setOpen((e.currentTarget as HTMLDetailsElement).open)
       }
     >
-      <summary className="cursor-pointer select-none px-4 py-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2 hover:bg-muted/40">
+      <summary className="cursor-pointer select-none px-4 py-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2 hover:bg-muted/40 flex-wrap">
         <Landmark className="h-3.5 w-3.5" />
         <span>Smart Capture · Transactions</span>
         <span className="text-[10px] normal-case tracking-normal px-1.5 py-0.5 rounded font-medium bg-blue-100 text-blue-800">
           {parsed.bank}
         </span>
-        <span className="ml-auto text-[10px] normal-case tracking-normal text-muted-foreground">
-          {parsed.rows.length} row{parsed.rows.length === 1 ? "" : "s"}
-        </span>
-        <Button
-          size="sm"
-          onClick={(e) => {
-            e.preventDefault();
-            void onClickImport();
-          }}
-          disabled={loadingAccounts}
-          className="ml-2 h-7 text-xs normal-case tracking-normal"
-        >
-          {loadingAccounts ? (
-            <Loader2 className="h-3 w-3 animate-spin" />
-          ) : (
-            "Import to Bank"
+        {/* DOC-D4.2: Confidence chip. Tooltip via title shows the score
+            + signals so a user can hover to understand why. */}
+        <span
+          className={cn(
+            "text-[10px] normal-case tracking-normal px-1.5 py-0.5 rounded font-medium",
+            confidenceBadgeClass(confidence.level)
           )}
-        </Button>
+          title={`Score ${confidence.score}/100\n${confidence.signals.join("\n")}`}
+        >
+          {confidenceLabel(confidence.level)} ({confidence.score}/100)
+        </span>
+        <span className="ml-auto text-[10px] normal-case tracking-normal text-muted-foreground">
+          {rowsToRender.length} row{rowsToRender.length === 1 ? "" : "s"}
+        </span>
+        {/* DOC-D4.2: Edit / Save / Cancel toolbar. */}
+        {editing ? (
+          <>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={(e) => {
+                e.preventDefault();
+                cancelEdit();
+              }}
+              disabled={savingEdits}
+              className="ml-2 h-7 text-xs normal-case tracking-normal"
+            >
+              <XCircle className="h-3 w-3 mr-1" />
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              onClick={(e) => {
+                e.preventDefault();
+                void saveEdits();
+              }}
+              disabled={savingEdits}
+              className="h-7 text-xs normal-case tracking-normal"
+            >
+              {savingEdits ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <>
+                  <Save className="h-3 w-3 mr-1" />
+                  Save changes
+                </>
+              )}
+            </Button>
+          </>
+        ) : (
+          <>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={(e) => {
+                e.preventDefault();
+                startEdit();
+              }}
+              className="ml-2 h-7 text-xs normal-case tracking-normal"
+            >
+              <Pencil className="h-3 w-3 mr-1" />
+              Edit
+            </Button>
+            <Button
+              size="sm"
+              onClick={(e) => {
+                e.preventDefault();
+                void onClickImport();
+              }}
+              disabled={loadingAccounts}
+              className="h-7 text-xs normal-case tracking-normal"
+            >
+              {loadingAccounts ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                "Import to Bank"
+              )}
+            </Button>
+          </>
+        )}
       </summary>
       <div className="max-h-[50vh] overflow-y-auto border-t bg-background">
         {parsed.period ? (
@@ -401,23 +534,99 @@ function BankStatementTransactionsPanel({
             </tr>
           </thead>
           <tbody>
-            {parsed.rows.map((r, i) => (
+            {rowsToRender.map((r, i) => (
               <tr key={i} className="border-t">
-                <td className="px-3 py-1.5 whitespace-nowrap tabular-nums">
-                  {r.date}
-                </td>
-                <td className="px-3 py-1.5 truncate max-w-[280px]" title={r.description}>
-                  {r.description}
-                </td>
-                <td className="px-3 py-1.5 text-right tabular-nums text-destructive">
-                  {r.debit != null ? inr(r.debit) : ""}
-                </td>
-                <td className="px-3 py-1.5 text-right tabular-nums text-emerald-600">
-                  {r.credit != null ? inr(r.credit) : ""}
-                </td>
-                <td className="px-3 py-1.5 text-right tabular-nums text-muted-foreground">
-                  {r.balance != null ? inr(r.balance) : ""}
-                </td>
+                {editing ? (
+                  <>
+                    <td className="px-2 py-1">
+                      <input
+                        type="date"
+                        value={r.date}
+                        onChange={(e) =>
+                          updateRow(i, { date: e.target.value })
+                        }
+                        className="w-full px-1 py-0.5 border rounded text-xs"
+                      />
+                    </td>
+                    <td className="px-2 py-1">
+                      <input
+                        type="text"
+                        value={r.description}
+                        onChange={(e) =>
+                          updateRow(i, { description: e.target.value })
+                        }
+                        className="w-full px-1 py-0.5 border rounded text-xs"
+                      />
+                    </td>
+                    <td className="px-2 py-1">
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={r.debit ?? ""}
+                        onChange={(e) =>
+                          updateRow(i, {
+                            debit: e.target.value === "" ? undefined : Number(e.target.value),
+                            credit: e.target.value === "" ? r.credit : undefined,
+                          })
+                        }
+                        className="w-full px-1 py-0.5 border rounded text-xs text-right tabular-nums"
+                        placeholder="-"
+                      />
+                    </td>
+                    <td className="px-2 py-1">
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={r.credit ?? ""}
+                        onChange={(e) =>
+                          updateRow(i, {
+                            credit: e.target.value === "" ? undefined : Number(e.target.value),
+                            debit: e.target.value === "" ? r.debit : undefined,
+                          })
+                        }
+                        className="w-full px-1 py-0.5 border rounded text-xs text-right tabular-nums"
+                        placeholder="-"
+                      />
+                    </td>
+                    <td className="px-2 py-1">
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={r.balance ?? ""}
+                        onChange={(e) =>
+                          updateRow(i, {
+                            balance: e.target.value === "" ? undefined : Number(e.target.value),
+                          })
+                        }
+                        className="w-full px-1 py-0.5 border rounded text-xs text-right tabular-nums"
+                        placeholder="-"
+                      />
+                    </td>
+                  </>
+                ) : (
+                  <>
+                    <td className="px-3 py-1.5 whitespace-nowrap tabular-nums">
+                      {r.date}
+                    </td>
+                    <td
+                      className="px-3 py-1.5 truncate max-w-[280px]"
+                      title={r.description}
+                    >
+                      {r.description}
+                    </td>
+                    <td className="px-3 py-1.5 text-right tabular-nums text-destructive">
+                      {r.debit != null ? inr(r.debit) : ""}
+                    </td>
+                    <td className="px-3 py-1.5 text-right tabular-nums text-emerald-600">
+                      {r.credit != null ? inr(r.credit) : ""}
+                    </td>
+                    <td className="px-3 py-1.5 text-right tabular-nums text-muted-foreground">
+                      {r.balance != null ? inr(r.balance) : ""}
+                    </td>
+                  </>
+                )}
               </tr>
             ))}
           </tbody>
@@ -429,8 +638,9 @@ function BankStatementTransactionsPanel({
           onOpenChange={setDialogOpen}
           documentId={documentId}
           documentName={documentName}
-          rowCount={parsed.rows.length}
+          rowCount={rowsToRender.length}
           bankAccounts={bankAccounts}
+          accountNumberHint={parsed.accountNumber ?? null}
         />
       ) : null}
     </details>

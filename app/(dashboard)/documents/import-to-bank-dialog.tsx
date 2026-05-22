@@ -34,13 +34,19 @@ export function ImportToBankDialog({
   documentName,
   rowCount,
   bankAccounts,
+  accountNumberHint,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   documentId: string;
   documentName: string;
   rowCount: number;
-  bankAccounts: Array<{ id: string; label: string }>;
+  bankAccounts: Array<{ id: string; label: string; last4?: string | null }>;
+  /** DOC-D4.2: When the parsed statement carries an account number,
+   *  the dialog uses its last 4 digits to auto-pick the matching
+   *  BankAccount on open — saves a click and prevents importing into
+   *  the wrong account. */
+  accountNumberHint?: string | null;
 }) {
   const router = useRouter();
   const [bankAccountId, setBankAccountId] = React.useState<string>("");
@@ -48,12 +54,18 @@ export function ImportToBankDialog({
 
   React.useEffect(() => {
     if (open) {
-      // Default to the first account so the user can hit Confirm
-      // without picking.
-      setBankAccountId(bankAccounts[0]?.id ?? "");
+      // DOC-D4.2: If we have a hint (statement's accountNumber),
+      // try to match by last 4 digits. Falls through to first account.
+      let pick: string | undefined;
+      if (accountNumberHint && accountNumberHint.length >= 4) {
+        const last4 = accountNumberHint.slice(-4);
+        const match = bankAccounts.find((a) => a.last4 === last4);
+        if (match) pick = match.id;
+      }
+      setBankAccountId(pick ?? bankAccounts[0]?.id ?? "");
       setSubmitting(false);
     }
-  }, [open, bankAccounts]);
+  }, [open, bankAccounts, accountNumberHint]);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
