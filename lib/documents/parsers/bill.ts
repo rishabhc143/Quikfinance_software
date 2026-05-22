@@ -23,6 +23,9 @@ import {
 
 export type ParsedBillLineItem = {
   description: string;
+  /** DOC-D5: HSN / SAC code captured when the line carries a 4–8
+   *  digit code between the serial number and the description. */
+  hsn?: string;
   quantity?: number;
   rate?: number;
   amount: number;
@@ -163,43 +166,112 @@ function findVendorName(text: string): string | undefined {
 }
 
 /**
- * Line item scan — light heuristic. Looks for lines that end with two
- * numeric-looking tokens (rate, amount) preceded by a description. We
- * skip totals/tax rows so they don't show up as items.
+ * Line item scan — heuristic. Looks for lines that end with 1, 2, or
+ * 3 numeric tokens (amount; rate + amount; or qty + rate + amount)
+ * preceded by a description and an optional HSN/SAC code. Skips
+ * totals / tax / footer rows.
  *
- * v1 returns at most 20 line items; multi-page bills with hundreds of
+ * Token shapes recognised:
+ *   "Office Chair 5,000.00"                        → amount only
+ *   "Office Chair 1,500.00 5,000.00"               → [rate, amount]
+ *   "Office Chair 2 1,500.00 3,000.00"             → [qty, rate, amount]
+ *   "1 9401 Office Chair 1 5,000.00 5,000.00"      → serial+HSN+desc+[qty, rate, amount]
+ *   "9401 Office Chair 5,000.00 5,000.00"          → HSN+desc+[rate, amount]
+ *
+ * The 3-token form is gated on a qty*rate ≈ amount sanity check
+ * (within 2%) to avoid mis-interpreting `[discount, tax, total]`
+ * footer rows. Failed sanity check falls back to 2-token parsing.
+ *
+ * Returns at most 20 line items; multi-page bills with hundreds of
  * rows fall back to a manual entry workflow in the Create Bill modal.
  */
 function findLineItems(text: string): ParsedBillLineItem[] {
   // Skip lines that look like headers / labels / totals / dates / etc.
   // We've widened this list as real bills surface false-positives.
   const skipPrefix =
-    /^(sub\s*total|grand\s+total|total|cgst|sgst|igst|tax|gst|amount|balance|received|due|payment|opening|closing|page|notes?|date|invoice|bill|issue|gstin|hsn|sac|description|rate|qty|quantity|s\s*\.?\s*no|sr\s*\.?\s*no|item|particulars|customer|vendor|supplier|terms|place\s+of\s+supply|bill\s+to|ship\s+to|from\b|to\b|po\s+no|reference|ref)/i;
+    /^(sub\s*total|grand\s+total|total|cgst|sgst|igst|tax|gst|amount|balance|received|due|payment|opening|closing|page|notes?|date|invoice|bill|issue|gstin|hsn|sac|description|rate|qty|quantity|s\s*\.?\s*no|sr\s*\.?\s*no|item|particulars|customer|vendor|supplier|terms|place\s+of\s+supply|bill\s+to|ship\s+to|from\b|to\b|po\s+no|reference|ref|round\s*off|authorised\s+signatory|in\s+words|e\.?\s*&\s*o\.?\s*e\.?)/i;
   const items: ParsedBillLineItem[] = [];
   for (const raw of text.split(/\r?\n/)) {
     const line = raw.trim();
     if (!line || line.length < 6) continue;
     if (skipPrefix.test(line)) continue;
-    // Need at least 2 amount-like tokens at the end.
     const parts = line.split(/\s+/);
     if (parts.length < 3) continue;
+
+    // Last token MUST be a positive amount.
     const last = parts[parts.length - 1];
-    const secondLast = parts[parts.length - 2];
     const lastAmt = parseInrAmount(last);
-    const secLastAmt = parseInrAmount(secondLast);
     if (!Number.isFinite(lastAmt) || lastAmt <= 0) continue;
-    const description = parts
-      .slice(0, Number.isFinite(secLastAmt) ? parts.length - 2 : parts.length - 1)
-      .join(" ")
-      .replace(/^\d+\s+/, "") // strip leading serial number
-      .trim();
+
+    // Inspect 2nd-last and 3rd-last tokens to decide which trailing
+    // shape we have: [amount] / [rate, amount] / [qty, rate, amount].
+    const secLastAmt =
+      parts.length >= 2 ? parseInrAmount(parts[parts.length - 2]) : NaN;
+    const thirdLastAmt =
+      parts.length >= 3 ? parseInrAmount(parts[parts.length - 3]) : NaN;
+
+    let quantity: number | undefined;
+    let rate: number | undefined;
+    let dropCount = 1; // trailing tokens to drop from description
+
+    if (
+      Number.isFinite(thirdLastAmt) &&
+      Number.isFinite(secLastAmt) &&
+      (thirdLastAmt as number) > 0 &&
+      (secLastAmt as number) > 0
+    ) {
+      // 3-token form: gate on qty*rate ≈ amount (within 2%).
+      const expected = (thirdLastAmt as number) * (secLastAmt as number);
+      if (Math.abs(expected - lastAmt) / lastAmt < 0.02) {
+        quantity = thirdLastAmt as number;
+        rate = secLastAmt as number;
+        dropCount = 3;
+      } else {
+        // Sanity check failed → treat as 2-token [rate, amount].
+        rate = secLastAmt as number;
+        dropCount = 2;
+      }
+    } else if (Number.isFinite(secLastAmt) && (secLastAmt as number) > 0) {
+      rate = secLastAmt as number;
+      dropCount = 2;
+    }
+
+    // Description tokens are everything before the trailing numeric
+    // tokens we just identified.
+    const descTokens = parts.slice(0, parts.length - dropCount);
+
+    // Optional HSN extraction: skip a leading 1–3 digit serial number,
+    // then look for a 4–8 digit HSN/SAC token. Both get stripped from
+    // the description text.
+    let hsn: string | undefined;
+    if (descTokens.length >= 2) {
+      let cursor = 0;
+      if (/^\d{1,3}$/.test(descTokens[0])) cursor = 1;
+      if (
+        descTokens.length > cursor + 1 &&
+        /^\d{4,8}$/.test(descTokens[cursor])
+      ) {
+        hsn = descTokens[cursor];
+        descTokens.splice(0, cursor + 1);
+      } else if (cursor > 0) {
+        // No HSN, but still drop the serial number.
+        descTokens.splice(0, cursor);
+      }
+    }
+
+    const description = descTokens.join(" ").trim();
     if (description.length < 3) continue;
     if (/^[\d\s,.\-]+$/.test(description)) continue;
-    items.push({
+
+    const item: ParsedBillLineItem = {
       description: description.slice(0, 200),
-      rate: Number.isFinite(secLastAmt) ? secLastAmt : undefined,
       amount: lastAmt,
-    });
+    };
+    if (hsn != null) item.hsn = hsn;
+    if (quantity != null) item.quantity = quantity;
+    if (rate != null) item.rate = rate;
+
+    items.push(item);
     if (items.length >= 20) break;
   }
   return items;

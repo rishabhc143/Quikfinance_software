@@ -114,6 +114,137 @@ Total 500.00
     });
   });
 
+  // ───────── DOC-D5: HSN + qty/rate/amount extraction ─────────
+
+  describe("parseBill — HSN-heavy tax invoice (D5)", () => {
+    const text = `
+TAX INVOICE
+
+ABC Suppliers Pvt Ltd
+Bengaluru
+GSTIN: 29ABCDE1234F1Z5
+
+Invoice Number: HSN-2026-001
+Invoice Date: 15/05/2026
+
+Sl No HSN Description Qty Rate Amount
+1 9401 Office Chair 1 5000 5000
+2 9405 Desk Lamp 2 1500 3000
+3 8523 Notebook 5 250 1250
+
+Sub Total 9250
+CGST @ 9% 832.50
+SGST @ 9% 832.50
+Grand Total 10915
+`;
+    const parsed = parseBill(text);
+
+    it("captures exactly 3 line items", () => {
+      expect(parsed.lineItems.length).toBe(3);
+    });
+    it("captures HSN code per row", () => {
+      expect(parsed.lineItems[0].hsn).toBe("9401");
+      expect(parsed.lineItems[1].hsn).toBe("9405");
+      expect(parsed.lineItems[2].hsn).toBe("8523");
+    });
+    it("captures quantity per row", () => {
+      expect(parsed.lineItems[0].quantity).toBe(1);
+      expect(parsed.lineItems[1].quantity).toBe(2);
+      expect(parsed.lineItems[2].quantity).toBe(5);
+    });
+    it("captures rate per row", () => {
+      expect(parsed.lineItems[0].rate).toBe(5000);
+      expect(parsed.lineItems[1].rate).toBe(1500);
+      expect(parsed.lineItems[2].rate).toBe(250);
+    });
+    it("captures amount per row", () => {
+      expect(parsed.lineItems[0].amount).toBe(5000);
+      expect(parsed.lineItems[1].amount).toBe(3000);
+      expect(parsed.lineItems[2].amount).toBe(1250);
+    });
+    it("description excludes HSN code and serial number", () => {
+      expect(parsed.lineItems[0].description).toBe("Office Chair");
+      expect(parsed.lineItems[1].description).toBe("Desk Lamp");
+      expect(parsed.lineItems[2].description).toBe("Notebook");
+    });
+  });
+
+  describe("parseBill — mixed-format rows (D5)", () => {
+    const text = `
+TAX INVOICE
+Mixed Format Co
+GSTIN: 27ABCDE5678F1Z9
+Invoice No: MIX-001
+Date: 20/05/2026
+
+1 Office Chair 2 1500 3000
+2 Desk Lamp 1000 1000
+3 Stationery Bundle 500
+
+Total 4500
+`;
+    const parsed = parseBill(text);
+
+    it("captures 3 line items across mixed formats", () => {
+      expect(parsed.lineItems.length).toBe(3);
+    });
+    it("3-token row captures qty + rate + amount", () => {
+      const r = parsed.lineItems[0];
+      expect(r.description).toBe("Office Chair");
+      expect(r.quantity).toBe(2);
+      expect(r.rate).toBe(1500);
+      expect(r.amount).toBe(3000);
+    });
+    it("2-token row captures rate + amount, no quantity", () => {
+      const r = parsed.lineItems[1];
+      expect(r.description).toBe("Desk Lamp");
+      expect(r.quantity).toBeUndefined();
+      expect(r.rate).toBe(1000);
+      expect(r.amount).toBe(1000);
+    });
+    it("1-token row captures amount only, no rate / quantity", () => {
+      const r = parsed.lineItems[2];
+      expect(r.description).toBe("Stationery Bundle");
+      expect(r.quantity).toBeUndefined();
+      expect(r.rate).toBeUndefined();
+      expect(r.amount).toBe(500);
+    });
+  });
+
+  describe("parseBill — footer noise is skipped (D5)", () => {
+    const text = `
+TAX INVOICE
+Noise Test LLP
+GSTIN: 27NOISE7890A1Z2
+Invoice No: NOISE-001
+Date: 22/05/2026
+
+1 Widget A 100 100
+2 Widget B 200 200
+
+Sub Total 300
+Round Off 0.50
+CGST @ 9% 27
+Grand Total 327
+In Words: Three hundred twenty seven only
+Authorised Signatory
+`;
+    const parsed = parseBill(text);
+
+    it("captures only the 2 real item rows (footer noise skipped)", () => {
+      expect(parsed.lineItems.length).toBe(2);
+      expect(parsed.lineItems[0].description).toBe("Widget A");
+      expect(parsed.lineItems[1].description).toBe("Widget B");
+    });
+    it("does not capture Round Off, Authorised Signatory, or In Words as items", () => {
+      for (const item of parsed.lineItems) {
+        expect(item.description.toLowerCase()).not.toContain("round");
+        expect(item.description.toLowerCase()).not.toContain("authorised");
+        expect(item.description.toLowerCase()).not.toContain("words");
+      }
+    });
+  });
+
   describe("isParsedBill type guard", () => {
     it("accepts an object with lineItems array", () => {
       expect(isParsedBill({ lineItems: [] })).toBe(true);

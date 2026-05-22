@@ -15,6 +15,7 @@ import { extractPdfTextWithPassword } from "@/lib/documents/pdf-extract";
 import { classifyDocument } from "@/lib/documents/document-classifier";
 import {
   parseByDocumentType,
+  isParsedBill,
   type ParsedBankStatement,
   type ParsedBill,
   type ParsedReceipt,
@@ -1059,7 +1060,7 @@ export async function createBillFromDocumentAction(input: {
       organizationId: organization.id,
       deletedAt: null,
     },
-    select: { id: true, name: true, documentType: true },
+    select: { id: true, name: true, documentType: true, extractedFields: true },
   });
   if (!doc) return { ok: false, error: "Document not found." };
 
@@ -1102,6 +1103,35 @@ export async function createBillFromDocumentAction(input: {
     },
   });
 
+  // DOC-D5: When the parser captured line items, bulk-insert them
+  // as BillLineItem rows so the bill edit page lands already-populated.
+  // When no items were captured, the Bill stays line-item-less and the
+  // user fills the grid manually on the edit page (no regression vs
+  // pre-D5 behaviour).
+  let lineItemCount = 0;
+  if (isParsedBill(doc.extractedFields) && doc.extractedFields.lineItems.length > 0) {
+    const parsedItems = doc.extractedFields.lineItems;
+    await db.billLineItem.createMany({
+      data: parsedItems.map((item, idx) => ({
+        billId: created.id,
+        position: idx,
+        name: item.description.slice(0, 200),
+        description: item.description.slice(0, 500),
+        hsnSacCode: item.hsn ?? null,
+        quantity: new Prisma.Decimal(
+          item.quantity != null && item.quantity > 0 ? item.quantity : 1
+        ),
+        rate: new Prisma.Decimal(
+          item.rate != null && item.rate > 0 ? item.rate : item.amount
+        ),
+        amount: new Prisma.Decimal(item.amount),
+        taxId: null,
+        billableToCustomerId: null,
+      })),
+    });
+    lineItemCount = parsedItems.length;
+  }
+
   // Link the document to the new bill via the polymorphic
   // associatedEntityType pair so the ASSOCIATED TO column lights up.
   await db.document.update({
@@ -1123,6 +1153,7 @@ export async function createBillFromDocumentAction(input: {
       documentId: doc.id,
       number: billNumber,
       total: input.total,
+      lineItemCount,
     },
   });
 
