@@ -55,7 +55,7 @@ app/
     reports/           Reports Center (80 reports) + P&L / BS / CF / Schedule III
     settings/          Profile / GST / Branding / Numbering / Taxes / PDF / Online Payments / etc
     time/              Time Tracking — Projects + Timesheet
-  api/                 Webhooks, cron jobs, inbound email, admin migrate
+  api/                 Webhooks, cron jobs, admin migrate
   help/                Public help articles
   (auth pages root)/   /login /signup /reset-password
 components/            shadcn/ui primitives + shared composites
@@ -113,7 +113,6 @@ Required for full functionality:
 Optional (gates specific features):
 - `ANTHROPIC_API_KEY` — enables D4.4 LLM fallback + the in-app chat assistant
 - `RESEND_API_KEY` + `EMAIL_FROM` — enables transactional email
-- `INBOUND_EMAIL_DOMAIN` + `INBOUND_EMAIL_WEBHOOK_SECRET` — enables email-forwarding pipeline (D3.1)
 - `RAZORPAY_KEY_ID` + `RAZORPAY_KEY_SECRET` + `RAZORPAY_WEBHOOK_SECRET` — enables customer portal payments
 
 ## Recent prod state (snapshot at handoff)
