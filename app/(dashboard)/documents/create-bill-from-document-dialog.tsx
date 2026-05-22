@@ -127,9 +127,24 @@ export function CreateBillFromDocumentDialog({
     router.push(`/purchases/bills/${result.billId}`);
   }
 
+  // DOC-D5: INR display formatter for the auto-detected line items
+  // preview table (lakh grouping, 2 decimals).
+  const inr = React.useMemo(
+    () =>
+      new Intl.NumberFormat("en-IN", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      }),
+    []
+  );
+
+  const hasLineItems = parsed.lineItems && parsed.lineItems.length > 0;
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[520px]">
+      <DialogContent
+        className={hasLineItems ? "sm:max-w-[720px]" : "sm:max-w-[520px]"}
+      >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <ReceiptIcon className="h-5 w-5 text-primary" />
@@ -244,6 +259,65 @@ export function CreateBillFromDocumentDialog({
               />
             </div>
           </div>
+
+          {/* DOC-D5: Read-only preview of auto-detected line items.
+              Rendered only when the parser caught at least one row.
+              User confirms the count here; edits happen on the bill
+              edit page after submit. */}
+          {hasLineItems ? (
+            <div className="rounded-md border bg-muted/10">
+              <div className="px-3 py-1.5 border-b flex items-center gap-2">
+                <span className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">
+                  Auto-detected line items
+                </span>
+                <span className="text-[10px] normal-case tracking-normal px-1.5 py-0.5 rounded font-medium bg-emerald-100 text-emerald-800">
+                  {parsed.lineItems.length} row
+                  {parsed.lineItems.length === 1 ? "" : "s"} — edit after save
+                </span>
+              </div>
+              <div className="max-h-48 overflow-y-auto">
+                <table className="w-full text-xs">
+                  <thead className="bg-muted/20 text-[10px] uppercase tracking-wider text-muted-foreground">
+                    <tr>
+                      <th className="text-left px-2 py-1 w-8">#</th>
+                      <th className="text-left px-2 py-1 w-16">HSN</th>
+                      <th className="text-left px-2 py-1">Description</th>
+                      <th className="text-right px-2 py-1 w-14">Qty</th>
+                      <th className="text-right px-2 py-1 w-24">Rate</th>
+                      <th className="text-right px-2 py-1 w-24">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {parsed.lineItems.map((item, idx) => (
+                      <tr
+                        key={idx}
+                        className="border-t border-border/40 hover:bg-muted/30"
+                      >
+                        <td className="px-2 py-1 text-muted-foreground">
+                          {idx + 1}
+                        </td>
+                        <td className="px-2 py-1 font-mono text-[11px]">
+                          {item.hsn ?? ""}
+                        </td>
+                        <td className="px-2 py-1 truncate" title={item.description}>
+                          {item.description}
+                        </td>
+                        <td className="px-2 py-1 text-right">
+                          {item.quantity != null ? item.quantity : ""}
+                        </td>
+                        <td className="px-2 py-1 text-right">
+                          {item.rate != null ? inr.format(item.rate) : ""}
+                        </td>
+                        <td className="px-2 py-1 text-right font-medium">
+                          {inr.format(item.amount)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : null}
 
           <DialogFooter>
             <Button
