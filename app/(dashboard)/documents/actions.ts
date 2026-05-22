@@ -1676,3 +1676,59 @@ export async function updateParsedBankStatementAction(input: {
   revalidatePath("/documents");
   return { ok: true, rowCount: cleaned.length };
 }
+
+// ───────────────────── DOC-D4.3: Match bank rows to AR / AP ─────────────────────
+
+/**
+ * For a Document (must be BANK_STATEMENT), load its parsed rows
+ * from extractedFields and run `suggestMatchesForBankRows` to
+ * surface outstanding Invoices (for credits) and Bills (for debits)
+ * that look like they match.
+ *
+ * Read-only — doesn't mutate any state. UI uses the results to render
+ * a "Suggested matches" panel + deep links.
+ */
+export async function getBankRowMatchesAction(input: {
+  documentId: string;
+}): Promise<
+  | { ok: true; matches: import("@/lib/documents/match-bank-transactions").SuggestedMatch[] }
+  | { ok: false; error: string }
+> {
+  const { organization } = await requireOrganization();
+
+  const doc = await db.document.findFirst({
+    where: {
+      id: input.documentId,
+      organizationId: organization.id,
+      deletedAt: null,
+    },
+    select: { documentType: true, extractedFields: true },
+  });
+  if (!doc) return { ok: false, error: "Document not found." };
+  if (doc.documentType !== "BANK_STATEMENT") {
+    return { ok: false, error: "Only bank statements can be matched." };
+  }
+
+  const ef = doc.extractedFields as unknown as { rows?: unknown };
+  if (!ef || !Array.isArray(ef.rows)) {
+    return { ok: true, matches: [] };
+  }
+
+  // Defensive narrowing — only pass rows the matcher can use.
+  const rows = (ef.rows as Array<Record<string, unknown>>).map((r) => ({
+    date: typeof r.date === "string" ? r.date : "",
+    description: typeof r.description === "string" ? r.description : "",
+    credit: typeof r.credit === "number" ? r.credit : null,
+    debit: typeof r.debit === "number" ? r.debit : null,
+  }));
+
+  const { suggestMatchesForBankRows } = await import(
+    "@/lib/documents/match-bank-transactions"
+  );
+  const matches = await suggestMatchesForBankRows({
+    organizationId: organization.id,
+    rows,
+  });
+
+  return { ok: true, matches };
+}

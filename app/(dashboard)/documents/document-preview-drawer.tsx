@@ -57,7 +57,11 @@ import {
   listBankAccountsForImportAction,
   retryExtractWithPasswordAction,
   updateParsedBankStatementAction,
+  getBankRowMatchesAction,
 } from "./actions";
+import { Link2, ArrowRight } from "lucide-react";
+import Link from "next/link";
+import type { SuggestedMatch } from "@/lib/documents/match-bank-transactions";
 
 /**
  * DOC-D1.4: Side-drawer preview for a single document.
@@ -262,6 +266,14 @@ function PreviewBody({
           documentId={doc.id}
           documentName={doc.name}
         />
+      ) : null}
+
+      {/* DOC-D4.3: Suggested AR/AP matches panel — finds outstanding
+          Invoices (for credits) + Bills (for debits) that match the
+          parsed rows. Shown above the transactions table so users
+          notice opportunities to close out invoices/bills. */}
+      {isParsedBankStatement(doc.extractedFields) ? (
+        <SuggestedMatchesPanel documentId={doc.id} />
       ) : null}
 
       {/* DOC-D2.2: Bank statement transactions panel — renders only
@@ -955,6 +967,140 @@ function PasswordPromptPanel({
           <p className="text-xs text-destructive mt-2">{error}</p>
         ) : null}
       </div>
+    </details>
+  );
+}
+
+/**
+ * DOC-D4.3: Suggested AR/AP matches panel. Surfaces when a parsed
+ * bank statement has credits matching outstanding Invoices OR debits
+ * matching outstanding Bills. Read-only v1 — no auto-apply of
+ * payments; just deep-links to the entity detail page.
+ *
+ * Fetches matches via `getBankRowMatchesAction` on first render +
+ * collapses gracefully when no matches found.
+ */
+function SuggestedMatchesPanel({ documentId }: { documentId: string }) {
+  const [loading, setLoading] = React.useState(true);
+  const [matches, setMatches] = React.useState<SuggestedMatch[]>([]);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    getBankRowMatchesAction({ documentId })
+      .then((r) => {
+        if (cancelled) return;
+        if (r.ok) setMatches(r.matches);
+      })
+      .catch((err) => {
+        console.warn("[suggested-matches] fetch failed", err);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [documentId]);
+
+  // Hide the panel entirely when no matches — keeps drawer tight.
+  if (!loading && matches.length === 0) return null;
+
+  function inr(n: number): string {
+    return `₹${n.toLocaleString("en-IN", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })}`;
+  }
+
+  function badgeForConfidence(score: number): string {
+    if (score >= 90) return "bg-emerald-100 text-emerald-800";
+    if (score >= 70) return "bg-blue-100 text-blue-800";
+    return "bg-amber-100 text-amber-800";
+  }
+
+  return (
+    <details className="shrink-0 border-t bg-blue-50/30" open>
+      <summary className="cursor-pointer select-none px-4 py-2 text-xs font-semibold uppercase tracking-wider text-blue-900 flex items-center gap-2 hover:bg-blue-100/40">
+        <Link2 className="h-3.5 w-3.5" />
+        <span>Smart Capture · Suggested AR/AP Matches</span>
+        {loading ? (
+          <Loader2 className="h-3 w-3 animate-spin text-blue-700" />
+        ) : (
+          <span className="text-[10px] normal-case tracking-normal px-1.5 py-0.5 rounded font-medium bg-blue-100 text-blue-800">
+            {matches.length} match{matches.length === 1 ? "" : "es"}
+          </span>
+        )}
+      </summary>
+      {loading ? (
+        <div className="px-4 py-3 text-xs text-muted-foreground">
+          Looking for matching invoices and bills…
+        </div>
+      ) : (
+        <ul className="border-t bg-background divide-y">
+          {matches.map((m, i) => (
+            <li key={`${m.entity.id}-${i}`} className="px-4 py-3 flex items-center gap-3">
+              {/* Row badge */}
+              <div className="shrink-0 w-32">
+                <div
+                  className={cn(
+                    "inline-block text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded font-medium",
+                    m.rowKind === "credit"
+                      ? "bg-emerald-100 text-emerald-700"
+                      : "bg-rose-100 text-rose-700"
+                  )}
+                >
+                  {m.rowKind === "credit" ? "Credit" : "Debit"} {inr(m.rowAmount)}
+                </div>
+                <div className="text-[10px] text-muted-foreground mt-0.5">
+                  {m.rowDate}
+                </div>
+              </div>
+
+              <ArrowRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+
+              {/* Entity card */}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded font-medium bg-muted text-muted-foreground">
+                    {m.entityType === "INVOICE" ? "Invoice" : "Bill"}
+                  </span>
+                  <span className="text-sm font-medium truncate">
+                    {m.entity.number}
+                  </span>
+                  <span
+                    className={cn(
+                      "text-[10px] normal-case tracking-normal px-1.5 py-0.5 rounded font-medium",
+                      badgeForConfidence(m.confidence)
+                    )}
+                    title={m.reason}
+                  >
+                    {m.confidence}% match
+                  </span>
+                </div>
+                <div className="text-xs text-muted-foreground mt-0.5 truncate">
+                  {m.entity.counterpartyName} · outstanding {inr(m.entity.outstandingAmount)}
+                </div>
+              </div>
+
+              {/* Deep link to the entity detail page */}
+              <Link
+                href={
+                  m.entityType === "INVOICE"
+                    ? `/sales/invoices/${m.entity.id}`
+                    : `/purchases/bills/${m.entity.id}`
+                }
+                className="shrink-0"
+              >
+                <Button size="sm" variant="outline" className="h-7 text-xs">
+                  View {m.entityType === "INVOICE" ? "Invoice" : "Bill"}
+                  <ArrowRight className="h-3 w-3 ml-1" />
+                </Button>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
     </details>
   );
 }
