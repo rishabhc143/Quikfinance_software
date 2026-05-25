@@ -15,6 +15,7 @@ import { logReportActivity } from "@/lib/reports/activity";
 
 /**
  * RPT-SBC — Sales by Customer CSV / XLSX / PDF export.
+ * Columns match Zoho: Name / Invoice Count / Sales / Sales With Tax.
  */
 export async function GET(req: Request) {
   const { organization, user } = await requireOrganization();
@@ -31,9 +32,8 @@ export async function GET(req: Request) {
   const cols = {
     customer: searchParams.get("showCustomer") !== "0",
     invoiceCount: searchParams.get("showInvoiceCount") !== "0",
-    gross: searchParams.get("showGross") !== "0",
-    paid: searchParams.get("showPaid") !== "0",
-    balance: searchParams.get("showBalance") !== "0",
+    sales: searchParams.get("showSales") !== "0",
+    salesWithTax: searchParams.get("showSalesWithTax") !== "0",
   };
 
   const invoices = await db.invoice.findMany({
@@ -46,7 +46,7 @@ export async function GET(req: Request) {
       id: true,
       contactId: true,
       total: true,
-      amountPaid: true,
+      taxTotal: true,
       status: true,
       contact: { select: { id: true, displayName: true } },
     },
@@ -57,7 +57,7 @@ export async function GET(req: Request) {
       id: i.id,
       contactId: i.contactId,
       total: Number(i.total),
-      amountPaid: Number(i.amountPaid),
+      taxTotal: Number(i.taxTotal),
       status: i.status,
       contact: { id: i.contact.id, name: i.contact.displayName },
     })),
@@ -72,9 +72,8 @@ export async function GET(req: Request) {
       rangeLabel,
       currency: organization.currency,
       rows: summary.rows,
-      totalGross: summary.totalGross,
-      totalPaid: summary.totalPaid,
-      totalBalance: summary.totalBalance,
+      totalSales: summary.totalSales,
+      totalSalesWithTax: summary.totalSalesWithTax,
     });
 
     await logReportActivity({
@@ -103,11 +102,10 @@ export async function GET(req: Request) {
     ws.addRow([]);
 
     const headers: string[] = [];
-    if (cols.customer) headers.push("Customer");
-    if (cols.invoiceCount) headers.push("Invoices");
-    if (cols.gross) headers.push("Gross Sales");
-    if (cols.paid) headers.push("Amount Paid");
-    if (cols.balance) headers.push("Balance Due");
+    if (cols.customer) headers.push("Name");
+    if (cols.invoiceCount) headers.push("Invoice Count");
+    if (cols.sales) headers.push("Sales");
+    if (cols.salesWithTax) headers.push("Sales With Tax");
     const headerRow = ws.addRow(headers);
     headerRow.font = { bold: true };
 
@@ -115,19 +113,16 @@ export async function GET(req: Request) {
       const row: (string | number)[] = [];
       if (cols.customer) row.push(r.customerName);
       if (cols.invoiceCount) row.push(r.invoiceCount);
-      if (cols.gross) row.push(r.grossSales);
-      if (cols.paid) row.push(r.amountPaid);
-      if (cols.balance) row.push(r.balanceDue);
+      if (cols.sales) row.push(r.sales);
+      if (cols.salesWithTax) row.push(r.salesWithTax);
       ws.addRow(row);
     }
 
-    // Total row
     const totalRow: (string | number)[] = [];
     if (cols.customer) totalRow.push("Total");
     if (cols.invoiceCount) totalRow.push("");
-    if (cols.gross) totalRow.push(summary.totalGross);
-    if (cols.paid) totalRow.push(summary.totalPaid);
-    if (cols.balance) totalRow.push(summary.totalBalance);
+    if (cols.sales) totalRow.push(summary.totalSales);
+    if (cols.salesWithTax) totalRow.push(summary.totalSalesWithTax);
     const wsTotalRow = ws.addRow(totalRow);
     wsTotalRow.font = { bold: true };
 
@@ -153,26 +148,23 @@ export async function GET(req: Request) {
   // Default: CSV
   const csvRows: CsvRow[] = summary.rows.map((r) => {
     const row: CsvRow = {};
-    if (cols.customer) row.customer = r.customerName;
-    if (cols.invoiceCount) row.invoices = r.invoiceCount;
-    if (cols.gross) row.gross_sales = r.grossSales;
-    if (cols.paid) row.amount_paid = r.amountPaid;
-    if (cols.balance) row.balance_due = r.balanceDue;
+    if (cols.customer) row.name = r.customerName;
+    if (cols.invoiceCount) row.invoice_count = r.invoiceCount;
+    if (cols.sales) row.sales = r.sales;
+    if (cols.salesWithTax) row.sales_with_tax = r.salesWithTax;
     return row;
   });
   const totalCsv: CsvRow = {};
-  if (cols.customer) totalCsv.customer = "Total";
-  if (cols.gross) totalCsv.gross_sales = summary.totalGross;
-  if (cols.paid) totalCsv.amount_paid = summary.totalPaid;
-  if (cols.balance) totalCsv.balance_due = summary.totalBalance;
+  if (cols.customer) totalCsv.name = "Total";
+  if (cols.sales) totalCsv.sales = summary.totalSales;
+  if (cols.salesWithTax) totalCsv.sales_with_tax = summary.totalSalesWithTax;
   csvRows.push(totalCsv);
 
   const headerKeys: string[] = [];
-  if (cols.customer) headerKeys.push("customer");
-  if (cols.invoiceCount) headerKeys.push("invoices");
-  if (cols.gross) headerKeys.push("gross_sales");
-  if (cols.paid) headerKeys.push("amount_paid");
-  if (cols.balance) headerKeys.push("balance_due");
+  if (cols.customer) headerKeys.push("name");
+  if (cols.invoiceCount) headerKeys.push("invoice_count");
+  if (cols.sales) headerKeys.push("sales");
+  if (cols.salesWithTax) headerKeys.push("sales_with_tax");
 
   await logReportActivity({
     organizationId: organization.id,

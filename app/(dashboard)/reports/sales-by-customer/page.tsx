@@ -23,12 +23,15 @@ export const metadata = { title: "Sales by Customer" };
  * customer at top (sorted by gross sales descending).
  */
 
+// Columns match Zoho Books' Sales by Customer report exactly per
+// docs/zoho-reports.yaml. The Amount Paid + Balance Due columns we
+// previously had here move to Customer Balance Summary where they
+// semantically belong.
 const COLUMN_DESCRIPTORS: CustomizeColumnDescriptor[] = [
-  { key: "showCustomer", label: "Customer", defaultEnabled: true },
-  { key: "showInvoiceCount", label: "Invoices", defaultEnabled: true },
-  { key: "showGross", label: "Gross Sales", defaultEnabled: true },
-  { key: "showPaid", label: "Amount Paid", defaultEnabled: true },
-  { key: "showBalance", label: "Balance Due", defaultEnabled: true },
+  { key: "showCustomer", label: "Name", defaultEnabled: true },
+  { key: "showInvoiceCount", label: "Invoice Count", defaultEnabled: true },
+  { key: "showSales", label: "Sales", defaultEnabled: true },
+  { key: "showSalesWithTax", label: "Sales With Tax", defaultEnabled: true },
 ];
 
 function isVisible(
@@ -56,9 +59,8 @@ export default async function SalesByCustomerPage({
   const cols = {
     customer: isVisible(searchParams, "showCustomer", true),
     invoiceCount: isVisible(searchParams, "showInvoiceCount", true),
-    gross: isVisible(searchParams, "showGross", true),
-    paid: isVisible(searchParams, "showPaid", true),
-    balance: isVisible(searchParams, "showBalance", true),
+    sales: isVisible(searchParams, "showSales", true),
+    salesWithTax: isVisible(searchParams, "showSalesWithTax", true),
   };
 
   const [invoices, activityRows, existingSchedule] = await Promise.all([
@@ -72,7 +74,7 @@ export default async function SalesByCustomerPage({
         id: true,
         contactId: true,
         total: true,
-        amountPaid: true,
+        taxTotal: true,
         status: true,
         contact: { select: { id: true, displayName: true } },
       },
@@ -90,7 +92,7 @@ export default async function SalesByCustomerPage({
       id: i.id,
       contactId: i.contactId,
       total: Number(i.total),
-      amountPaid: Number(i.amountPaid),
+      taxTotal: Number(i.taxTotal),
       status: i.status,
       contact: { id: i.contact.id, name: i.contact.displayName },
     })),
@@ -98,15 +100,13 @@ export default async function SalesByCustomerPage({
 
   const columns: ListReportColumn<SalesByCustomerRow>[] = [];
   if (cols.customer)
-    columns.push({ key: "customerName", label: "Customer", type: "text" });
+    columns.push({ key: "customerName", label: "Name", type: "text" });
   if (cols.invoiceCount)
-    columns.push({ key: "invoiceCount", label: "Invoices", type: "number" });
-  if (cols.gross)
-    columns.push({ key: "grossSales", label: "Gross Sales", type: "money" });
-  if (cols.paid)
-    columns.push({ key: "amountPaid", label: "Amount Paid", type: "money" });
-  if (cols.balance)
-    columns.push({ key: "balanceDue", label: "Balance Due", type: "money" });
+    columns.push({ key: "invoiceCount", label: "Invoice Count", type: "number" });
+  if (cols.sales)
+    columns.push({ key: "sales", label: "Sales", type: "money" });
+  if (cols.salesWithTax)
+    columns.push({ key: "salesWithTax", label: "Sales With Tax", type: "money" });
 
   const exportParams = new URLSearchParams();
   exportParams.set("preset", preset);
@@ -116,9 +116,8 @@ export default async function SalesByCustomerPage({
   }
   if (!cols.customer) exportParams.set("showCustomer", "0");
   if (!cols.invoiceCount) exportParams.set("showInvoiceCount", "0");
-  if (!cols.gross) exportParams.set("showGross", "0");
-  if (!cols.paid) exportParams.set("showPaid", "0");
-  if (!cols.balance) exportParams.set("showBalance", "0");
+  if (!cols.sales) exportParams.set("showSales", "0");
+  if (!cols.salesWithTax) exportParams.set("showSalesWithTax", "0");
 
   const rangeLabel = `${format(range.start, "dd/MM/yyyy")} — ${format(range.end, "dd/MM/yyyy")}`;
 
@@ -153,9 +152,8 @@ export default async function SalesByCustomerPage({
       columns={columns}
       rows={summary.rows}
       totals={{
-        grossSales: summary.totalGross,
-        amountPaid: summary.totalPaid,
-        balanceDue: summary.totalBalance,
+        sales: summary.totalSales,
+        salesWithTax: summary.totalSalesWithTax,
       }}
       emptyMessage="No sales in the selected period."
       currency={organization.currency}

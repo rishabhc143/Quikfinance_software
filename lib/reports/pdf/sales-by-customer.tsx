@@ -1,5 +1,6 @@
 /**
  * RPT-SBC — Sales by Customer PDF renderer (A4 portrait).
+ * Columns match Zoho: Name / Invoice Count / Sales / Sales With Tax.
  */
 import * as React from "react";
 import {
@@ -57,9 +58,8 @@ interface RenderProps {
   rangeLabel: string;
   currency: string;
   rows: SalesByCustomerRow[];
-  totalGross: number;
-  totalPaid: number;
-  totalBalance: number;
+  totalSales: number;
+  totalSalesWithTax: number;
 }
 
 export async function renderSalesByCustomerPdf(
@@ -76,29 +76,26 @@ export async function renderSalesByCustomerPdf(
         </View>
 
         <View style={styles.thead}>
-          <Text style={styles.cellLeft}>Customer</Text>
-          <Text style={styles.cellRightSmall}>Invoices</Text>
-          <Text style={styles.cellRight}>Gross Sales</Text>
-          <Text style={styles.cellRight}>Amount Paid</Text>
-          <Text style={styles.cellRight}>Balance Due</Text>
+          <Text style={styles.cellLeft}>Name</Text>
+          <Text style={styles.cellRightSmall}>Invoice Count</Text>
+          <Text style={styles.cellRight}>Sales</Text>
+          <Text style={styles.cellRight}>Sales With Tax</Text>
         </View>
 
         {props.rows.map((r) => (
           <View style={styles.row} key={r.customerId}>
             <Text style={styles.cellLeft}>{r.customerName}</Text>
             <Text style={styles.cellRightSmall}>{r.invoiceCount}</Text>
-            <Text style={styles.cellRight}>{fmt(r.grossSales)}</Text>
-            <Text style={styles.cellRight}>{fmt(r.amountPaid)}</Text>
-            <Text style={styles.cellRight}>{fmt(r.balanceDue)}</Text>
+            <Text style={styles.cellRight}>{fmt(r.sales)}</Text>
+            <Text style={styles.cellRight}>{fmt(r.salesWithTax)}</Text>
           </View>
         ))}
 
         <View style={styles.total}>
           <Text style={styles.cellLeft}>Total</Text>
           <Text style={styles.cellRightSmall}></Text>
-          <Text style={styles.cellRight}>{fmt(props.totalGross)}</Text>
-          <Text style={styles.cellRight}>{fmt(props.totalPaid)}</Text>
-          <Text style={styles.cellRight}>{fmt(props.totalBalance)}</Text>
+          <Text style={styles.cellRight}>{fmt(props.totalSales)}</Text>
+          <Text style={styles.cellRight}>{fmt(props.totalSalesWithTax)}</Text>
         </View>
       </Page>
     </Document>,
