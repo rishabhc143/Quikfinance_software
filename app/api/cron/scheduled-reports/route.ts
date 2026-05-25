@@ -37,6 +37,8 @@ import { renderReceivablesSummaryPdf } from "@/lib/reports/pdf/receivables-summa
 import { buildReceivablesSummary } from "@/lib/reports/receivables-summary";
 import { renderPaymentsReceivedPdf } from "@/lib/reports/pdf/payments-received";
 import { buildPaymentsReceived } from "@/lib/reports/payments-received";
+import { renderSalesByCustomerPdf } from "@/lib/reports/pdf/sales-by-customer";
+import { buildSalesByCustomer } from "@/lib/reports/sales-by-customer";
 import { sendReportEmail } from "@/lib/reports/email";
 import { logReportActivity } from "@/lib/reports/activity";
 
@@ -645,6 +647,50 @@ async function buildReportForKey(
     });
     return {
       attachment: { filename: `payments-received.pdf`, content: buf },
+    };
+  }
+
+  if (reportKey === "sales-by-customer") {
+    // RPT-SBC: Scheduled email export.
+    const invoices = await db.invoice.findMany({
+      where: {
+        organizationId: org.id,
+        deletedAt: null,
+        issueDate: { gte: start, lte: end },
+      },
+      select: {
+        id: true,
+        contactId: true,
+        total: true,
+        amountPaid: true,
+        status: true,
+        contact: { select: { id: true, displayName: true } },
+      },
+    });
+
+    const summary = buildSalesByCustomer(
+      invoices.map((i) => ({
+        id: i.id,
+        contactId: i.contactId,
+        total: Number(i.total),
+        amountPaid: Number(i.amountPaid),
+        status: i.status,
+        contact: { id: i.contact.id, name: i.contact.displayName },
+      }))
+    );
+
+    const rangeLabel = `${format(start, "dd/MM/yyyy")} — ${format(end, "dd/MM/yyyy")}`;
+    const buf = await renderSalesByCustomerPdf({
+      orgName: org.name,
+      rangeLabel,
+      currency: org.currency,
+      rows: summary.rows,
+      totalGross: summary.totalGross,
+      totalPaid: summary.totalPaid,
+      totalBalance: summary.totalBalance,
+    });
+    return {
+      attachment: { filename: `sales-by-customer.pdf`, content: buf },
     };
   }
 
