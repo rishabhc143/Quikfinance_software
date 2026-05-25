@@ -33,6 +33,8 @@ import {
 } from "@/lib/reports/ar-aging-details";
 import { renderTrialBalancePdf } from "@/lib/reports/pdf/trial-balance";
 import { buildTrialBalance } from "@/lib/reports/trial-balance";
+import { renderReceivablesSummaryPdf } from "@/lib/reports/pdf/receivables-summary";
+import { buildReceivablesSummary } from "@/lib/reports/receivables-summary";
 import { sendReportEmail } from "@/lib/reports/email";
 import { logReportActivity } from "@/lib/reports/activity";
 
@@ -548,6 +550,55 @@ async function buildReportForKey(
     });
     return {
       attachment: { filename: `trial-balance.pdf`, content: buf },
+    };
+  }
+
+  if (reportKey === "receivables-summary") {
+    // RPT-RECV: Scheduled email export. Lists every open invoice with
+    // a positive balance due as of today.
+    const asOf = new Date();
+    const invoices = await db.invoice.findMany({
+      where: {
+        organizationId: org.id,
+        deletedAt: null,
+        status: { in: ["SENT", "PARTIALLY_PAID", "OVERDUE"] },
+        issueDate: { lte: asOf },
+      },
+      select: {
+        id: true,
+        number: true,
+        issueDate: true,
+        dueDate: true,
+        total: true,
+        amountPaid: true,
+        status: true,
+        contact: { select: { id: true, displayName: true } },
+      },
+    });
+
+    const summary = buildReceivablesSummary(
+      invoices.map((i) => ({
+        id: i.id,
+        number: i.number,
+        issueDate: i.issueDate,
+        dueDate: i.dueDate,
+        total: Number(i.total),
+        amountPaid: Number(i.amountPaid),
+        status: i.status,
+        contact: { id: i.contact.id, name: i.contact.displayName },
+      })),
+      asOf
+    );
+
+    const buf = await renderReceivablesSummaryPdf({
+      orgName: org.name,
+      asOfDisplay: format(asOf, "dd/MM/yyyy"),
+      currency: org.currency,
+      rows: summary.rows,
+      totalOutstanding: summary.totalOutstanding,
+    });
+    return {
+      attachment: { filename: `receivables-summary.pdf`, content: buf },
     };
   }
 
