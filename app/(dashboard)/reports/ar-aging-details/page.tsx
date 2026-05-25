@@ -25,6 +25,12 @@ import { AgingIntervalsSelect } from "@/components/reports/aging-intervals-selec
 import { GroupBySelect } from "@/components/reports/group-by-select";
 import { EntitiesPopover } from "@/components/reports/entities-popover";
 import { MoreFiltersPopover } from "@/components/reports/more-filters-popover";
+import { AsOfDatePresetDropdown } from "@/components/reports/as-of-date-preset-dropdown";
+import {
+  parseAsOfPreset,
+  resolveAsOfPreset,
+  type AsOfPresetKey,
+} from "@/lib/reports/as-of-date-presets";
 
 /**
  * DOC-AR-DETAILS: column descriptors for the shared Customize Report
@@ -75,7 +81,14 @@ export default async function ArAgingDetailsPage({
   const { organization, user } = await requireOrganization();
   const cur = organization.currency;
 
-  const asOf = parseDateOrToday(searchParams?.asOf);
+  // Parse As of Date preset (Item #2.8). Default = today.
+  const asOfPreset: AsOfPresetKey =
+    parseAsOfPreset(searchParams?.asOfPreset) ??
+    (searchParams?.asOf ? "custom" : "today");
+  const asOf =
+    asOfPreset === "custom"
+      ? parseDateOrToday(searchParams?.asOf)
+      : resolveAsOfPreset(asOfPreset, organization.fiscalYearStart);
   const agingBy: AgingBy =
     searchParams?.agingBy === "issueDate" ? "issueDate" : "dueDate";
   const intervalCount = clampInt(searchParams?.intervalCount, 4, 1, 12);
@@ -294,15 +307,11 @@ export default async function ArAgingDetailsPage({
         <input type="hidden" name="intervalCount" value={intervalCount} />
         <input type="hidden" name="intervalSize" value={intervalSize} />
 
-        <label className="flex items-center gap-2 text-xs">
-          <span className="text-muted-foreground">As of</span>
-          <input
-            type="date"
-            name="asOf"
-            defaultValue={isoDate(asOf)}
-            className="h-8 px-2 rounded-md border bg-background text-xs"
-          />
-        </label>
+        <AsOfDatePresetDropdown
+          defaultPreset={asOfPreset}
+          defaultAsOf={asOf}
+          fiscalYearStartMonth={organization.fiscalYearStart}
+        />
 
         <label className="flex items-center gap-2 text-xs">
           <span className="text-muted-foreground">Aging By</span>

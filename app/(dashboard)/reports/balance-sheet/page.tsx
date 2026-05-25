@@ -5,8 +5,13 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ReportToolbar } from "@/components/reports/report-toolbar";
 import { ReportFilterStrip } from "@/components/reports/report-filter-strip";
-import { BalanceSheetAsOfPill } from "@/components/reports/balance-sheet-as-of-pill";
+import { AsOfDatePresetDropdown } from "@/components/reports/as-of-date-preset-dropdown";
 import { ReportBasisDropdown } from "@/components/reports/report-basis-dropdown";
+import {
+  parseAsOfPreset,
+  resolveAsOfPreset,
+  type AsOfPresetKey,
+} from "@/lib/reports/as-of-date-presets";
 import {
   parseReportBasis,
   REPORT_BASIS_LABEL,
@@ -75,7 +80,18 @@ export default async function BalanceSheetPage({
 }) {
   const { organization, user } = await requireOrganization();
 
-  const asOf = parseAsOfDate(searchParams.as_of) ?? endOfToday();
+  // Parse As of Date preset (Item #2.8). Accepts both `asOf` (new
+  // canonical name written by AsOfDatePresetDropdown) and `as_of`
+  // (legacy bookmarks). Preset defaults to "today" so a fresh visit
+  // matches the previous behavior of `endOfToday()`.
+  const asOfRaw = searchParams.asOf ?? searchParams.as_of;
+  const asOfPreset: AsOfPresetKey =
+    parseAsOfPreset(searchParams.asOfPreset) ??
+    (asOfRaw ? "custom" : "today");
+  const asOf =
+    asOfPreset === "custom"
+      ? (parseAsOfDate(asOfRaw) ?? endOfToday())
+      : resolveAsOfPreset(asOfPreset, organization.fiscalYearStart);
   const asOfText = format(asOf, "dd/MM/yyyy");
   const basis = parseReportBasis(searchParams);
   const compareMode = parseCompareMode(searchParams);
@@ -251,7 +267,12 @@ export default async function BalanceSheetPage({
     >
       {/* Filter strip — pills */}
       <ReportFilterStrip>
-        <BalanceSheetAsOfPill defaultValue={format(asOf, "yyyy-MM-dd")} />
+        <AsOfDatePresetDropdown
+          defaultPreset={asOfPreset}
+          defaultAsOf={asOf}
+          fiscalYearStartMonth={organization.fiscalYearStart}
+        />
+        <input type="hidden" name="basis" value={basis} />
         <ReportBasisDropdown defaultBasis={basis} />
       </ReportFilterStrip>
 
