@@ -45,7 +45,7 @@ export const metadata = { title: "Balance Sheet" };
  *
  *   Filter strip below:
  *     "As of: <date>" date input · "Report Basis: Accrual" (locked)
- *     · "+ More Filters" (stub) · "Run Report" (form submit).
+ *     · "Run Report" (form submit).
  *
  *   Centered card header: org / "Balance Sheet" / Basis / As of date.
  *
