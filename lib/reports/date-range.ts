@@ -38,17 +38,41 @@ export const PRESET_LABEL: Record<ReportPreset, string> = {
   today: "Today",
   yesterday: "Yesterday",
   "this-week": "This Week",
-  "last-week": "Last Week",
+  "last-week": "Previous Week",
   "this-month": "This Month",
-  "last-month": "Last Month",
+  "last-month": "Previous Month",
   "this-quarter": "This Quarter",
-  "last-quarter": "Last Quarter",
+  "last-quarter": "Previous Quarter",
   "this-year": "This Year",
-  "last-year": "Last Year",
+  "last-year": "Previous Year",
   "this-fiscal-year": "This Fiscal Year",
-  "last-fiscal-year": "Last Fiscal Year",
+  "last-fiscal-year": "Previous Fiscal Year",
   custom: "Custom",
 };
+
+/**
+ * Display order for the DateRangePicker dropdown, mirroring Zoho's
+ * "This X first, then Yesterday + Previous X, then Custom" grouping.
+ * The two `null` entries are visual separators (rendered as
+ * `DropdownMenuSeparator`).
+ */
+export const REPORT_PRESETS_ORDERED: readonly (ReportPreset | null)[] = [
+  "today",
+  "this-week",
+  "this-month",
+  "this-quarter",
+  "this-year",
+  "this-fiscal-year",
+  null,
+  "yesterday",
+  "last-week",
+  "last-month",
+  "last-quarter",
+  "last-year",
+  "last-fiscal-year",
+  null,
+  "custom",
+] as const;
 
 export type DateRange = {
   start: Date;

@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import {
-  REPORT_PRESETS,
+  REPORT_PRESETS_ORDERED,
   PRESET_LABEL,
   resolvePreset,
   formatRangeLabel,
@@ -104,41 +104,47 @@ export function DateRangePicker({
     <div className="flex items-center gap-2">
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
+          {/* Trigger pill matches the AsOfDatePresetDropdown's two-part
+              shape: [📅 Date Range] : [<preset> ▾]. Resolved range
+              displayed below for sanity-check. */}
           <Button
             variant="outline"
-            className="h-auto py-1.5 px-3 flex flex-col items-start gap-0.5"
+            className="h-auto p-0 flex flex-col items-stretch gap-0 overflow-hidden"
           >
-            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <Calendar className="h-3 w-3" />
-              {PRESET_LABEL[activePreset]}
-              <ChevronDown className="h-3 w-3 ml-0.5" />
+            <div className="flex items-stretch text-sm">
+              <div className="flex items-center gap-1.5 px-3 h-9 text-muted-foreground">
+                <Calendar className="h-3.5 w-3.5" />
+                <span>Date Range</span>
+              </div>
+              <span className="flex items-center px-1 text-muted-foreground border-l border-input">
+                :
+              </span>
+              <div className="inline-flex items-center gap-1.5 px-3 h-9 font-medium">
+                <span>{PRESET_LABEL[activePreset]}</span>
+                <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+              </div>
             </div>
-            <div className="text-xs font-medium tabular-nums">
+            <div className="px-3 pb-1.5 text-[11px] text-muted-foreground tabular-nums text-left border-t border-input bg-muted/20">
               {formatRangeLabel(activeRange)}
             </div>
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="w-56">
-          {REPORT_PRESETS.filter((p) => p !== "custom").map((p) => (
-            <DropdownMenuItem
-              key={p}
-              onClick={() => pickPreset(p)}
-              className={cn(
-                activePreset === p && "bg-primary/10 text-primary font-medium"
-              )}
-            >
-              {PRESET_LABEL[p]}
-            </DropdownMenuItem>
-          ))}
-          <DropdownMenuSeparator />
-          <DropdownMenuItem
-            onClick={() => pickPreset("custom")}
-            className={cn(
-              activePreset === "custom" && "bg-primary/10 text-primary font-medium"
-            )}
-          >
-            {PRESET_LABEL.custom}…
-          </DropdownMenuItem>
+          {REPORT_PRESETS_ORDERED.map((p, idx) =>
+            p === null ? (
+              <DropdownMenuSeparator key={`sep-${idx}`} />
+            ) : (
+              <DropdownMenuItem
+                key={p}
+                onClick={() => pickPreset(p)}
+                className={cn(
+                  activePreset === p && "bg-primary/10 text-primary font-medium"
+                )}
+              >
+                {p === "custom" ? `${PRESET_LABEL[p]}…` : PRESET_LABEL[p]}
+              </DropdownMenuItem>
+            )
+          )}
         </DropdownMenuContent>
       </DropdownMenu>
 
