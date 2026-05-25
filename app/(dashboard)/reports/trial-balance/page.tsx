@@ -8,8 +8,14 @@ import { formatMoney } from "@/lib/money";
 import { ReportShell } from "@/components/reports/report-shell";
 import { ReportFilterStrip } from "@/components/reports/report-filter-strip";
 import { ReportBasisDropdown } from "@/components/reports/report-basis-dropdown";
+import { AsOfDatePresetDropdown } from "@/components/reports/as-of-date-preset-dropdown";
 import { ReportToolbar } from "@/components/reports/report-toolbar";
 import { parseReportBasis, REPORT_BASIS_LABEL } from "@/lib/reports/report-basis";
+import {
+  parseAsOfPreset,
+  resolveAsOfPreset,
+  type AsOfPresetKey,
+} from "@/lib/reports/as-of-date-presets";
 import {
   aggregateLedgerLines,
   type AccountBucket,
@@ -72,8 +78,21 @@ export default async function TrialBalancePage({
   const { organization, user } = await requireOrganization();
   const cur = organization.currency;
 
-  // Parse "As of Date" — defaults to today. We accept yyyy-MM-dd.
-  const asOf = parseAsOf(searchParams?.asOf);
+  // Parse the "As of Date" preset + resolved date.
+  //   - Preset defaults to "today" (matches Zoho's default).
+  //   - For non-custom presets, the date is computed from the preset
+  //     (e.g., this-year → end of current fiscal year). Any inbound
+  //     `?asOf=YYYY-MM-DD` is ignored to keep the preset authoritative.
+  //   - For "custom", the explicit `?asOf=YYYY-MM-DD` URL param drives
+  //     the date. Legacy bookmarks with only `?asOf=...` (no preset)
+  //     fall through to "custom" semantics via the same path.
+  const asOfPreset: AsOfPresetKey =
+    parseAsOfPreset(searchParams?.asOfPreset) ??
+    (searchParams?.asOf ? "custom" : "today");
+  const asOf =
+    asOfPreset === "custom"
+      ? parseAsOf(searchParams?.asOf)
+      : resolveAsOfPreset(asOfPreset, organization.fiscalYearStart);
   const basis = parseReportBasis(searchParams ?? {});
 
   // Column visibility from Customize drawer
@@ -169,19 +188,16 @@ export default async function TrialBalancePage({
       }
       range={
         <ReportFilterStrip>
-          {/* DOC-TB: Bare server-rendered date input. Lives inside
-              the ReportFilterStrip <form>, so clicking the strip's
-              "Run Report" button submits this `asOf` value to the
-              same URL — the report re-renders with the new date. */}
-          <label className="inline-flex items-center gap-2 px-2 py-1 rounded-full border bg-background text-xs">
-            <span className="text-muted-foreground">As of Date :</span>
-            <input
-              type="date"
-              name="asOf"
-              defaultValue={format(asOf, "yyyy-MM-dd")}
-              className="h-6 px-1 rounded border bg-background text-xs"
-            />
-          </label>
+          {/* DOC-TB: Zoho-style "As of Date" preset dropdown (Item
+              #2.7). Renders the [As of Date :] [<preset>] pill PLUS
+              hidden inputs (asOf + asOfPreset) so Run Report submits
+              both. Inline date picker appears when "Custom" is
+              selected. */}
+          <AsOfDatePresetDropdown
+            defaultPreset={asOfPreset}
+            defaultAsOf={asOf}
+            fiscalYearStartMonth={organization.fiscalYearStart}
+          />
           {/* Basis is a client component that pushes URL on change. We
               also include a hidden input so a Run Report submit
               preserves the current basis (the dropdown writes URL
