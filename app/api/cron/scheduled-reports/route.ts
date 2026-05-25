@@ -39,6 +39,8 @@ import { renderPaymentsReceivedPdf } from "@/lib/reports/pdf/payments-received";
 import { buildPaymentsReceived } from "@/lib/reports/payments-received";
 import { renderSalesByCustomerPdf } from "@/lib/reports/pdf/sales-by-customer";
 import { buildSalesByCustomer } from "@/lib/reports/sales-by-customer";
+import { renderSalesByItemPdf } from "@/lib/reports/pdf/sales-by-item";
+import { buildSalesByItem } from "@/lib/reports/sales-by-item";
 import { sendReportEmail } from "@/lib/reports/email";
 import { logReportActivity } from "@/lib/reports/activity";
 
@@ -690,6 +692,56 @@ async function buildReportForKey(
     });
     return {
       attachment: { filename: `sales-by-customer.pdf`, content: buf },
+    };
+  }
+
+  if (reportKey === "sales-by-item") {
+    // RPT-SBI: Scheduled email export.
+    const lines = await db.invoiceLineItem.findMany({
+      where: {
+        invoice: {
+          organizationId: org.id,
+          deletedAt: null,
+          issueDate: { gte: start, lte: end },
+        },
+      },
+      select: {
+        itemId: true,
+        description: true,
+        quantity: true,
+        amount: true,
+        item: { select: { id: true, name: true } },
+        invoice: { select: { status: true } },
+      },
+    });
+
+    const summary = buildSalesByItem(
+      lines.map((l) => ({
+        itemId: l.itemId,
+        description: l.description,
+        quantity: Number(l.quantity),
+        amount: Number(l.amount),
+        item: l.item ? { id: l.item.id, name: l.item.name } : null,
+        invoiceStatus: l.invoice.status,
+      }))
+    );
+
+    const rangeLabel = `${format(start, "dd/MM/yyyy")} — ${format(end, "dd/MM/yyyy")}`;
+    const avgPriceTotal =
+      summary.totalQuantity > 0
+        ? Math.round((summary.totalAmount / summary.totalQuantity) * 100) / 100
+        : 0;
+    const buf = await renderSalesByItemPdf({
+      orgName: org.name,
+      rangeLabel,
+      currency: org.currency,
+      rows: summary.rows,
+      totalQuantity: summary.totalQuantity,
+      totalAmount: summary.totalAmount,
+      averagePrice: avgPriceTotal,
+    });
+    return {
+      attachment: { filename: `sales-by-item.pdf`, content: buf },
     };
   }
 
