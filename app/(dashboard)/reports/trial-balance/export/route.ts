@@ -106,7 +106,11 @@ export async function GET(req: Request) {
   }
 
   if (fmt === "xlsx") {
-    const buf = await buildXlsx(tb, organization.name, asOfDisplay, basis, cols);
+    // XLSX is fixed at Zoho's 3-column layout (Account / Net Debit /
+    // Net Credit) regardless of the page's column-toggle settings —
+    // `cols` is intentionally not forwarded. The on-screen table +
+    // PDF still respect `cols`.
+    const buf = await buildXlsx(tb, organization.name, asOfDisplay, basis);
 
     await logReportActivity({
       organizationId: organization.id,
@@ -184,134 +188,130 @@ function parseAsOf(s: string | null): Date {
   return isValid(d) ? d : new Date();
 }
 
+/**
+ * Build the Trial Balance XLSX in Zoho's exact format.
+ *
+ * Layout (3 cols × ~10 rows, fixed shape — page column-toggles are
+ * intentionally ignored here to match the Zoho-generated sample at
+ * `C:\Users\user\Downloads\Trial Balance.xlsx`):
+ *
+ *   Row 1   merged A1:C1, multi-line title block, fill FFEEEEEE
+ *   Row 2   "Account " / "Net Debit " / "Net Credit ", fill FFF5F5F5
+ *   Row 3   blank spacer
+ *   Row 4+  per-group label rows; empty groups merge B:C; populated
+ *           groups have indented account rows underneath (no per-group
+ *           subtotal rows — Zoho doesn't include them in XLSX)
+ *   Last-1  "Total for Trial Balance" row, bold, fill FFF5F5F5
+ *   Last    bottom spacer with A:C merged
+ *
+ * Column widths fixed at 39.0625 chars each.
+ */
 async function buildXlsx(
   tb: TrialBalance,
   orgName: string,
   asOfDisplay: string,
-  basis: "accrual" | "cash",
-  cols: {
-    accountCode: boolean;
-    account: boolean;
-    netDebit: boolean;
-    netCredit: boolean;
-  }
+  basis: "accrual" | "cash"
 ): Promise<Buffer> {
   const wb = new ExcelJS.Workbook();
   const ws = wb.addWorksheet("Trial Balance");
 
-  // Title block (rows 1-4)
-  ws.mergeCells("A1:D1");
-  ws.getCell("A1").value = orgName;
-  ws.getCell("A1").alignment = { horizontal: "center" };
-  ws.getCell("A1").font = { size: 11, color: { argb: "FF555555" } };
+  // Zoho-parity 3-column layout with equal ~39 char widths.
+  ws.getColumn(1).width = 39.0625;
+  ws.getColumn(2).width = 39.0625;
+  ws.getColumn(3).width = 39.0625;
 
-  ws.mergeCells("A2:D2");
-  ws.getCell("A2").value = "Trial Balance";
-  ws.getCell("A2").alignment = { horizontal: "center" };
-  ws.getCell("A2").font = { size: 14, bold: true };
+  const GRAY_TITLE = "FFEEEEEE";
+  const GRAY_HEADER = "FFF5F5F5";
 
-  ws.mergeCells("A3:D3");
-  ws.getCell("A3").value = `Basis: ${REPORT_BASIS_LABEL[basis]}`;
-  ws.getCell("A3").alignment = { horizontal: "center" };
+  // ── Row 1 — multi-line title block, merged A1:C1, gray fill ───────
+  // Single string with embedded \n + indenting whitespace exactly
+  // matches Zoho's stacked "{orgName} / Trial Balance / Basis: X /
+  // As of dd/MM/yyyy" layout.
+  ws.mergeCells("A1:C1");
+  const titleCell = ws.getCell("A1");
+  titleCell.value =
+    `${orgName}\n            Trial Balance\n            Basis: ${REPORT_BASIS_LABEL[basis]}\n                        As of ${asOfDisplay}`;
+  titleCell.alignment = {
+    horizontal: "center",
+    vertical: "middle",
+    wrapText: true,
+  };
+  titleCell.fill = {
+    type: "pattern",
+    pattern: "solid",
+    fgColor: { argb: GRAY_TITLE },
+  };
+  ws.getRow(1).height = 80;
 
-  ws.mergeCells("A4:D4");
-  ws.getCell("A4").value = `As of ${asOfDisplay}`;
-  ws.getCell("A4").alignment = { horizontal: "center" };
+  // ── Row 2 — header row, light-gray fill ───────────────────────────
+  // Trailing space on each label matches Zoho's actual cell content.
+  const headerLabels = ["Account ", "Net Debit ", "Net Credit "];
+  for (let i = 0; i < 3; i++) {
+    const cell = ws.getCell(2, i + 1);
+    cell.value = headerLabels[i];
+    cell.fill = {
+      type: "pattern",
+      pattern: "solid",
+      fgColor: { argb: GRAY_HEADER },
+    };
+    cell.alignment = {
+      horizontal: i === 0 ? "left" : "right",
+      vertical: "middle",
+    };
+  }
 
-  // Header row at row 6
-  const headerRow = 6;
-  const columnDefs: Array<{ key: string; label: string; width: number }> = [];
-  if (cols.accountCode) columnDefs.push({ key: "code", label: "Code", width: 14 });
-  if (cols.account) columnDefs.push({ key: "account", label: "Account", width: 36 });
-  if (cols.netDebit) columnDefs.push({ key: "net_debit", label: "Net Debit", width: 18 });
-  if (cols.netCredit) columnDefs.push({ key: "net_credit", label: "Net Credit", width: 18 });
+  // ── Row 3 — blank spacer (Zoho leaves a visual gap here) ──────────
 
-  columnDefs.forEach((c, i) => {
-    const cell = ws.getCell(headerRow, i + 1);
-    cell.value = c.label;
-    cell.font = { bold: true };
-    cell.alignment = { vertical: "middle" };
-    ws.getColumn(i + 1).width = c.width;
-  });
-
-  // Data rows
-  let row = headerRow + 1;
+  // ── Rows 4..N — groups + account rows ─────────────────────────────
+  // For empty groups we merge B:C on the label row (Zoho convention).
+  // Populated groups get indented account rows underneath.
+  let row = 4;
   for (const g of tb.groups) {
-    // Group header
-    const groupCell = ws.getCell(row, 1);
-    groupCell.value = g.groupLabel;
-    groupCell.font = { bold: true };
-    ws.mergeCells(row, 1, row, columnDefs.length || 1);
+    ws.getCell(row, 1).value = g.groupLabel;
+    if (g.rows.length === 0) {
+      ws.mergeCells(row, 2, row, 3);
+    }
     row += 1;
 
     for (const r of g.rows) {
-      let col = 1;
-      if (cols.accountCode) {
-        ws.getCell(row, col++).value = r.accountCode ?? "";
-      }
-      if (cols.account) {
-        ws.getCell(row, col++).value = r.accountName;
-      }
-      if (cols.netDebit) {
-        const cell = ws.getCell(row, col++);
-        cell.value = r.netDebit > 0 ? r.netDebit : null;
-        cell.numFmt = "#,##0.00";
-      }
-      if (cols.netCredit) {
-        const cell = ws.getCell(row, col++);
-        cell.value = r.netCredit > 0 ? r.netCredit : null;
-        cell.numFmt = "#,##0.00";
-      }
+      // Leading-space indent on the account name — Zoho ships an
+      // indented string rather than using the indent feature.
+      ws.getCell(row, 1).value = `      ${r.accountName}`;
+      const debitCell = ws.getCell(row, 2);
+      debitCell.value = r.netDebit > 0 ? r.netDebit : null;
+      debitCell.numFmt = "#,##0.00";
+      debitCell.alignment = { horizontal: "right" };
+      const creditCell = ws.getCell(row, 3);
+      creditCell.value = r.netCredit > 0 ? r.netCredit : null;
+      creditCell.numFmt = "#,##0.00";
+      creditCell.alignment = { horizontal: "right" };
       row += 1;
     }
-
-    // Subtotal row
-    let col = 1;
-    if (cols.accountCode) col++;
-    if (cols.account) {
-      const cell = ws.getCell(row, col++);
-      cell.value = `Subtotal — ${g.groupLabel}`;
-      cell.font = { bold: true };
-    } else {
-      col++;
-    }
-    if (cols.netDebit) {
-      const cell = ws.getCell(row, col++);
-      cell.value = g.subtotalDebit;
-      cell.numFmt = "#,##0.00";
-      cell.font = { bold: true };
-    }
-    if (cols.netCredit) {
-      const cell = ws.getCell(row, col++);
-      cell.value = g.subtotalCredit;
-      cell.numFmt = "#,##0.00";
-      cell.font = { bold: true };
-    }
-    row += 1;
   }
 
-  // Grand total
-  let col = 1;
-  if (cols.accountCode) col++;
-  if (cols.account) {
-    const cell = ws.getCell(row, col++);
-    cell.value = "Total for Trial Balance";
+  // ── Total row — bold, light-gray fill ────────────────────────────
+  const totalRow = ws.getRow(row);
+  totalRow.getCell(1).value = "Total for Trial Balance";
+  totalRow.getCell(2).value = tb.totalDebit;
+  totalRow.getCell(3).value = tb.totalCredit;
+  for (let i = 1; i <= 3; i++) {
+    const cell = totalRow.getCell(i);
     cell.font = { bold: true };
-  } else {
-    col++;
+    cell.fill = {
+      type: "pattern",
+      pattern: "solid",
+      fgColor: { argb: GRAY_HEADER },
+    };
+    cell.alignment = {
+      horizontal: i === 1 ? "left" : "right",
+      vertical: "middle",
+    };
+    if (i > 1) cell.numFmt = "#,##0.00";
   }
-  if (cols.netDebit) {
-    const cell = ws.getCell(row, col++);
-    cell.value = tb.totalDebit;
-    cell.numFmt = "#,##0.00";
-    cell.font = { bold: true };
-  }
-  if (cols.netCredit) {
-    const cell = ws.getCell(row, col++);
-    cell.value = tb.totalCredit;
-    cell.numFmt = "#,##0.00";
-    cell.font = { bold: true };
-  }
+  row += 1;
+
+  // ── Bottom spacer row — A merged across (matches Zoho's row 10) ──
+  ws.mergeCells(row, 1, row, 3);
 
   const buf = await wb.xlsx.writeBuffer();
   return Buffer.from(buf);
