@@ -1,5 +1,5 @@
 import * as React from "react";
-import { AlertCircle } from "lucide-react";
+import { AlertCircle, Info } from "lucide-react";
 import { format, parse, isValid } from "date-fns";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
@@ -215,6 +215,51 @@ export default async function TrialBalancePage({
                 journal yet (invoices, bills, payments) — Bank Categorise +
                 Manual Journals do. The gap above is the unposted amount.
               </p>
+            </div>
+          </div>
+        ) : null}
+
+        {/* DOC-TB-EMPTY: Show a contextual info banner when the entire
+            report is empty so users understand why their existing
+            invoices / bills / etc. aren't reflected. Records only
+            reach the ledger at specific lifecycle gates — see the
+            mapping below. */}
+        {tb.totalDebit === 0 && tb.totalCredit === 0 ? (
+          <div className="mx-6 mb-4 rounded-md border border-blue-500/40 bg-blue-50/50 dark:bg-blue-950/20 p-3 text-sm flex items-start gap-2">
+            <Info className="h-4 w-4 text-blue-600 mt-0.5 shrink-0" />
+            <div>
+              <div className="font-medium text-blue-900 dark:text-blue-200">
+                No posted journal entries yet
+              </div>
+              <p className="text-xs text-blue-800/80 dark:text-blue-200/80 mt-1">
+                Records in Quikfinance only post to the ledger at specific
+                points. If your numbers look empty, check:
+              </p>
+              <ul className="text-xs text-blue-800/80 dark:text-blue-200/80 mt-1.5 ml-4 list-disc space-y-0.5">
+                <li>
+                  <span className="font-medium">Invoices</span> must be{" "}
+                  <span className="font-medium">Sent</span> (DRAFT invoices
+                  don&apos;t post)
+                </li>
+                <li>
+                  <span className="font-medium">Bills</span> must be{" "}
+                  <span className="font-medium">Opened</span> (DRAFT bills
+                  don&apos;t post)
+                </li>
+                <li>
+                  <span className="font-medium">Manual Journals</span> must be{" "}
+                  <span className="font-medium">Published</span>
+                </li>
+                <li>
+                  <span className="font-medium">Bank lines</span> need to be{" "}
+                  <span className="font-medium">Categorised</span>
+                </li>
+                <li>
+                  <span className="font-medium">Expenses</span> from bank
+                  Money-Out categorisation don&apos;t post to the ledger yet
+                  (known gap)
+                </li>
+              </ul>
             </div>
           </div>
         ) : null}
