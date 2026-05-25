@@ -141,13 +141,12 @@ reports:
       - Date Range
       - Include "Sales Without Invoices" and "Sales Returns"
       - Include Manual Journals
-    status: in-progress
+    status: shipped
     notes: |
-      ⚠️ Quikfinance Sales by Customer (shipped in PR-D) has DIFFERENT columns:
-      Customer / Invoices / Gross Sales / Amount Paid / Balance Due.
-      Needs refinement to match Zoho's: Name / Invoice Count / Sales /
-      Sales With Tax (drop Amount Paid + Balance Due — those belong on
-      Customer Balance Summary instead).
+      Refined to match Zoho exactly: columns are Name / Invoice Count /
+      Sales (pre-tax = total - taxTotal) / Sales With Tax (= total).
+      Amount Paid + Balance Due moved to the planned Customer Balance
+      Summary report.
 
   - key: sales-by-item
     name: Sales by Item

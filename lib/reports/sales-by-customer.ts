@@ -2,9 +2,18 @@
  * RPT-SBC — Sales by Customer helper.
  *
  * Aggregates invoices in a date range by customer, producing one row
- * per customer with: invoice count, gross sales, total paid, balance.
- * Sorted by gross sales descending so the most-valuable customers
- * surface first.
+ * per customer with: invoice count, Sales (pre-tax), Sales With Tax (total).
+ *
+ * Columns match Zoho Books' Sales by Customer report exactly per
+ * `docs/zoho-reports.yaml`:
+ *   - Name
+ *   - Invoice Count
+ *   - Sales              (= total - taxTotal, the pre-GST taxable value)
+ *   - Sales With Tax     (= total, including all taxes)
+ *
+ * Earlier versions exposed `amountPaid` + `balanceDue` columns here —
+ * those moved to Customer Balance Summary where they semantically
+ * belong. Sales by Customer is purely about top-line revenue.
  *
  * Pure function — caller queries the DB and passes raw invoice rows.
  */
@@ -13,7 +22,7 @@ export interface InvoiceForSalesByCustomer {
   id: string;
   contactId: string;
   total: number;
-  amountPaid: number;
+  taxTotal: number;
   status: string;
   contact: {
     id: string;
@@ -28,16 +37,16 @@ export interface SalesByCustomerRow {
   customerId: string;
   customerName: string;
   invoiceCount: number;
-  grossSales: number;
-  amountPaid: number;
-  balanceDue: number;
+  /** Pre-tax revenue (total - taxTotal). */
+  sales: number;
+  /** Total invoice value including taxes. */
+  salesWithTax: number;
 }
 
 export interface SalesByCustomerSummary {
   rows: SalesByCustomerRow[];
-  totalGross: number;
-  totalPaid: number;
-  totalBalance: number;
+  totalSales: number;
+  totalSalesWithTax: number;
   customerCount: number;
 }
 
@@ -45,7 +54,7 @@ export interface SalesByCustomerSummary {
  * Build the Sales by Customer view.
  *
  * Excludes DRAFT and VOID invoices (those don't represent actual sales).
- * Rows sorted by grossSales descending; ties broken by customerName asc.
+ * Rows sorted by salesWithTax descending; ties broken by customerName asc.
  */
 export function buildSalesByCustomer(
   invoices: InvoiceForSalesByCustomer[],
@@ -56,40 +65,40 @@ export function buildSalesByCustomer(
     // Skip DRAFT and VOID — not real sales.
     if (inv.status === "DRAFT" || inv.status === "VOID") continue;
 
+    const lineSalesWithTax = round(inv.total);
+    const lineSales = round(inv.total - inv.taxTotal);
+
     const existing = byCustomer.get(inv.contactId);
     if (existing) {
       existing.invoiceCount += 1;
-      existing.grossSales = round(existing.grossSales + inv.total);
-      existing.amountPaid = round(existing.amountPaid + inv.amountPaid);
-      existing.balanceDue = round(existing.grossSales - existing.amountPaid);
+      existing.sales = round(existing.sales + lineSales);
+      existing.salesWithTax = round(existing.salesWithTax + lineSalesWithTax);
     } else {
-      const grossSales = round(inv.total);
-      const amountPaid = round(inv.amountPaid);
       byCustomer.set(inv.contactId, {
         customerId: inv.contact.id,
         customerName: inv.contact.name,
         invoiceCount: 1,
-        grossSales,
-        amountPaid,
-        balanceDue: round(grossSales - amountPaid),
+        sales: lineSales,
+        salesWithTax: lineSalesWithTax,
       });
     }
   }
 
   const rows = Array.from(byCustomer.values()).sort((a, b) => {
-    if (b.grossSales !== a.grossSales) return b.grossSales - a.grossSales;
+    if (b.salesWithTax !== a.salesWithTax)
+      return b.salesWithTax - a.salesWithTax;
     return a.customerName.localeCompare(b.customerName);
   });
 
-  const totalGross = round(rows.reduce((s, r) => s + r.grossSales, 0));
-  const totalPaid = round(rows.reduce((s, r) => s + r.amountPaid, 0));
-  const totalBalance = round(rows.reduce((s, r) => s + r.balanceDue, 0));
+  const totalSales = round(rows.reduce((s, r) => s + r.sales, 0));
+  const totalSalesWithTax = round(
+    rows.reduce((s, r) => s + r.salesWithTax, 0),
+  );
 
   return {
     rows,
-    totalGross,
-    totalPaid,
-    totalBalance,
+    totalSales,
+    totalSalesWithTax,
     customerCount: rows.length,
   };
 }

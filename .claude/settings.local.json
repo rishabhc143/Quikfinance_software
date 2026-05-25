@@ -5,7 +5,14 @@
       "Bash(gh pr create --base main --head feat/sales-module --title 'feat\\(sales\\): Sales module — Phases S1–S8' --body ' *)",
       "Bash(git checkout *)",
       "Bash(vercel deploy *)",
-      "Bash(gh pr *)"
+      "Bash(gh pr *)",
+      "Bash(pnpm test *)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)",
+      "Bash(pnpm prisma *)",
+      "Bash(pnpm type-check *)",
+      "Bash(pnpm lint *)"
     ]
   }
 }

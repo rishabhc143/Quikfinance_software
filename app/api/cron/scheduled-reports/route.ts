@@ -662,7 +662,7 @@ async function buildReportForKey(
         id: true,
         contactId: true,
         total: true,
-        amountPaid: true,
+        taxTotal: true,
         status: true,
         contact: { select: { id: true, displayName: true } },
       },
@@ -673,7 +673,7 @@ async function buildReportForKey(
         id: i.id,
         contactId: i.contactId,
         total: Number(i.total),
-        amountPaid: Number(i.amountPaid),
+        taxTotal: Number(i.taxTotal),
         status: i.status,
         contact: { id: i.contact.id, name: i.contact.displayName },
       }))
@@ -685,9 +685,8 @@ async function buildReportForKey(
       rangeLabel,
       currency: org.currency,
       rows: summary.rows,
-      totalGross: summary.totalGross,
-      totalPaid: summary.totalPaid,
-      totalBalance: summary.totalBalance,
+      totalSales: summary.totalSales,
+      totalSalesWithTax: summary.totalSalesWithTax,
     });
     return {
       attachment: { filename: `sales-by-customer.pdf`, content: buf },
