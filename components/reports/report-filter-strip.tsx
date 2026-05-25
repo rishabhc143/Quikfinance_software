@@ -1,6 +1,6 @@
 "use client";
 import * as React from "react";
-import { useRouter, usePathname, useSearchParams } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { ChevronDown, Filter } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -16,9 +16,14 @@ import { cn } from "@/lib/utils";
  * Wrapper component that takes the per-report filter pills as
  * children, then renders the primary "Run Report" button on the right.
  *
- * The previous "+ More Filters" disabled stub was removed in PR #249
- * (Item #2.3) — reports that need additional filtering supply their
- * own functional popover (e.g. AR Aging Details' MoreFiltersPopover).
+ * Item #2.4 (PR #250) made the strip a `<form method="GET">`. The Run
+ * Report button is now a real submit button — clicking it serialises
+ * every `<input name="...">` rendered inside `{children}` and posts to
+ * the current pathname. That makes Trial Balance's date picker (plain
+ * server-rendered `<input>`) actually re-run the report. Client-side
+ * controls like ReportBasisDropdown / DateRangePicker still
+ * `router.push()` on change and remain orthogonal — submitting a form
+ * with no inputs of theirs is a harmless refresh of the same URL.
  *
  *   <ReportFilterStrip>
  *     <ReportFilterPill label="As of">{...}</ReportFilterPill>
@@ -26,19 +31,14 @@ import { cn } from "@/lib/utils";
  *   </ReportFilterStrip>
  */
 export function ReportFilterStrip({ children }: { children: React.ReactNode }) {
-  const router = useRouter();
   const pathname = usePathname();
-  const searchParams = useSearchParams();
-
-  function reRunReport() {
-    // "Run Report" just re-applies the current URL state by
-    // pushing the same pathname + params. Useful when the user
-    // changed something in a child pill and wants to refresh.
-    router.push(`${pathname}?${searchParams?.toString() ?? ""}`);
-  }
 
   return (
-    <div className="flex items-center gap-2 flex-wrap py-1">
+    <form
+      method="GET"
+      action={pathname ?? ""}
+      className="flex items-center gap-2 flex-wrap py-1"
+    >
       <div className="flex items-center gap-1.5 text-xs text-muted-foreground mr-1">
         <Filter className="h-3.5 w-3.5" />
         <span className="uppercase tracking-wider">Filters :</span>
@@ -48,25 +48,23 @@ export function ReportFilterStrip({ children }: { children: React.ReactNode }) {
 
       <div className="ml-auto inline-flex">
         <Button
-          type="button"
+          type="submit"
           size="sm"
           className="rounded-r-none border-r border-primary-foreground/20"
-          onClick={reRunReport}
         >
           Run Report
         </Button>
         <Button
-          type="button"
+          type="submit"
           size="sm"
           className="rounded-l-none px-2"
-          onClick={reRunReport}
           aria-label="Run Report options"
           title="Run Report"
         >
           <ChevronDown className="h-3.5 w-3.5" />
         </Button>
       </div>
-    </div>
+    </form>
   );
 }
 

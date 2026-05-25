@@ -1,5 +1,5 @@
 import * as React from "react";
-import { AlertCircle, Info } from "lucide-react";
+import { AlertCircle } from "lucide-react";
 import { format, parse, isValid } from "date-fns";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
@@ -169,8 +169,41 @@ export default async function TrialBalancePage({
       }
       range={
         <ReportFilterStrip>
-          <AsOfDateForm asOf={asOf} basis={basis} />
+          {/* DOC-TB: Bare server-rendered date input. Lives inside
+              the ReportFilterStrip <form>, so clicking the strip's
+              "Run Report" button submits this `asOf` value to the
+              same URL — the report re-renders with the new date. */}
+          <label className="inline-flex items-center gap-2 px-2 py-1 rounded-full border bg-background text-xs">
+            <span className="text-muted-foreground">As of Date :</span>
+            <input
+              type="date"
+              name="asOf"
+              defaultValue={format(asOf, "yyyy-MM-dd")}
+              className="h-6 px-1 rounded border bg-background text-xs"
+            />
+          </label>
+          {/* Basis is a client component that pushes URL on change. We
+              also include a hidden input so a Run Report submit
+              preserves the current basis (the dropdown writes URL
+              directly on change; the hidden input is the fallback for
+              when only the date input changed). */}
+          <input type="hidden" name="basis" value={basis} />
           <ReportBasisDropdown defaultBasis={basis} />
+          {/* Preserve column visibility params through a Run Report
+              submission so hiding a column on Customize Report stays
+              hidden after Run Report. */}
+          {!showAccountCode ? (
+            <input type="hidden" name="showAccountCode" value="0" />
+          ) : null}
+          {!showAccount ? (
+            <input type="hidden" name="showAccount" value="0" />
+          ) : null}
+          {!showNetDebit ? (
+            <input type="hidden" name="showNetDebit" value="0" />
+          ) : null}
+          {!showNetCredit ? (
+            <input type="hidden" name="showNetCredit" value="0" />
+          ) : null}
         </ReportFilterStrip>
       }
       actions={
@@ -219,50 +252,10 @@ export default async function TrialBalancePage({
           </div>
         ) : null}
 
-        {/* DOC-TB-EMPTY: Show a contextual info banner when the entire
-            report is empty so users understand why their existing
-            invoices / bills / etc. aren't reflected. Records only
-            reach the ledger at specific lifecycle gates — see the
-            mapping below. */}
-        {tb.totalDebit === 0 && tb.totalCredit === 0 ? (
-          <div className="mx-6 mb-4 rounded-md border border-blue-500/40 bg-blue-50/50 dark:bg-blue-950/20 p-3 text-sm flex items-start gap-2">
-            <Info className="h-4 w-4 text-blue-600 mt-0.5 shrink-0" />
-            <div>
-              <div className="font-medium text-blue-900 dark:text-blue-200">
-                No posted journal entries yet
-              </div>
-              <p className="text-xs text-blue-800/80 dark:text-blue-200/80 mt-1">
-                Records in Quikfinance only post to the ledger at specific
-                points. If your numbers look empty, check:
-              </p>
-              <ul className="text-xs text-blue-800/80 dark:text-blue-200/80 mt-1.5 ml-4 list-disc space-y-0.5">
-                <li>
-                  <span className="font-medium">Invoices</span> must be{" "}
-                  <span className="font-medium">Sent</span> (DRAFT invoices
-                  don&apos;t post)
-                </li>
-                <li>
-                  <span className="font-medium">Bills</span> must be{" "}
-                  <span className="font-medium">Opened</span> (DRAFT bills
-                  don&apos;t post)
-                </li>
-                <li>
-                  <span className="font-medium">Manual Journals</span> must be{" "}
-                  <span className="font-medium">Published</span>
-                </li>
-                <li>
-                  <span className="font-medium">Bank lines</span> need to be{" "}
-                  <span className="font-medium">Categorised</span>
-                </li>
-                <li>
-                  <span className="font-medium">Expenses</span> from bank
-                  Money-Out categorisation don&apos;t post to the ledger yet
-                  (known gap)
-                </li>
-              </ul>
-            </div>
-          </div>
-        ) : null}
+        {/* Empty-state info banner was added in PR #248 then removed
+            in PR #250 (Item #2.4) at user's request. Empty Trial
+            Balance now renders the 5-group placeholder table with
+            zero totals only. */}
 
         {/* DOC-TB: Always render the table with all 5 group rows
             (Assets / Liabilities / Equities / Income / Expense) even
@@ -367,32 +360,8 @@ function parseAsOf(s: string | undefined): Date {
   return isValid(d) ? d : new Date();
 }
 
-/**
- * AsOfDateForm — a thin server-rendered form pill that posts back to
- * /reports/trial-balance preserving the basis. Sits in the
- * `ReportFilterStrip` slot next to the basis dropdown.
- */
-function AsOfDateForm({ asOf, basis }: { asOf: Date; basis: string }) {
-  return (
-    <form
-      method="GET"
-      action="/reports/trial-balance"
-      className="inline-flex items-center gap-2 px-2 py-1 rounded-full border bg-background text-xs"
-    >
-      <span className="text-muted-foreground">As of Date :</span>
-      <input
-        type="date"
-        name="asOf"
-        defaultValue={format(asOf, "yyyy-MM-dd")}
-        className="h-6 px-1 rounded border bg-background text-xs"
-      />
-      <input type="hidden" name="basis" value={basis} />
-      <button
-        type="submit"
-        className="text-primary hover:underline text-xs"
-      >
-        Apply
-      </button>
-    </form>
-  );
-}
+/* DOC-TB: AsOfDateForm helper removed in PR #250 (Item #2.4). The
+   date input is now inline in the ReportFilterStrip <form> at the
+   top of the page, sharing the strip's "Run Report" submit button.
+   This eliminated the nested-form HTML structure + the redundant
+   "Apply" inner button. */
