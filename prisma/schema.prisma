@@ -225,6 +225,13 @@ model OrganizationPreference {
   themeDefault            String       @default("system")
   densityDefault          String       @default("comfortable")
   salesPreferences        Json?
+  // INVOICE-EMAIL-TEMPLATE (Phase B): org-level default subject + body
+  // for the "Send via Email" flow on invoices. When set, the
+  // SendInvoiceDialog pre-fills with these values; merge tags like
+  // `{{customer.name}}`, `{{document.number}}` get substituted on send.
+  // Null → falls back to the hard-coded default baked into the dialog.
+  invoiceEmailSubject     String?
+  invoiceEmailBody        String?      @db.Text
   organization            Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 }
 

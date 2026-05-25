@@ -59,6 +59,15 @@ export default async function InvoiceDetailPage({
   });
   if (!inv) notFound();
 
+  // Phase B: fetch the org's saved invoice email template so the
+  // "Send via Email" dialog pre-fills with the user's customizations
+  // instead of the hard-coded default. Nulls → dialog uses its
+  // built-in fallback.
+  const orgPref = await db.organizationPreference.findUnique({
+    where: { organizationId: organization.id },
+    select: { invoiceEmailSubject: true, invoiceEmailBody: true },
+  });
+
   const balance = Number(inv.total) - Number(inv.amountPaid);
   const ccy = inv.currency ?? organization.currency;
 
@@ -206,6 +215,8 @@ export default async function InvoiceDetailPage({
                 documentDueDate: format(inv.dueDate, "dd MMM yyyy"),
                 orgName: organization.name,
               }}
+              initialSubject={orgPref?.invoiceEmailSubject ?? undefined}
+              initialBody={orgPref?.invoiceEmailBody ?? undefined}
               action={sendInvoiceAction}
               trigger={
                 <Button variant="outline" size="sm" className="gap-1">
