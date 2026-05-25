@@ -1,0 +1,570 @@
+# Zoho Books reports — machine-readable spec catalog
+#
+# Sourced from Zoho's public help docs (https://www.zoho.com/books/help/reports/).
+# Each entry captures the report's canonical name, category, one-line description,
+# verbatim column list, and customization options as documented by Zoho.
+#
+# Purpose: when building or refining a Quikfinance report, refer to this catalog
+# to ensure column names, filters, and grouping options match Zoho exactly.
+#
+# Status legend:
+#   shipped    — the Quikfinance equivalent is live in prod
+#   in-progress— PR open or merged but not yet polished to match Zoho exactly
+#   planned    — agreed on the roadmap, not yet built
+#   stub       — present in Zoho but spec is incomplete here; needs deeper research
+#
+# Format conventions:
+#   - `key` is the internal slug used in URL routes (/reports/<key>)
+#   - `columns` lists column names verbatim from Zoho's help docs
+#   - `filters` lists customization options Zoho documents (date range, status,
+#     advanced filters, etc.)
+#   - `notes` captures gotchas, deviations, or open questions
+
+reports:
+
+  # ─────────────────────────────────────────────────────────────────
+  # BUSINESS OVERVIEW (5 reports)
+  # https://www.zoho.com/books/help/reports/business-overview.html
+  # ─────────────────────────────────────────────────────────────────
+
+  - key: profit-and-loss
+    name: Profit and Loss
+    category: Business Overview
+    description: Comprehensive summary of all profits and losses your business incurred during a specific period.
+    sections:
+      - Operating Income
+      - Cost of Goods Sold
+      - Operating Expense
+      - Non-Operating Income / Expense
+    filters:
+      - Date Range
+      - Report Basis (Accrual / Cash)
+      - Filter Accounts
+      - Compare
+      - Advanced Filters
+    status: shipped
+
+  - key: cash-flow-statement
+    name: Cash Flow Statement
+    category: Business Overview
+    description: Financial document detailing cash inflows and outflows across operating, investing, and financing activities.
+    sections:
+      - Cash Flow from Operating Activities
+      - Cash Flow from Investing Activities
+      - Cash Flow from Financing Activities
+      - Net Change in Cash
+    filters:
+      - Date Range
+      - Compare (by period / year / reporting tags / projects)
+    status: shipped
+
+  - key: balance-sheet
+    name: Balance Sheet
+    category: Business Overview
+    description: Statement summarizing total amounts in all accounts, categorized into assets, liabilities, and equity.
+    sections:
+      - Assets (Current Assets, Cash, Other Current Assets)
+      - Liabilities & Equities (Current Liabilities, Equities)
+    filters:
+      - Date Range
+      - Report Basis (Accrual / Cash)
+      - Filter Accounts
+      - Compare
+    status: shipped
+
+  - key: business-performance-ratio
+    name: Business Performance Ratio
+    category: Business Overview
+    description: Eight ratio analyses evaluating business performance and financial health.
+    metrics:
+      - Current Ratio
+      - Gross Profit Ratio
+      - Debt Ratio
+      - Net Profit Ratio
+      - Acid Test Ratio
+      - Receivable Turnover Ratio
+      - Debt To Equity Ratio
+      - Operating Cost Ratio
+    filters:
+      - As of Month / Month Range
+      - Date Range
+    status: planned
+
+  - key: movement-of-equity
+    name: Movement of Equity
+    category: Business Overview
+    description: Comparative statement displaying changes in business equity over a period.
+    sections:
+      - Opening Balance
+      - Changes in Equity
+      - Net Changes in Equity
+      - Closing Balance
+    filters:
+      - Date Range
+      - Compare With
+      - Report Basis (Accrual / Cash)
+      - Filter Accounts
+    status: planned
+
+  - key: trial-balance
+    name: Trial Balance
+    category: Business Overview
+    description: Five-group rollup (Assets / Liabilities / Equities / Income / Expense) with net debit OR net credit per account.
+    columns:
+      - Account
+      - Net Debit
+      - Net Credit
+    filters:
+      - As of Date
+      - Report Basis (Accrual / Cash)
+    status: shipped
+    notes: |
+      Not on the Zoho help index but is a standard accounting report.
+      Quikfinance Trial Balance ships with Zoho-parity 5-group layout
+      (Items #2.1–#2.5) + Zoho-parity XLSX export format.
+
+  # ─────────────────────────────────────────────────────────────────
+  # SALES (3 reports)
+  # https://www.zoho.com/books/help/reports/sales.html
+  # ─────────────────────────────────────────────────────────────────
+
+  - key: sales-by-customer
+    name: Sales by Customer
+    category: Sales
+    description: Summary of all invoices created for different customers in your organization.
+    columns:
+      - Name
+      - Invoice Count
+      - Sales
+      - Sales With Tax
+    filters:
+      - Date Range
+      - Include "Sales Without Invoices" and "Sales Returns"
+      - Include Manual Journals
+    status: in-progress
+    notes: |
+      ⚠️ Quikfinance Sales by Customer (shipped in PR-D) has DIFFERENT columns:
+      Customer / Invoices / Gross Sales / Amount Paid / Balance Due.
+      Needs refinement to match Zoho's: Name / Invoice Count / Sales /
+      Sales With Tax (drop Amount Paid + Balance Due — those belong on
+      Customer Balance Summary instead).
+
+  - key: sales-by-item
+    name: Sales by Item
+    category: Sales
+    description: Summary of all items sold in your organization and their average prices.
+    columns:
+      - Item Name
+      - Quantity Sold
+      - Amount
+      - Average Price
+    filters:
+      - Date Range
+      - Account
+      - Reporting Tags
+    status: planned
+
+  - key: sales-by-sales-person
+    name: Sales by Sales Person
+    category: Sales
+    description: Summary of all invoices and credit notes that different users / sales persons created.
+    columns_invoice_section:
+      - Count
+      - Sales
+      - Sales With Tax
+    columns_credit_note_section:
+      - Count
+      - Sales
+      - Sales With Tax
+    columns_total_section:
+      - Sales
+      - Sales With Tax
+    filters:
+      - Period (dropdown selection)
+    status: planned
+
+  # ─────────────────────────────────────────────────────────────────
+  # INVENTORY (6 reports)
+  # https://www.zoho.com/books/help/reports/inventory.html
+  # ─────────────────────────────────────────────────────────────────
+
+  - key: inventory-summary
+    name: Inventory Summary
+    category: Inventory
+    description: Summary of item movement in/out with current available stock quantities.
+    columns:
+      - Item Name
+      - SKU
+      - Reorder Level
+      - Quantity Ordered
+      - Quantity In
+      - Quantity Out
+      - Stock On Hand
+      - Committed Stock
+      - Available For Sale
+    filters:
+      - Status (Active / Inactive / All)
+      - Stock Availability (Greater than zero / Less than or equal to zero)
+      - Item Name selection
+    status: planned
+
+  - key: inventory-valuation-summary
+    name: Inventory Valuation Summary
+    category: Inventory
+    description: Summary of stock value for all items.
+    columns:
+      - Item Name
+      - SKU
+      - Stock on Hand
+      - Inventory Asset Value
+    filters:
+      - Item selection
+      - Drill-down detail capability for amounts
+    status: planned
+
+  - key: fifo-cost-lot-tracking
+    name: FIFO Cost Lot Tracking
+    category: Inventory
+    description: Tracks item movement using First-In-First-Out methodology.
+    columns_product_in:
+      - Date
+      - Transactions
+      - Received From
+      - Item Name
+      - Quantity
+      - Total
+    columns_product_out:
+      - Date
+      - Transactions
+      - Dispersed To
+      - Qty Dispersed
+    filters:
+      - Date Range (week / month / quarter / year / custom)
+      - Item selection
+    status: planned
+
+  - key: abc-classification
+    name: ABC Classification
+    category: Inventory
+    description: Categorizes items into A / B / C classes based on revenue generation.
+    columns:
+      - Item Name
+      - Cumulative Value
+      - Cumulative Share
+      - Current Class
+    filters:
+      - Date Range
+      - Classify Based on (Usage Value / Quantity)
+      - Percentage limits for classes A, B, C
+      - Advanced Filters
+      - Show/Hide Columns
+    status: planned
+
+  - key: inventory-adjustment-summary
+    name: Inventory Adjustment Summary
+    category: Inventory
+    description: Overview of inventory adjustments within a date range, grouped by date / reason / type.
+    columns:
+      - Reference Number
+      - Date
+      - Status
+      - Inventory Adjustment Reason
+      - Adjustment Type
+      - Quantity Increased
+      - Quantity Decreased
+      - Value Increased
+      - Value Decreased
+    filters:
+      - Date Range
+      - Group By (Date / Reason / Adjustment Type)
+      - Advanced Filters
+      - Show/Hide Columns
+    status: planned
+
+  - key: inventory-adjustment-details
+    name: Inventory Adjustment Details
+    category: Inventory
+    description: Complete details of every inventory adjustment recorded.
+    columns:
+      - Reference Number
+      - Date
+      - Status
+      - Inventory Adjustment Reason
+      - Adjustment Type
+      - Quantity Adjusted
+      - Value Adjusted
+    filters:
+      - Date Range
+      - Group By
+      - Advanced Filters
+      - Show/Hide Columns
+    status: planned
+
+  # ─────────────────────────────────────────────────────────────────
+  # RECEIVABLES (7 reports)
+  # https://www.zoho.com/books/help/reports/receivables.html
+  # ─────────────────────────────────────────────────────────────────
+
+  - key: customer-balance-summary
+    name: Customer Balance Summary
+    category: Receivables
+    description: Overview of outstanding balances customers owe you.
+    columns:
+      - Customer Name
+      - Invoiced Amount
+      - Amount Received
+      - Closing Balance
+    filters:
+      - As of Date / Date Range
+      - Group By
+      - Exclude customers with zero closing balance
+      - Advanced Filters (Vendor Name / Branch / GST Treatment)
+      - Show/Hide Columns
+    status: planned
+
+  - key: ar-aging-summary
+    name: AR Aging Summary
+    aka: Aging Summary
+    category: Receivables
+    description: Money customers owe, broken into time intervals based on invoice due/issue date.
+    columns: Customer details with amount breakdowns by intervals (Current / 1-15 days / 16-30 days / 31-45 days / >45 days) and Total outstanding.
+    filters:
+      - As of (time interval)
+      - Aging By (Invoice Due Date / Invoice Date)
+      - Aging Intervals
+      - Group By (Salesperson / Currency)
+      - Show By (Outstanding Invoice Amount / Invoice Count)
+      - Credit Notes inclusion
+      - Show/Hide Columns
+      - Schedule Report
+    status: shipped
+
+  - key: ar-aging-details
+    name: AR Aging Details
+    aka: Aging Details
+    category: Receivables
+    description: Transaction-level breakdown of the Aging Summary per customer.
+    columns:
+      - Date
+      - Transaction#
+      - Status
+      - Customer Name
+      - Age
+      - Amount
+      - Balance Due
+    filters:
+      - As of
+      - Aging By
+      - Aging Intervals
+      - Customer Name
+      - Group By (Customer / Salesperson / Currency)
+      - Credit Notes inclusion
+      - Show/Hide Columns
+      - Export and Print
+      - Schedule Report
+    status: shipped
+
+  - key: invoice-details
+    name: Invoice Details
+    category: Receivables
+    description: Details of all invoices including due dates and pending balances.
+    columns: Not explicitly listed in Zoho docs.
+    filters:
+      - Date Range
+      - Report By (Invoice Due Date / Invoice Date)
+      - Invoice Status
+      - Advanced Filters
+      - Show/Hide Columns
+      - Export and Print
+      - Schedule Report
+    status: stub
+
+  - key: retainer-invoice-details
+    name: Retainer Invoice Details
+    category: Receivables
+    description: Retainer invoices created, associated projects, and unused retainer balance.
+    columns: Not explicitly itemized.
+    filters:
+      - Date Range
+      - Retainer Invoices Status
+      - Export and Print
+      - Schedule Report
+    status: stub
+
+  - key: sales-order-details
+    name: Sales Order Details
+    category: Receivables
+    description: Sales orders created for customers with amounts for a specific period.
+    columns: Not explicitly listed.
+    filters:
+      - Date Range
+      - Status
+      - Export and Print
+    status: stub
+
+  - key: quote-details
+    name: Quote Details
+    category: Receivables
+    description: Quotes created for customers with associated invoices and amounts.
+    columns: Not explicitly itemized.
+    filters:
+      - Date Range
+      - Report By (Quote Date / Expiry Date)
+      - Quote Status
+      - Export and Print
+      - Schedule Report
+    status: stub
+
+  # ─────────────────────────────────────────────────────────────────
+  # PAYABLES
+  # https://www.zoho.com/books/help/reports/payables.html
+  # ─────────────────────────────────────────────────────────────────
+
+  - key: vendor-balance-summary
+    name: Vendor Balance Summary
+    category: Payables
+    description: Overview of amounts owed to vendors / suppliers.
+    columns:
+      - Vendor Name
+      - Billed Amount
+      - Amount Paid
+      - Closing Balance
+    filters:
+      - As of Date / Date Range
+      - Group By
+      - Exclude vendors with zero closing balance
+      - Advanced Filters (Vendor Name / Branch / Reporting Tag)
+      - Show/Hide Columns
+    status: planned
+
+  - key: ap-aging-summary
+    name: AP Aging Summary
+    category: Payables
+    description: Money owed to vendors, broken into time intervals.
+    columns: Mirror of AR Aging Summary but Vendors instead of Customers.
+    filters:
+      - As of
+      - Aging By
+      - Aging Intervals
+      - Group By
+      - Show/Hide Columns
+    status: stub
+    notes: |
+      Quikfinance ships AP Aging Summary as a placeholder page with no
+      date filter; needs full build.
+
+  # Likely also exists in Zoho but not detailed in scraped docs yet:
+  #   - ap-aging-details
+  #   - bill-details
+  #   - payments-made
+  #   - vendor-credit-details
+  #   - purchase-order-details
+
+  # ─────────────────────────────────────────────────────────────────
+  # PAYMENTS RECEIVED (4 reports)
+  # https://www.zoho.com/books/help/reports/payments-received.html
+  # ─────────────────────────────────────────────────────────────────
+
+  - key: payments-received
+    name: Payments Received
+    category: Payments Received
+    description: Payments received from customers during a specific period.
+    columns: Not explicitly listed in Zoho docs.
+    filters:
+      - Date Range
+      - Transaction Type (Invoice Payment / Retainer Payment / All)
+      - Advanced Filters
+      - Show/Hide Columns
+    status: in-progress
+    notes: |
+      Quikfinance ships Payments Received in PR-C with these columns:
+      Date / Payment # / Customer / Payment Mode / Reference / Amount.
+      Likely close to Zoho's actual columns but needs verification.
+
+  - key: time-to-get-paid
+    name: Time to Get Paid
+    category: Payments Received
+    description: Intervals of time within which customers pay you (0-15 / 16-30 / 31-45 / >45 days).
+    columns: Not explicitly detailed.
+    filters: []
+    status: planned
+
+  - key: credit-note-details
+    name: Credit Note Details
+    category: Payments Received
+    description: Details of all credit notes created for customers.
+    columns:
+      - Credit Note Amount
+      - Balance Amount (used vs unused)
+    filters:
+      - Date Range
+      - Credit Note Status
+    status: planned
+
+  - key: refund-history
+    name: Refund History
+    category: Payments Received
+    description: Refunds recorded against credit notes.
+    columns: Not specified.
+    filters: []
+    status: planned
+
+  # ─────────────────────────────────────────────────────────────────
+  # DIRECT TAXES (India)
+  # https://www.zoho.com/in/books/help/reports/direct-taxes.html
+  # ─────────────────────────────────────────────────────────────────
+
+  - key: tds-receivables-summary
+    name: TDS Receivables Summary
+    category: Direct Taxes
+    description: Total TDS deductions on invoices, bills of supply, customer debit notes, and credit notes (verify against Form 26AS).
+    columns:
+      - TDS Section
+      - Total
+      - Total After TDS Deduction
+      - Tax Deducted At Source
+    filters:
+      - Date Range (standard / custom)
+      - Report Basis (Accrual / Cash)
+      - Group By (Customer / TDS Section)
+      - Customize Report Columns
+      - More Filters (customer / branch names)
+    status: planned
+
+  # ─────────────────────────────────────────────────────────────────
+  # ACTIVITY
+  # https://www.zoho.com/books/help/reports/activity.html
+  # ─────────────────────────────────────────────────────────────────
+
+  - key: activity-logs
+    name: Activity Logs
+    category: Activity
+    description: Audit trail of changes / events across the organization.
+    columns: Not yet scraped.
+    filters: []
+    status: stub
+
+  # ─────────────────────────────────────────────────────────────────
+  # ADDITIONAL REPORTS (likely exist in Zoho but spec not yet captured)
+  # ─────────────────────────────────────────────────────────────────
+  # GSTR-1 — already shipped on Quikfinance (not in scraped Zoho docs)
+  # GSTR-3B — planned (Item #4)
+  # Receivables Summary (our internal name) — shipped on Quikfinance;
+  #   in Zoho's docs this content seems split between "Customer Balance
+  #   Summary" and "Invoice Details" — needs reconciliation.
+
+# ─────────────────────────────────────────────────────────────────
+# How to use this catalog
+# ─────────────────────────────────────────────────────────────────
+#
+# When building or refining a Quikfinance report:
+#   1. Look up the entry by `key` in this file
+#   2. Match column names + filter options exactly
+#   3. If status is `stub`, fetch the source URL via WebFetch or open
+#      Zoho's help docs to fill in missing detail before building
+#   4. If you can't match a column 1:1 because schema doesn't expose
+#      it, document the deviation in `notes:` and proceed
+#
+# When this catalog is wrong / incomplete:
+#   - Update the entry, bump status, commit alongside the report PR
+#   - The catalog and the implementation should evolve together
