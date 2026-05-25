@@ -725,6 +725,142 @@ export async function deleteInvoiceAction(id: string) {
   return { ok: true };
 }
 
+/**
+ * INVOICE EMAIL — Manual "Send via Email" action.
+ *
+ * Sends the invoice to the customer's email with:
+ *   - User-supplied subject + body (merge tags substituted server-side
+ *     as a defense-in-depth — the modal also substitutes for the
+ *     live preview)
+ *   - The fully-rendered invoice HTML appended to the body
+ *   - Existing email-queue + Resend pipeline handles delivery + retries
+ *
+ * Updates `sentAt` on first send. Records an audit log entry. Does
+ * NOT transition status (caller is expected to mark SENT separately
+ * if invoice is still DRAFT — though the UI button is gated to
+ * non-DRAFT invoices anyway).
+ */
+export async function sendInvoiceAction(input: {
+  invoiceId: string;
+  subject: string;
+  bodyHtml: string;
+  scheduledFor?: Date | string | null;
+}): Promise<void> {
+  const { user, organization } = await requireOrganization();
+  const inv = await db.invoice.findFirst({
+    where: {
+      id: input.invoiceId,
+      organizationId: organization.id,
+      deletedAt: null,
+    },
+    include: { contact: true, organization: true, lineItems: true },
+  });
+  if (!inv || !inv.contact.email) {
+    throw new Error("Invoice or customer email missing");
+  }
+  if (!input.subject?.trim()) throw new Error("Subject is required");
+  if (!input.bodyHtml?.trim()) throw new Error("Body is required");
+
+  const ctx = {
+    customerName: inv.contact.displayName,
+    customerEmail: inv.contact.email,
+    documentNumber: inv.number,
+    documentTotal: inv.total.toString(),
+    documentDate: format(inv.issueDate, "dd MMM yyyy"),
+    documentDueDate: format(inv.dueDate, "dd MMM yyyy"),
+    orgName: inv.organization.name,
+  };
+  const renderedSubject = applyMergeTags(input.subject, ctx);
+  const renderedBody = applyMergeTags(input.bodyHtml, ctx);
+
+  // Append the rendered invoice HTML so the customer can read the
+  // invoice inline without opening the attachment. Mirrors what
+  // `enqueueAndAttach` does for the auto-send-on-mark-SENT path.
+  const customFields = await loadVisibleCustomFields({
+    organizationId: organization.id,
+    entityType: "INVOICE",
+    entityId: inv.id,
+    surface: "pdf",
+  });
+  const invoiceHtml = renderSalesDocumentHtml({
+    type: "INVOICE",
+    organization: { name: inv.organization.name },
+    document: {
+      number: inv.number,
+      date: format(inv.issueDate, "dd MMM yyyy"),
+      dueDate: format(inv.dueDate, "dd MMM yyyy"),
+      referenceNumber: inv.referenceNumber,
+      status: inv.status,
+    },
+    customer: {
+      displayName: inv.contact.displayName,
+      email: inv.contact.email,
+    },
+    lines: inv.lineItems.map((l) => ({
+      name: l.description,
+      description: undefined,
+      quantity: l.quantity.toString(),
+      rate: l.rate.toString(),
+      amount: l.amount.toString(),
+    })),
+    totals: {
+      lines: inv.lineItems.map((l) => ({
+        amount: l.amount.toString(),
+        taxAmount: "0",
+        amountWithTax: l.amount.toString(),
+      })),
+      subTotal: inv.subtotal.toString(),
+      documentDiscountAmount: inv.discountValue.toString(),
+      documentTaxAmount: inv.taxTotal.toString(),
+      adjustmentAmount: inv.adjustmentValue.toString(),
+      total: inv.total.toString(),
+    },
+    notes: inv.customerNotes,
+    termsAndConditions: inv.termsAndConditions,
+    customFields,
+  });
+  const combinedBody = `${renderedBody}<hr style="margin: 24px 0; border: 0; border-top: 1px solid #ddd;"/>${invoiceHtml}`;
+
+  const scheduledFor =
+    input.scheduledFor instanceof Date
+      ? input.scheduledFor
+      : input.scheduledFor
+        ? new Date(input.scheduledFor)
+        : new Date();
+
+  await enqueueEmail({
+    organizationId: organization.id,
+    toEmail: inv.contact.email,
+    subject: renderedSubject,
+    bodyHtml: combinedBody,
+    documentType: "INVOICE",
+    documentId: inv.id,
+    scheduledFor,
+  });
+
+  // Stamp sentAt on first send so the UI shows "Sent on …" indicator.
+  if (!inv.sentAt) {
+    await db.invoice.update({
+      where: { id: inv.id },
+      data: { sentAt: new Date() },
+    });
+  }
+
+  await writeAuditLog({
+    organizationId: organization.id,
+    userId: user.id,
+    action: "UPDATE",
+    entityType: "Invoice",
+    entityId: input.invoiceId,
+    after: {
+      sentViaEmail: true,
+      subject: renderedSubject,
+      scheduledFor: scheduledFor.toISOString(),
+    },
+  });
+  revalidatePath(`/sales/invoices/${input.invoiceId}`);
+}
+
 async function enqueueAndAttach(orgId: string, invoiceId: string) {
   const inv = await db.invoice.findUnique({
     where: { id: invoiceId },
