@@ -41,6 +41,8 @@ import { renderSalesByCustomerPdf } from "@/lib/reports/pdf/sales-by-customer";
 import { buildSalesByCustomer } from "@/lib/reports/sales-by-customer";
 import { renderSalesByItemPdf } from "@/lib/reports/pdf/sales-by-item";
 import { buildSalesByItem } from "@/lib/reports/sales-by-item";
+import { renderCustomerBalanceSummaryPdf } from "@/lib/reports/pdf/customer-balance-summary";
+import { buildCustomerBalanceSummary } from "@/lib/reports/customer-balance-summary";
 import { sendReportEmail } from "@/lib/reports/email";
 import { logReportActivity } from "@/lib/reports/activity";
 
@@ -742,6 +744,46 @@ async function buildReportForKey(
     });
     return {
       attachment: { filename: `sales-by-item.pdf`, content: buf },
+    };
+  }
+
+  if (reportKey === "customer-balance-summary") {
+    // RPT-CBS: Scheduled email export. "As of today" snapshot.
+    const asOf = new Date();
+    const invoices = await db.invoice.findMany({
+      where: {
+        organizationId: org.id,
+        deletedAt: null,
+        issueDate: { lte: asOf },
+      },
+      select: {
+        contactId: true,
+        total: true,
+        amountPaid: true,
+        status: true,
+        contact: { select: { id: true, displayName: true } },
+      },
+    });
+    const summary = buildCustomerBalanceSummary(
+      invoices.map((i) => ({
+        contactId: i.contactId,
+        total: Number(i.total),
+        amountPaid: Number(i.amountPaid),
+        status: i.status,
+        contact: { id: i.contact.id, name: i.contact.displayName },
+      }))
+    );
+    const buf = await renderCustomerBalanceSummaryPdf({
+      orgName: org.name,
+      asOfDisplay: format(asOf, "dd/MM/yyyy"),
+      currency: org.currency,
+      rows: summary.rows,
+      totalInvoiced: summary.totalInvoiced,
+      totalReceived: summary.totalReceived,
+      totalBalance: summary.totalBalance,
+    });
+    return {
+      attachment: { filename: `customer-balance-summary.pdf`, content: buf },
     };
   }
 
