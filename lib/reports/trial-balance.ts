@@ -182,12 +182,22 @@ export function buildTrialBalance(rows: LedgerRow[]): TrialBalance {
     });
   }
 
-  // Emit groups in canonical order so the UI always renders
-  // Assets → Liabilities → Equities → Income → Expense, even if some
-  // groups happen to be empty.
-  const groups: TrialBalanceGroup[] = GROUP_ORDER
-    .map((k) => byGroup.get(k))
-    .filter((g): g is TrialBalanceGroup => g != null);
+  // Emit ALL 5 groups in canonical order, even when a group has no
+  // activity. Matches Zoho's Trial Balance layout where empty groups
+  // still show as section headers (rather than the page rendering a
+  // "no data" empty state). The 5-group invariant means the page +
+  // PDF + XLSX + CSV all render a stable shape regardless of input.
+  const groups: TrialBalanceGroup[] = GROUP_ORDER.map((k) => {
+    const existing = byGroup.get(k);
+    if (existing) return existing;
+    return {
+      groupKey: k,
+      groupLabel: GROUP_LABEL[k],
+      rows: [],
+      subtotalDebit: 0,
+      subtotalCredit: 0,
+    };
+  });
 
   return {
     groups,

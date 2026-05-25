@@ -37,24 +37,41 @@ function line(
 }
 
 describe("lib/reports/trial-balance", () => {
-  it("empty input returns empty groups and zero totals", () => {
+  it("empty input still emits all 5 group placeholders + zero totals", () => {
     const rows = aggregateLedgerLines([]);
     const tb = buildTrialBalance(rows);
-    expect(tb.groups).toEqual([]);
+    // Zoho parity: 5 group rows always show, even when empty.
+    expect(tb.groups).toHaveLength(5);
+    expect(tb.groups.map((g) => g.groupKey)).toEqual(GROUP_ORDER);
+    expect(tb.groups.every((g) => g.rows.length === 0)).toBe(true);
+    expect(tb.groups.every((g) => g.subtotalDebit === 0)).toBe(true);
+    expect(tb.groups.every((g) => g.subtotalCredit === 0)).toBe(true);
     expect(tb.totalDebit).toBe(0);
     expect(tb.totalCredit).toBe(0);
     expect(tb.imbalance).toBe(0);
   });
 
+  it("group labels match Zoho convention in the empty placeholders", () => {
+    const tb = buildTrialBalance(aggregateLedgerLines([]));
+    expect(tb.groups.map((g) => g.groupLabel)).toEqual([
+      "Assets",
+      "Liabilities",
+      "Equities",
+      "Income",
+      "Expense",
+    ]);
+  });
+
   it("ASSET with debit 1000 lands in Assets group with netDebit=1000", () => {
     const rows = aggregateLedgerLines([line("a1", "ASSET", 1000, 0)]);
     const tb = buildTrialBalance(rows);
-    expect(tb.groups).toHaveLength(1);
-    expect(tb.groups[0].groupKey).toBe("ASSET");
-    expect(tb.groups[0].groupLabel).toBe("Assets");
-    expect(tb.groups[0].rows).toHaveLength(1);
-    expect(tb.groups[0].rows[0].netDebit).toBe(1000);
-    expect(tb.groups[0].rows[0].netCredit).toBe(0);
+    // 5 groups always emitted (Zoho parity); ASSET has the row.
+    expect(tb.groups).toHaveLength(5);
+    const assets = tb.groups.find((g) => g.groupKey === "ASSET")!;
+    expect(assets.groupLabel).toBe("Assets");
+    expect(assets.rows).toHaveLength(1);
+    expect(assets.rows[0].netDebit).toBe(1000);
+    expect(assets.rows[0].netCredit).toBe(0);
     expect(tb.totalDebit).toBe(1000);
     expect(tb.totalCredit).toBe(0);
   });
@@ -62,10 +79,10 @@ describe("lib/reports/trial-balance", () => {
   it("INCOME with credit 5000 lands in Income group with netCredit=5000", () => {
     const rows = aggregateLedgerLines([line("i1", "INCOME", 0, 5000)]);
     const tb = buildTrialBalance(rows);
-    expect(tb.groups).toHaveLength(1);
-    expect(tb.groups[0].groupKey).toBe("INCOME");
-    expect(tb.groups[0].rows[0].netCredit).toBe(5000);
-    expect(tb.groups[0].rows[0].netDebit).toBe(0);
+    expect(tb.groups).toHaveLength(5);
+    const income = tb.groups.find((g) => g.groupKey === "INCOME")!;
+    expect(income.rows[0].netCredit).toBe(5000);
+    expect(income.rows[0].netDebit).toBe(0);
   });
 
   it("OTHER_INCOME rolls up into the Income group (5-group rollup)", () => {
@@ -74,10 +91,10 @@ describe("lib/reports/trial-balance", () => {
       line("oi1", "OTHER_INCOME", 0, 500),
     ]);
     const tb = buildTrialBalance(rows);
-    expect(tb.groups).toHaveLength(1);
-    expect(tb.groups[0].groupKey).toBe("INCOME");
-    expect(tb.groups[0].rows).toHaveLength(2);
-    expect(tb.groups[0].subtotalCredit).toBe(1500);
+    expect(tb.groups).toHaveLength(5);
+    const income = tb.groups.find((g) => g.groupKey === "INCOME")!;
+    expect(income.rows).toHaveLength(2);
+    expect(income.subtotalCredit).toBe(1500);
   });
 
   it("COST_OF_GOODS_SOLD + EXPENSE + OTHER_EXPENSE roll into Expense group", () => {
@@ -87,10 +104,10 @@ describe("lib/reports/trial-balance", () => {
       line("oe1", "OTHER_EXPENSE", 100, 0),
     ]);
     const tb = buildTrialBalance(rows);
-    expect(tb.groups).toHaveLength(1);
-    expect(tb.groups[0].groupKey).toBe("EXPENSE");
-    expect(tb.groups[0].rows).toHaveLength(3);
-    expect(tb.groups[0].subtotalDebit).toBe(600);
+    expect(tb.groups).toHaveLength(5);
+    const expense = tb.groups.find((g) => g.groupKey === "EXPENSE")!;
+    expect(expense.rows).toHaveLength(3);
+    expect(expense.subtotalDebit).toBe(600);
   });
 
   it("balanced ledger (debit == credit) has imbalance = 0", () => {
@@ -154,12 +171,16 @@ describe("lib/reports/trial-balance", () => {
     expect(codes).toEqual(["100", "1000", "1100"]);
   });
 
-  it("accounts where debits exactly equal credits are excluded", () => {
+  it("accounts where debits exactly equal credits are excluded from rows", () => {
     // Account with both debit + credit 500 → signedNet=0 → no Trial
-    // Balance row (this matches accounting convention).
+    // Balance row (this matches accounting convention). But the 5
+    // group placeholders still emit (Zoho parity).
     const rows = aggregateLedgerLines([line("a1", "ASSET", 500, 500)]);
     const tb = buildTrialBalance(rows);
-    expect(tb.groups).toEqual([]);
+    expect(tb.groups).toHaveLength(5);
+    expect(tb.groups.every((g) => g.rows.length === 0)).toBe(true);
+    expect(tb.totalDebit).toBe(0);
+    expect(tb.totalCredit).toBe(0);
   });
 
   it("ASSET account with credit > debit lands in Net Credit column (unusual but valid)", () => {
