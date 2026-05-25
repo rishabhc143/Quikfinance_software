@@ -60,7 +60,17 @@ export type ItemOption = ComboboxOption & {
   unit?: string;
 };
 
-export type TaxOption = ComboboxOption & { rate: number };
+export type TaxOption = ComboboxOption & {
+  rate: number;
+  /**
+   * Optional tax category. When provided, lets consumers filter
+   * the tax list by purpose:
+   *   - "standard" (default) — line-item GST / VAT
+   *   - "TDS" — Tax Deducted at Source (subtracts from invoice total)
+   *   - "TCS" — Tax Collected at Source (adds to invoice total)
+   */
+  type?: string;
+};
 
 export type ColumnConfig = {
   showRate?: boolean; // Delivery Challan can hide rate visually

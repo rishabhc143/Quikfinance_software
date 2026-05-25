@@ -138,6 +138,16 @@ export function InvoiceForm({
   const [discountType, setDiscountType] = React.useState<"percentage" | "amount">(
     initial?.documentDiscount?.type ?? "percentage"
   );
+  // TDS / TCS document-level tax (Zoho-parity). Mutually exclusive
+  // radio: pick TDS to deduct from total OR TCS to add to total.
+  // Persists to Invoice.taxType + Invoice.taxId via the validation
+  // schema's `documentTax` discriminated union.
+  const [docTaxType, setDocTaxType] = React.useState<"TDS" | "TCS" | null>(
+    initial?.documentTax?.type ?? null,
+  );
+  const [docTaxId, setDocTaxId] = React.useState<string | null>(
+    initial?.documentTax?.taxId ?? null,
+  );
   const [adjustmentLabel, setAdjustmentLabel] = React.useState(
     initial?.adjustmentLabel ?? "Adjustment"
   );
@@ -256,6 +266,11 @@ export function InvoiceForm({
       status: send ? "SENT" : "DRAFT",
       currency: defaultCurrency,
       documentDiscount: { value: Number(discountValue || 0), type: discountType },
+      // TDS / TCS payload only when both radio + tax-id selected.
+      documentTax:
+        docTaxType && docTaxId
+          ? { taxId: docTaxId, type: docTaxType }
+          : null,
       adjustmentLabel,
       adjustmentValue: Number(adjustmentValue || 0),
       customerNotes,
@@ -443,6 +458,92 @@ export function InvoiceForm({
                 <option value="amount">{defaultCurrency}</option>
               </select>
             </div>
+          </div>
+          {/* TDS / TCS — Zoho-parity document-level tax row.
+              Radio toggles the category, dropdown filters by it. */}
+          <div className="space-y-2 pt-1">
+            <div className="flex items-center gap-3 text-sm">
+              <label className="flex items-center gap-1.5">
+                <input
+                  type="radio"
+                  name="doc-tax-type"
+                  checked={docTaxType === "TDS"}
+                  onChange={() => {
+                    setDocTaxType("TDS");
+                    setDocTaxId(null);
+                  }}
+                />
+                TDS
+              </label>
+              <label className="flex items-center gap-1.5">
+                <input
+                  type="radio"
+                  name="doc-tax-type"
+                  checked={docTaxType === "TCS"}
+                  onChange={() => {
+                    setDocTaxType("TCS");
+                    setDocTaxId(null);
+                  }}
+                />
+                TCS
+              </label>
+              {docTaxType ? (
+                <button
+                  type="button"
+                  className="ml-auto text-xs text-muted-foreground hover:text-foreground underline"
+                  onClick={() => {
+                    setDocTaxType(null);
+                    setDocTaxId(null);
+                  }}
+                >
+                  Clear
+                </button>
+              ) : null}
+            </div>
+            {docTaxType ? (
+              <div className="flex items-center gap-2">
+                <select
+                  value={docTaxId ?? ""}
+                  onChange={(e) => setDocTaxId(e.target.value || null)}
+                  className="h-9 flex-1 rounded-md border bg-background px-2 text-sm"
+                  aria-label={`Select a ${docTaxType} tax`}
+                >
+                  <option value="">Select a Tax</option>
+                  {taxOptions
+                    .filter((t) => (t.type ?? "standard") === docTaxType)
+                    .map((t) => (
+                      <option key={t.value} value={t.value}>
+                        {t.label}
+                      </option>
+                    ))}
+                </select>
+                <span className="text-sm tabular-nums text-muted-foreground min-w-[6rem] text-right">
+                  {(() => {
+                    const tax = taxOptions.find((t) => t.value === docTaxId);
+                    if (!tax) return "0.00";
+                    const subtotal = lines.reduce(
+                      (s, l) =>
+                        s + Number(l.quantity || 0) * Number(l.rate || 0),
+                      0,
+                    );
+                    const discountAmt =
+                      discountType === "percentage"
+                        ? (subtotal * Number(discountValue || 0)) / 100
+                        : Number(discountValue || 0);
+                    const base = Math.max(0, subtotal - discountAmt);
+                    const amount = (base * tax.rate) / 100;
+                    const sign = docTaxType === "TDS" ? "-" : "+";
+                    return `${sign}${amount.toFixed(2)}`;
+                  })()}
+                </span>
+              </div>
+            ) : null}
+            {docTaxType && taxOptions.filter((t) => (t.type ?? "standard") === docTaxType).length === 0 ? (
+              <p className="text-xs text-amber-700 dark:text-amber-400">
+                No {docTaxType} taxes set up yet. Create one in Settings → Taxes
+                with category set to {docTaxType}.
+              </p>
+            ) : null}
           </div>
           <div className="flex items-center justify-between gap-2">
             <Input

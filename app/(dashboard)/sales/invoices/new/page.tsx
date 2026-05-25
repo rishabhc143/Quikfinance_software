@@ -103,6 +103,7 @@ export default async function NewInvoicePage() {
           value: t.id,
           label: `${t.name} (${Number(t.rate)}%)`,
           rate: Number(t.rate),
+          type: t.type ?? "standard",
         }))}
         salespersonOptions={salespeople.map((s) => ({ value: s.id, label: s.name }))}
         paymentTermsOptions={paymentTerms.map((p) => ({
