@@ -1,21 +1,24 @@
 "use client";
 import * as React from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
-import { ChevronDown, Filter, Plus } from "lucide-react";
+import { ChevronDown, Filter } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 /**
  * REPORTS — aligned filter strip.
  *
- * Layout (from screenshot):
+ * Layout:
  *
  *   [⚙ Filters :]  [As of : Today ▾]  [Report Basis : Accrual ▾]
- *                  [+ More Filters]                    [Run Report ▾]
+ *                                                       [Run Report ▾]
  *
  * Wrapper component that takes the per-report filter pills as
- * children, then renders the "+ More Filters" disabled stub and the
- * primary "Run Report" button on the right.
+ * children, then renders the primary "Run Report" button on the right.
+ *
+ * The previous "+ More Filters" disabled stub was removed in PR #249
+ * (Item #2.3) — reports that need additional filtering supply their
+ * own functional popover (e.g. AR Aging Details' MoreFiltersPopover).
  *
  *   <ReportFilterStrip>
  *     <ReportFilterPill label="As of">{...}</ReportFilterPill>
@@ -42,18 +45,6 @@ export function ReportFilterStrip({ children }: { children: React.ReactNode }) {
       </div>
 
       {children}
-
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        disabled
-        title="More filters — coming soon"
-        className="gap-1.5"
-      >
-        <Plus className="h-3.5 w-3.5" />
-        More Filters
-      </Button>
 
       <div className="ml-auto inline-flex">
         <Button
