@@ -219,13 +219,11 @@ export default async function TrialBalancePage({
           </div>
         ) : null}
 
-        {tb.groups.length === 0 ? (
-          <div className="px-6 pb-8 text-sm text-center text-muted-foreground">
-            No journal entries posted yet. Categorise bank lines or post
-            Manual Journals to see balances here.
-          </div>
-        ) : (
-          <table className="w-full text-sm">
+        {/* DOC-TB: Always render the table with all 5 group rows
+            (Assets / Liabilities / Equities / Income / Expense) even
+            when empty — matches Zoho's layout. The lib emits the 5
+            placeholder groups even on an empty ledger. */}
+        <table className="w-full text-sm">
             <thead className="bg-muted/30 text-[10px] uppercase tracking-wider text-muted-foreground">
               <tr>
                 {showAccountCode ? (
@@ -303,7 +301,6 @@ export default async function TrialBalancePage({
               </tr>
             </tfoot>
           </table>
-        )}
 
         <div className="px-6 pt-4 pb-6 text-[11px] text-muted-foreground">
           **Amount is displayed in your base currency{" "}
