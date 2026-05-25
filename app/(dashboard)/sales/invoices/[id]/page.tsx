@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { format } from "date-fns";
-import { ArrowLeft, Pencil, MoreHorizontal, DollarSign } from "lucide-react";
+import { ArrowLeft, Pencil, MoreHorizontal, DollarSign, Mail } from "lucide-react";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
 import { Button } from "@/components/ui/button";
@@ -23,12 +23,14 @@ import {
   voidInvoiceAction,
   recordPaymentAction,
   sendInvoiceReminderAction,
+  sendInvoiceAction,
   applyCreditsToInvoiceAction,
 } from "../actions";
 import { InvoiceActionButton } from "./action-button";
 import { RecordPaymentDialog } from "../record-payment-dialog";
 import { ApplyCreditsDialog } from "./apply-credits-dialog";
 import { SendReminderDialog } from "./send-reminder-dialog";
+import { SendInvoiceDialog } from "./send-invoice-dialog";
 
 const STATUS_VARIANT: Record<string, "secondary" | "outline" | "destructive"> = {
   DRAFT: "outline",
@@ -187,6 +189,27 @@ export default async function InvoiceDetailPage({
               trigger={
                 <Button size="sm" className="gap-1" data-testid="record-payment-trigger">
                   <DollarSign className="h-4 w-4" /> Record Payment
+                </Button>
+              }
+            />
+          ) : null}
+          {inv.contact.email && inv.status !== "DRAFT" ? (
+            <SendInvoiceDialog
+              invoiceId={inv.id}
+              toEmail={inv.contact.email}
+              ctx={{
+                customerName: inv.contact.displayName,
+                customerEmail: inv.contact.email,
+                documentNumber: inv.number,
+                documentTotal: Number(inv.total).toFixed(2),
+                documentDate: format(inv.issueDate, "dd MMM yyyy"),
+                documentDueDate: format(inv.dueDate, "dd MMM yyyy"),
+                orgName: organization.name,
+              }}
+              action={sendInvoiceAction}
+              trigger={
+                <Button variant="outline" size="sm" className="gap-1">
+                  <Mail className="h-4 w-4" /> Send via Email
                 </Button>
               }
             />
