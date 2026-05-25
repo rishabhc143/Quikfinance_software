@@ -31,6 +31,8 @@ import {
   groupArAgingDetails,
   bucketLabels,
 } from "@/lib/reports/ar-aging-details";
+import { renderTrialBalancePdf } from "@/lib/reports/pdf/trial-balance";
+import { buildTrialBalance } from "@/lib/reports/trial-balance";
 import { sendReportEmail } from "@/lib/reports/email";
 import { logReportActivity } from "@/lib/reports/activity";
 
@@ -492,6 +494,60 @@ async function buildReportForKey(
     });
     return {
       attachment: { filename: `ar-aging-details.pdf`, content: buf },
+    };
+  }
+
+  if (reportKey === "trial-balance") {
+    // RPT-TB: Scheduled email export. Uses today as the as-of date,
+    // accrual basis, all 8 account-type buckets rolled into 5 display
+    // groups (Assets / Liabilities / Equities / Income / Expense).
+    const asOf = new Date();
+    const lines = await db.journalEntryLine.findMany({
+      where: {
+        journalEntry: {
+          organizationId: org.id,
+          date: { lte: asOf },
+        },
+      },
+      select: {
+        debit: true,
+        credit: true,
+        account: {
+          select: { id: true, name: true, code: true, type: true },
+        },
+      },
+    });
+
+    const aggregated = aggregateLedgerLines(
+      lines.map((l) => ({
+        account: {
+          id: l.account.id,
+          name: l.account.name,
+          code: l.account.code,
+          type: l.account.type as AccountBucket,
+        },
+        debit: Number(l.debit),
+        credit: Number(l.credit),
+      }))
+    );
+
+    const tb = buildTrialBalance(aggregated);
+
+    const buf = await renderTrialBalancePdf({
+      orgName: org.name,
+      asOfDisplay: format(asOf, "dd/MM/yyyy"),
+      basisLabel: "Accrual",
+      currency: org.currency,
+      tb,
+      cols: {
+        accountCode: false,
+        account: true,
+        netDebit: true,
+        netCredit: true,
+      },
+    });
+    return {
+      attachment: { filename: `trial-balance.pdf`, content: buf },
     };
   }
 
