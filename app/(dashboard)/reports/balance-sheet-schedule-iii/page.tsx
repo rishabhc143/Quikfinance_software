@@ -6,8 +6,13 @@ import { Badge } from "@/components/ui/badge";
 import { ReportShell } from "@/components/reports/report-shell";
 import { ReportToolbar } from "@/components/reports/report-toolbar";
 import { ReportFilterStrip } from "@/components/reports/report-filter-strip";
-import { BalanceSheetAsOfPill } from "@/components/reports/balance-sheet-as-of-pill";
+import { AsOfDatePresetDropdown } from "@/components/reports/as-of-date-preset-dropdown";
 import { ReportBasisDropdown } from "@/components/reports/report-basis-dropdown";
+import {
+  parseAsOfPreset,
+  resolveAsOfPreset,
+  type AsOfPresetKey,
+} from "@/lib/reports/as-of-date-presets";
 import {
   parseReportBasis,
   REPORT_BASIS_LABEL,
@@ -40,7 +45,16 @@ export default async function BalanceSheetScheduleIIIPage({
 }) {
   const { organization, user } = await requireOrganization();
 
-  const asOf = parseAsOf(searchParams.as_of) ?? endOfDay(new Date());
+  // Parse As of Date preset (Item #2.8). Accepts `asOf` (new) or
+  // `as_of` (legacy). Default preset = "today".
+  const asOfRaw = searchParams.asOf ?? searchParams.as_of;
+  const asOfPreset: AsOfPresetKey =
+    parseAsOfPreset(searchParams.asOfPreset) ??
+    (asOfRaw ? "custom" : "today");
+  const asOf =
+    asOfPreset === "custom"
+      ? (parseAsOf(asOfRaw) ?? endOfDay(new Date()))
+      : resolveAsOfPreset(asOfPreset, organization.fiscalYearStart);
   const previousAsOf = endOfDay(subMonths(asOf, 1));
   const asOfText = format(asOf, "dd/MM/yyyy");
   const previousAsOfText = format(previousAsOf, "dd/MM/yyyy");
@@ -79,7 +93,12 @@ export default async function BalanceSheetScheduleIIIPage({
       }
       range={
         <ReportFilterStrip>
-          <BalanceSheetAsOfPill defaultValue={format(asOf, "yyyy-MM-dd")} />
+          <AsOfDatePresetDropdown
+            defaultPreset={asOfPreset}
+            defaultAsOf={asOf}
+            fiscalYearStartMonth={organization.fiscalYearStart}
+          />
+          <input type="hidden" name="basis" value={basis} />
           <ReportBasisDropdown defaultBasis={basis} />
         </ReportFilterStrip>
       }
