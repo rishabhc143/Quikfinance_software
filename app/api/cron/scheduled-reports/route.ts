@@ -35,6 +35,8 @@ import { renderTrialBalancePdf } from "@/lib/reports/pdf/trial-balance";
 import { buildTrialBalance } from "@/lib/reports/trial-balance";
 import { renderReceivablesSummaryPdf } from "@/lib/reports/pdf/receivables-summary";
 import { buildReceivablesSummary } from "@/lib/reports/receivables-summary";
+import { renderPaymentsReceivedPdf } from "@/lib/reports/pdf/payments-received";
+import { buildPaymentsReceived } from "@/lib/reports/payments-received";
 import { sendReportEmail } from "@/lib/reports/email";
 import { logReportActivity } from "@/lib/reports/activity";
 
@@ -599,6 +601,50 @@ async function buildReportForKey(
     });
     return {
       attachment: { filename: `receivables-summary.pdf`, content: buf },
+    };
+  }
+
+  if (reportKey === "payments-received") {
+    // RPT-PR: Scheduled email export. Defaults to "This Month" window.
+    const payments = await db.paymentReceived.findMany({
+      where: {
+        organizationId: org.id,
+        deletedAt: null,
+        paymentDate: { gte: start, lte: end },
+      },
+      select: {
+        id: true,
+        number: true,
+        paymentDate: true,
+        amount: true,
+        paymentMode: true,
+        reference: true,
+        contact: { select: { id: true, displayName: true } },
+      },
+    });
+
+    const summary = buildPaymentsReceived(
+      payments.map((p) => ({
+        id: p.id,
+        number: p.number,
+        paymentDate: p.paymentDate,
+        amount: Number(p.amount),
+        paymentMode: p.paymentMode,
+        reference: p.reference,
+        contact: { id: p.contact.id, name: p.contact.displayName },
+      }))
+    );
+
+    const rangeLabel = `${format(start, "dd/MM/yyyy")} — ${format(end, "dd/MM/yyyy")}`;
+    const buf = await renderPaymentsReceivedPdf({
+      orgName: org.name,
+      rangeLabel,
+      currency: org.currency,
+      rows: summary.rows,
+      totalAmount: summary.totalAmount,
+    });
+    return {
+      attachment: { filename: `payments-received.pdf`, content: buf },
     };
   }
 
