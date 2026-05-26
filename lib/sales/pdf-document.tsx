@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import * as path from "node:path";
 import * as React from "react";
 import {
   Document,
@@ -6,9 +7,37 @@ import {
   Text,
   View,
   StyleSheet,
+  Font,
   renderToBuffer,
 } from "@react-pdf/renderer";
 import type { RenderableSalesDocument } from "./pdf-renderer";
+
+// ─── Font registration ─────────────────────────────────────────
+// The bundled @react-pdf/renderer "Helvetica" font does NOT include
+// U+20B9 INDIAN RUPEE SIGN (₹), so totals render as a stray glyph.
+// Register Noto Sans (Apache 2.0, ships with ₹ in all weights) and
+// use it as the document font. TTFs are bundled in lib/sales/fonts/
+// so prod renders are deterministic with no runtime CDN fetch.
+const FONTS_DIR = path.join(__dirname, "fonts");
+Font.register({
+  family: "NotoSans",
+  fonts: [
+    { src: path.join(FONTS_DIR, "NotoSans-Regular.ttf") },
+    {
+      src: path.join(FONTS_DIR, "NotoSans-Bold.ttf"),
+      fontWeight: 700,
+    },
+    {
+      src: path.join(FONTS_DIR, "NotoSans-Italic.ttf"),
+      fontStyle: "italic",
+    },
+    {
+      src: path.join(FONTS_DIR, "NotoSans-BoldItalic.ttf"),
+      fontWeight: 700,
+      fontStyle: "italic",
+    },
+  ],
+});
 
 /**
  * Real PDF rendering for Sales documents via @react-pdf/renderer.
@@ -64,7 +93,7 @@ const inv = StyleSheet.create({
     paddingBottom: 40,
     paddingHorizontal: 30,
     fontSize: 9,
-    fontFamily: "Helvetica",
+    fontFamily: "NotoSans",
     color: "#111",
   },
   // Outer border that wraps the whole content block
@@ -94,13 +123,13 @@ const inv = StyleSheet.create({
     alignItems: "flex-end",
   },
   orgName: {
-    fontFamily: "Helvetica-Bold",
+    fontFamily: "NotoSans", fontWeight: 700,
     fontSize: 11,
     marginBottom: 3,
   },
   orgLine: { fontSize: 8.5, lineHeight: 1.35, color: "#222" },
   taxInvoiceTitle: {
-    fontFamily: "Helvetica-Bold",
+    fontFamily: "NotoSans", fontWeight: 700,
     fontSize: 22,
     marginTop: 6,
   },
@@ -133,7 +162,7 @@ const inv = StyleSheet.create({
   },
   metaValue: {
     flex: 1,
-    fontFamily: "Helvetica-Bold",
+    fontFamily: "NotoSans", fontWeight: 700,
     fontSize: 9,
   },
   metaLabelRight: {
@@ -141,7 +170,7 @@ const inv = StyleSheet.create({
     fontSize: 8.5,
   },
   metaValueRight: {
-    fontFamily: "Helvetica-Bold",
+    fontFamily: "NotoSans", fontWeight: 700,
     fontSize: 9,
     marginLeft: 6,
   },
@@ -156,7 +185,7 @@ const inv = StyleSheet.create({
   partyHeaderCell: {
     flex: 1,
     padding: 4,
-    fontFamily: "Helvetica-Bold",
+    fontFamily: "NotoSans", fontWeight: 700,
     fontSize: 9,
     borderRightWidth: 1,
     borderRightColor: "#000",
@@ -165,7 +194,7 @@ const inv = StyleSheet.create({
   partyHeaderCellLast: {
     flex: 1,
     padding: 4,
-    fontFamily: "Helvetica-Bold",
+    fontFamily: "NotoSans", fontWeight: 700,
     fontSize: 9,
   },
   partyBodyRow: {
@@ -186,7 +215,7 @@ const inv = StyleSheet.create({
     padding: 6,
   },
   partyName: {
-    fontFamily: "Helvetica-Bold",
+    fontFamily: "NotoSans", fontWeight: 700,
     fontSize: 10,
     marginBottom: 3,
   },
@@ -216,7 +245,7 @@ const inv = StyleSheet.create({
     justifyContent: "flex-end" as const,
   },
   itemsHeaderText: {
-    fontFamily: "Helvetica-Bold",
+    fontFamily: "NotoSans", fontWeight: 700,
     fontSize: 8.5,
   },
   itemRow: {
@@ -251,7 +280,7 @@ const inv = StyleSheet.create({
     borderRightStyle: "solid",
   },
   igstClusterTopLabel: {
-    fontFamily: "Helvetica-Bold",
+    fontFamily: "NotoSans", fontWeight: 700,
     fontSize: 8.5,
     padding: 3,
     textAlign: "center" as const,
@@ -263,7 +292,7 @@ const inv = StyleSheet.create({
     flexDirection: "row",
   },
   igstClusterSubCell: {
-    fontFamily: "Helvetica-Bold",
+    fontFamily: "NotoSans", fontWeight: 700,
     fontSize: 8.5,
     padding: 5,
     textAlign: "right" as const,
@@ -273,7 +302,7 @@ const inv = StyleSheet.create({
     borderRightStyle: "solid",
   },
   igstClusterSubCellLast: {
-    fontFamily: "Helvetica-Bold",
+    fontFamily: "NotoSans", fontWeight: 700,
     fontSize: 8.5,
     padding: 5,
     textAlign: "right" as const,
@@ -315,20 +344,20 @@ const inv = StyleSheet.create({
     borderBottomColor: "#000",
     borderBottomStyle: "solid",
   },
-  totalLabelBold: { fontSize: 9.5, fontFamily: "Helvetica-Bold" },
-  totalValueBold: { fontSize: 9.5, fontFamily: "Helvetica-Bold" },
+  totalLabelBold: { fontSize: 9.5, fontFamily: "NotoSans", fontWeight: 700 },
+  totalValueBold: { fontSize: 9.5, fontFamily: "NotoSans", fontWeight: 700 },
   twoLabel: {
-    fontFamily: "Helvetica-Bold",
+    fontFamily: "NotoSans", fontWeight: 700,
     fontSize: 9,
     marginBottom: 3,
   },
   twoText: {
     fontSize: 9,
-    fontFamily: "Helvetica-BoldOblique",
+    fontFamily: "NotoSans", fontWeight: 700, fontStyle: "italic",
     lineHeight: 1.4,
   },
   notesLabel: {
-    fontFamily: "Helvetica-Bold",
+    fontFamily: "NotoSans", fontWeight: 700,
     fontSize: 9,
     marginTop: 10,
     marginBottom: 2,
@@ -506,7 +535,7 @@ function InvoiceTaxPdf({ doc }: { doc: RenderableSalesDocument }) {
               <View key={i} style={inv.itemRow} wrap={false}>
                 <Text style={[inv.itemCell, inv.colNo]}>{i + 1}</Text>
                 <View style={[inv.itemCell, inv.colItem]}>
-                  <Text style={{ fontFamily: "Helvetica-Bold", fontSize: 9 }}>
+                  <Text style={{ fontFamily: "NotoSans", fontWeight: 700, fontSize: 9 }}>
                     {l.name}
                   </Text>
                   {l.description
@@ -625,7 +654,7 @@ const styles = StyleSheet.create({
     paddingBottom: 40,
     paddingHorizontal: 40,
     fontSize: 10,
-    fontFamily: "Helvetica",
+    fontFamily: "NotoSans",
     color: "#111",
   },
   header: {
@@ -638,9 +667,9 @@ const styles = StyleSheet.create({
     borderBottomColor: "#e5e5e5",
     borderBottomStyle: "solid",
   },
-  docTitle: { fontSize: 24, fontFamily: "Helvetica-Bold" },
+  docTitle: { fontSize: 24, fontFamily: "NotoSans", fontWeight: 700 },
   docNumber: { color: "#555", fontSize: 11, marginTop: 2 },
-  orgName: { fontSize: 12, fontFamily: "Helvetica-Bold" },
+  orgName: { fontSize: 12, fontFamily: "NotoSans", fontWeight: 700 },
   orgSub: { color: "#555", fontSize: 9, marginTop: 2 },
   meta: {
     flexDirection: "row",
@@ -685,7 +714,7 @@ const styles = StyleSheet.create({
   colQty: { width: "10%", textAlign: "right" },
   colRate: { width: "15%", textAlign: "right" },
   colAmt: { width: "20%", textAlign: "right" },
-  itemName: { fontSize: 10, fontFamily: "Helvetica-Bold" },
+  itemName: { fontSize: 10, fontFamily: "NotoSans", fontWeight: 700 },
   itemDesc: { fontSize: 9, color: "#666", marginTop: 2 },
   totals: { alignSelf: "flex-end", width: "45%", marginTop: 12 },
   totalsRow: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 3 },
@@ -700,7 +729,7 @@ const styles = StyleSheet.create({
     borderTopStyle: "solid",
     marginTop: 4,
   },
-  totalsGrandText: { fontSize: 12, fontFamily: "Helvetica-Bold" },
+  totalsGrandText: { fontSize: 12, fontFamily: "NotoSans", fontWeight: 700 },
   notesSection: { marginTop: 20 },
   notesHeader: {
     fontSize: 8,
@@ -715,7 +744,7 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
     borderRadius: 3,
     fontSize: 9,
-    fontFamily: "Helvetica-Bold",
+    fontFamily: "NotoSans", fontWeight: 700,
     backgroundColor: "#eef2ff",
     color: "#1e40af",
     marginTop: 4,
@@ -753,7 +782,7 @@ function LegacySalesDocumentPdf({ doc }: { doc: RenderableSalesDocument }): Reac
                 ? "Vendor"
                 : "Bill to"}
             </Text>
-            <Text style={[styles.metaValue, { fontFamily: "Helvetica-Bold" }]}>
+            <Text style={[styles.metaValue, { fontFamily: "NotoSans", fontWeight: 700 }]}>
               {doc.customer.displayName}
             </Text>
             {doc.customer.email ? (
