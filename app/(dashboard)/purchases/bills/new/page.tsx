@@ -22,8 +22,16 @@ export default async function NewBillPage({
   // load the source PO so we can seed the vendor + line items in
   // P4-D. For P4-B this query is harmless if the param is absent.
   const fromPoId = searchParams?.fromPO;
-  const [vendors, customers, items, taxes, accounts, paymentTerms, sourcePO] =
-    await Promise.all([
+  const [
+    vendors,
+    customers,
+    items,
+    taxes,
+    accounts,
+    paymentTerms,
+    accountsPayable,
+    sourcePO,
+  ] = await Promise.all([
       db.contact.findMany({
         where: {
           organizationId: organization.id,
@@ -74,6 +82,19 @@ export default async function NewBillPage({
         where: { organizationId: organization.id },
         orderBy: { numberOfDays: "asc" },
         select: { id: true, name: true },
+      }),
+      // Accounts Payable dropdown options — filtered to LIABILITY
+      // accounts only. Most orgs have a single "Accounts Payable"
+      // entry, but multi-A/P setups (e.g., separate vendor / credit-
+      // card payables) work too.
+      db.chartOfAccount.findMany({
+        where: {
+          organizationId: organization.id,
+          isActive: true,
+          type: "LIABILITY",
+        },
+        select: { id: true, name: true, code: true },
+        orderBy: { name: "asc" },
       }),
       fromPoId
         ? db.purchaseOrder.findFirst({
@@ -162,6 +183,10 @@ export default async function NewBillPage({
         paymentTermsOptions={paymentTerms.map((p) => ({
           value: p.id,
           label: p.name,
+        }))}
+        accountsPayableOptions={accountsPayable.map((a) => ({
+          value: a.id,
+          label: a.code ? `${a.code} — ${a.name}` : a.name,
         }))}
         defaultCurrency={organization.currency}
         onSubmitAction={createBillAction}

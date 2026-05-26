@@ -1124,6 +1124,10 @@ model Bill {
   discountType       String                    @default("percentage")
   taxId              String?
   taxTotal           Decimal                   @default(0) @db.Decimal(18, 4)
+  // BILL-ZOHO-LAYOUT: doc-level TDS/TCS toggle. "TDS" subtracts the
+  // tax from total (vendor deducts at source); "TCS" adds it (vendor
+  // collects); null = neither. Mirrors PurchaseOrder.taxType.
+  taxType            String?
   adjustmentLabel    String?                   @default("Adjustment")
   adjustmentValue    Decimal                   @default(0) @db.Decimal(18, 4)
   total              Decimal                   @default(0) @db.Decimal(18, 4)
@@ -1181,7 +1185,15 @@ model BillLineItem {
   accountId            String? // inline column on the Bill form
   quantity             Decimal   @db.Decimal(18, 4)
   rate                 Decimal   @db.Decimal(18, 4)
+  // BILL-ZOHO-LAYOUT: per-line discount (the DISCOUNT col in the
+  // Item Table — only shown when discountType="line-item-level").
+  discount             Decimal?  @db.Decimal(18, 4)
+  discountType         String? // "percentage" | "amount"
   taxId                String?
+  // BILL-ZOHO-LAYOUT: Input Tax Credit eligibility per line. Default
+  // true since most B2B GST purchases are ITC-eligible; users can
+  // flip per line. Drives the ITC summary on the bill detail page.
+  itcEligible          Boolean   @default(true)
   amount               Decimal   @db.Decimal(18, 4)
   // Billable-expense tracking: when set, this line is owed back from
   // a specific customer and can be added to their next invoice.
