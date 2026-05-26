@@ -37,6 +37,16 @@ jobs:
       AUTH_SECRET: ci-only-secret-must-be-32-bytes-long-aaaaaaaaaaaaaaaaa
       NEXTAUTH_URL: http://localhost:3000
       NEXT_PUBLIC_APP_URL: http://localhost:3000
+      # Auth provider gating in `lib/auth.ts` enables a provider iff its
+      # env vars are set. The CI Playwright smoke asserts that magic-link
+      # + Google buttons render on /login, so set placeholder values to
+      # enable those code paths. The actual OAuth handshakes aren't
+      # exercised — only the password (credentials) flow is, which doesn't
+      # need any of these.
+      AUTH_GOOGLE_ID: ci-placeholder
+      AUTH_GOOGLE_SECRET: ci-placeholder
+      RESEND_API_KEY: ci-placeholder
+      EMAIL_FROM: ci@quikfinance.dev
       CI: "true"
 
     steps:

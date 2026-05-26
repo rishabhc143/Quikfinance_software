@@ -7,27 +7,28 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 
-const COUNTRIES = [
-  { code: "IN", name: "India", currency: "INR" },
-  { code: "US", name: "United States", currency: "USD" },
-  { code: "GB", name: "United Kingdom", currency: "GBP" },
-  { code: "AE", name: "United Arab Emirates", currency: "AED" },
-  { code: "SG", name: "Singapore", currency: "SGD" },
-  { code: "AU", name: "Australia", currency: "AUD" },
-  { code: "CA", name: "Canada", currency: "CAD" },
-];
-
 type Invite = {
   token: string;
   email: string;
   organizationName: string;
 };
 
+/**
+ * Minimal signup form: name + email + password. Country/currency
+ * default to IN/INR server-side (see app/api/auth/signup/route.ts);
+ * users can change them later in Settings → Organization. The
+ * terms acknowledgement is a passive line below the button (not a
+ * blocking checkbox) — we still link the policies, but don't gate
+ * signup on a click.
+ *
+ * Most users won't see this form at all — they'll just paste an
+ * email on /login and use magic-link. Signup stays here for users
+ * who explicitly want to pick a password upfront.
+ */
 export function SignupForm({ invite }: { invite?: Invite | null }) {
   const router = useRouter();
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
-  const [country, setCountry] = React.useState("IN");
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -37,8 +38,8 @@ export function SignupForm({ invite }: { invite?: Invite | null }) {
       name: String(data.get("name")),
       email: invite ? invite.email : String(data.get("email")),
       password: String(data.get("password")),
-      country,
-      currency: COUNTRIES.find((c) => c.code === country)?.currency ?? "INR",
+      // Country + currency default server-side to IN / INR. Users
+      // change them later in settings — no need to ask upfront.
     };
     if (invite) {
       payload.inviteToken = invite.token;
@@ -95,7 +96,7 @@ export function SignupForm({ invite }: { invite?: Invite | null }) {
         </div>
       ) : (
         <Field
-          label="Work email"
+          label="Email"
           name="email"
           type="email"
           required
@@ -111,46 +112,6 @@ export function SignupForm({ invite }: { invite?: Invite | null }) {
         autoComplete="new-password"
         hint="At least 8 characters"
       />
-      <div className="grid grid-cols-2 gap-3">
-        <div className="space-y-1.5">
-          <Label htmlFor="country">Country</Label>
-          <select
-            id="country"
-            value={country}
-            onChange={(e) => setCountry(e.target.value)}
-            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            {COUNTRIES.map((c) => (
-              <option key={c.code} value={c.code}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="space-y-1.5">
-          <Label>Currency</Label>
-          <Input
-            value={
-              COUNTRIES.find((c) => c.code === country)?.currency ?? "INR"
-            }
-            readOnly
-          />
-        </div>
-      </div>
-      <label className="flex items-start gap-2 text-xs text-muted-foreground">
-        <input type="checkbox" required className="mt-0.5" />
-        <span>
-          I agree to the{" "}
-          <a href="/terms" className="underline">
-            terms
-          </a>{" "}
-          and{" "}
-          <a href="/privacy" className="underline">
-            privacy policy
-          </a>
-          .
-        </span>
-      </label>
       {error && (
         <p className="text-sm text-destructive" role="alert">
           {error}
@@ -163,6 +124,17 @@ export function SignupForm({ invite }: { invite?: Invite | null }) {
             ? `Accept invitation & join ${invite.organizationName}`
             : "Create account"}
       </Button>
+      <p className="text-xs text-muted-foreground text-center">
+        By continuing, you agree to our{" "}
+        <a href="/terms" className="underline">
+          terms
+        </a>{" "}
+        and{" "}
+        <a href="/privacy" className="underline">
+          privacy policy
+        </a>
+        .
+      </p>
     </form>
   );
 }

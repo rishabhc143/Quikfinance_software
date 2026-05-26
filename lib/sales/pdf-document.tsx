@@ -18,7 +18,14 @@ import type { RenderableSalesDocument } from "./pdf-renderer";
 // Register Noto Sans (Apache 2.0, ships with ₹ in all weights) and
 // use it as the document font. TTFs are bundled in lib/sales/fonts/
 // so prod renders are deterministic with no runtime CDN fetch.
-const FONTS_DIR = path.join(__dirname, "fonts");
+//
+// Path resolution uses process.cwd() instead of __dirname because
+// Next.js compiles this module into .next/server/chunks/ where
+// __dirname no longer reflects the source layout. process.cwd() is
+// the project root in dev and the serverless function root in prod;
+// next.config.mjs uses outputFileTracingIncludes to make sure the
+// .ttf files are copied to the function bundle.
+const FONTS_DIR = path.join(process.cwd(), "lib", "sales", "fonts");
 Font.register({
   family: "NotoSans",
   fonts: [
