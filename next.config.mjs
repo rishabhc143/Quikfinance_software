@@ -20,12 +20,21 @@ const config = {
     //    `Font.register({ src: path.join(process.cwd(), "lib/sales/fonts", ...) })`
     //    so it can embed Noto Sans (PR #268) — needed for the ₹ glyph.
     outputFileTracingIncludes: {
-      "/api/admin/migrate": ["./prisma/migrations/**/*"],
-      // Apply the trace include broadly so the fonts ship with
-      // whichever serverless function happens to render a PDF
-      // (both /sales/invoices/[id]/pdf and /purchases/bills/[id]/pdf
-      // import lib/sales/pdf-document.tsx).
-      "/**/*": ["./lib/sales/fonts/*.ttf"],
+      // Apply the trace include broadly so every serverless function
+      // ships the resources it might need.
+      //  - migration .sql files: `instrumentation.ts` runs on every
+      //    route's cold-start and tries to apply pending migrations
+      //    via `fs.readdir(process.cwd() + "/prisma/migrations")`. If
+      //    the trace include only targets /api/admin/migrate, the
+      //    auto-migrate silently fails on every other function bundle
+      //    (root cause of the "DB schema out of sync" issue that
+      //    surfaced as "bills page shows error" after PR #270).
+      //  - fonts: any route that imports `lib/sales/pdf-document.tsx`
+      //    needs Noto Sans on disk at render time (PR #268).
+      "/**/*": [
+        "./prisma/migrations/**/*",
+        "./lib/sales/fonts/*.ttf",
+      ],
     },
   },
   images: {
