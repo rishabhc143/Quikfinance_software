@@ -199,19 +199,25 @@ const inv = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: "#000",
     borderBottomStyle: "solid",
+    alignItems: "stretch" as const,
   },
+  // Outer-grid headers (non-IGST): single label cells that span both
+  // rows visually. Text is bottom-aligned so it sits on the same
+  // baseline as the IGST sub-row's "%" / "Amt".
   itemsHeaderCell: {
-    fontFamily: "Helvetica-Bold",
-    fontSize: 8.5,
     padding: 5,
     borderRightWidth: 1,
     borderRightColor: "#000",
     borderRightStyle: "solid",
+    justifyContent: "flex-end" as const,
   },
   itemsHeaderCellLast: {
+    padding: 5,
+    justifyContent: "flex-end" as const,
+  },
+  itemsHeaderText: {
     fontFamily: "Helvetica-Bold",
     fontSize: 8.5,
-    padding: 5,
   },
   itemRow: {
     flexDirection: "row",
@@ -236,21 +242,49 @@ const inv = StyleSheet.create({
   colTaxPct: { width: "7%", textAlign: "right" as const },
   colTaxAmt: { width: "11%", textAlign: "right" as const },
   colAmount: { width: "16%", textAlign: "right" as const },
-  // Headers above IGST cluster
-  igstClusterRow: {
-    flexDirection: "row",
-    backgroundColor: "#f4f4f4",
-    borderBottomWidth: 1,
-    borderBottomColor: "#000",
-    borderBottomStyle: "solid",
-    borderRightWidth: 0,
+  // Two-row header cluster for IGST: a top "IGST" banner spanning
+  // both sub-columns, with "%" + "Amt" labels in a sub-row below.
+  igstClusterCol: {
+    width: "18%", // colTaxPct (7%) + colTaxAmt (11%)
+    borderRightWidth: 1,
+    borderRightColor: "#000",
+    borderRightStyle: "solid",
   },
-  igstClusterHeader: {
+  igstClusterTopLabel: {
     fontFamily: "Helvetica-Bold",
     fontSize: 8.5,
     padding: 3,
     textAlign: "center" as const,
+    borderBottomWidth: 1,
+    borderBottomColor: "#000",
+    borderBottomStyle: "solid",
   },
+  igstClusterSubRow: {
+    flexDirection: "row",
+  },
+  igstClusterSubCell: {
+    fontFamily: "Helvetica-Bold",
+    fontSize: 8.5,
+    padding: 5,
+    textAlign: "right" as const,
+    width: "38.89%", // 7 / 18
+    borderRightWidth: 1,
+    borderRightColor: "#000",
+    borderRightStyle: "solid",
+  },
+  igstClusterSubCellLast: {
+    fontFamily: "Helvetica-Bold",
+    fontSize: 8.5,
+    padding: 5,
+    textAlign: "right" as const,
+    width: "61.11%", // 11 / 18
+  },
+  // Qty cell: stack "1.00" / "Nos" on two lines (Zoho-style)
+  qtyStack: {
+    alignItems: "flex-end" as const,
+  },
+  qtyValue: { fontSize: 9 },
+  qtyUnit: { fontSize: 9, color: "#444" },
   // Bottom strip — left col (words + notes), right col (totals)
   bottomRow: { flexDirection: "row" },
   bottomLeft: {
@@ -288,7 +322,11 @@ const inv = StyleSheet.create({
     fontSize: 9,
     marginBottom: 3,
   },
-  twoText: { fontSize: 9, fontStyle: "italic" as const, lineHeight: 1.4 },
+  twoText: {
+    fontSize: 9,
+    fontFamily: "Helvetica-BoldOblique",
+    lineHeight: 1.4,
+  },
   notesLabel: {
     fontFamily: "Helvetica-Bold",
     fontSize: 9,
@@ -313,13 +351,6 @@ const inv = StyleSheet.create({
     textAlign: "center" as const,
   },
 });
-
-function joinNonEmpty(parts: (string | null | undefined)[], sep = " "): string {
-  return parts
-    .map((p) => (p ?? "").trim())
-    .filter(Boolean)
-    .join(sep);
-}
 
 function splitLines(text: string | null | undefined): string[] {
   if (!text) return [];
@@ -432,20 +463,34 @@ function InvoiceTaxPdf({ doc }: { doc: RenderableSalesDocument }) {
             </View>
           </View>
 
-          {/* Items table */}
+          {/* Items table — 2-row IGST grouped header (Zoho-style) */}
           <View style={inv.itemsHeader}>
-            <Text style={[inv.itemsHeaderCell, inv.colNo]}>#</Text>
-            <Text style={[inv.itemsHeaderCell, inv.colItem]}>
-              Item &amp; Description
-            </Text>
-            <Text style={[inv.itemsHeaderCell, inv.colHsn]}>HSN/SAC</Text>
-            <Text style={[inv.itemsHeaderCell, inv.colQty]}>Qty</Text>
-            <Text style={[inv.itemsHeaderCell, inv.colRate]}>Rate</Text>
-            <Text style={[inv.itemsHeaderCell, inv.colTaxPct]}>IGST %</Text>
-            <Text style={[inv.itemsHeaderCell, inv.colTaxAmt]}>IGST Amt</Text>
-            <Text style={[inv.itemsHeaderCellLast, inv.colAmount]}>
-              Amount
-            </Text>
+            <View style={[inv.itemsHeaderCell, inv.colNo]}>
+              <Text style={inv.itemsHeaderText}>#</Text>
+            </View>
+            <View style={[inv.itemsHeaderCell, inv.colItem]}>
+              <Text style={inv.itemsHeaderText}>Item &amp; Description</Text>
+            </View>
+            <View style={[inv.itemsHeaderCell, inv.colHsn]}>
+              <Text style={inv.itemsHeaderText}>HSN/SAC</Text>
+            </View>
+            <View style={[inv.itemsHeaderCell, inv.colQty]}>
+              <Text style={inv.itemsHeaderText}>Qty</Text>
+            </View>
+            <View style={[inv.itemsHeaderCell, inv.colRate]}>
+              <Text style={inv.itemsHeaderText}>Rate</Text>
+            </View>
+            {/* IGST cluster: top banner + (% / Amt) sub-row */}
+            <View style={inv.igstClusterCol}>
+              <Text style={inv.igstClusterTopLabel}>IGST</Text>
+              <View style={inv.igstClusterSubRow}>
+                <Text style={inv.igstClusterSubCell}>%</Text>
+                <Text style={inv.igstClusterSubCellLast}>Amt</Text>
+              </View>
+            </View>
+            <View style={[inv.itemsHeaderCellLast, inv.colAmount]}>
+              <Text style={inv.itemsHeaderText}>Amount</Text>
+            </View>
           </View>
           {doc.lines.map((l, i) => {
             const rateNum = Number(l.rate);
@@ -480,9 +525,10 @@ function InvoiceTaxPdf({ doc }: { doc: RenderableSalesDocument }) {
                     : null}
                 </View>
                 <Text style={[inv.itemCell, inv.colHsn]}>{l.hsnSac ?? ""}</Text>
-                <Text style={[inv.itemCell, inv.colQty]}>
-                  {joinNonEmpty([l.quantity, l.unit])}
-                </Text>
+                <View style={[inv.itemCell, inv.colQty, inv.qtyStack]}>
+                  <Text style={inv.qtyValue}>{l.quantity}</Text>
+                  {l.unit ? <Text style={inv.qtyUnit}>{l.unit}</Text> : null}
+                </View>
                 <Text style={[inv.itemCell, inv.colRate]}>
                   {formatINR(rateNum)}
                 </Text>

@@ -43,6 +43,27 @@ export async function GET(
     taxes.map((t) => [t.id, t])
   );
 
+  // Look up linked Items so the PDF can render the item name as the
+  // bold first line of the description cell (e.g. "PROFESSIONAL
+  // SERVICE CHARGES" on the Moreyeahs/Zoho reference layout) and
+  // fill the per-line unit (e.g. "Nos") below the quantity.
+  const itemIds = Array.from(
+    new Set(
+      inv.lineItems
+        .map((l) => l.itemId)
+        .filter((id): id is string => Boolean(id))
+    )
+  );
+  const items = itemIds.length
+    ? await db.item.findMany({
+        where: { id: { in: itemIds }, organizationId: organization.id },
+        select: { id: true, name: true, unit: true },
+      })
+    : [];
+  const itemById = new Map<string, (typeof items)[number]>(
+    items.map((it) => [it.id, it])
+  );
+
   const customFields = await loadVisibleCustomFields({
     organizationId: organization.id,
     entityType: "INVOICE",
@@ -119,16 +140,33 @@ export async function GET(
       const tax = l.taxId ? taxById.get(l.taxId) : undefined;
       const rate = tax ? Number(tax.rate) : 0;
       const amount = Number(l.amount);
+      const item = l.itemId ? itemById.get(l.itemId) : undefined;
+
+      // Bold name = linked Item.name when present, else the first
+      // line of the free-text description. Remaining lines flow into
+      // the description block below the bold header.
+      const descriptionLines = (l.description ?? "").split(/\r?\n/);
+      let name: string;
+      let description: string | undefined;
+      if (item?.name) {
+        name = item.name;
+        description = (l.description ?? "").trim() || undefined;
+      } else {
+        name = (descriptionLines[0] ?? "").trim();
+        const rest = descriptionLines.slice(1).join("\n").trim();
+        description = rest || undefined;
+      }
+
       return {
-        name: l.description,
-        description: undefined,
+        name,
+        description,
         quantity: l.quantity.toString(),
         rate: l.rate.toString(),
         amount: l.amount.toString(),
         hsnSac: l.hsnSacCode,
         taxRate: rate || null,
         taxAmount: rate ? Math.round(((amount * rate) / 100) * 100) / 100 : null,
-        unit: null,
+        unit: item?.unit ?? null,
       };
     }),
     totals: {
