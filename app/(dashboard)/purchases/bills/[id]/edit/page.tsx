@@ -21,8 +21,16 @@ export default async function EditBillPage({
 }) {
   const { organization } = await requireOrganization();
 
-  const [b, vendors, customers, items, taxes, accounts, paymentTerms] =
-    await Promise.all([
+  const [
+    b,
+    vendors,
+    customers,
+    items,
+    taxes,
+    accounts,
+    paymentTerms,
+    accountsPayable,
+  ] = await Promise.all([
       db.bill.findFirst({
         where: {
           id: params.id,
@@ -84,6 +92,15 @@ export default async function EditBillPage({
         where: { organizationId: organization.id },
         orderBy: { numberOfDays: "asc" },
         select: { id: true, name: true },
+      }),
+      db.chartOfAccount.findMany({
+        where: {
+          organizationId: organization.id,
+          isActive: true,
+          type: "LIABILITY",
+        },
+        select: { id: true, name: true, code: true },
+        orderBy: { name: "asc" },
       }),
     ]);
 
@@ -197,6 +214,10 @@ export default async function EditBillPage({
         paymentTermsOptions={paymentTerms.map((p) => ({
           value: p.id,
           label: p.name,
+        }))}
+        accountsPayableOptions={accountsPayable.map((a) => ({
+          value: a.id,
+          label: a.code ? `${a.code} — ${a.name}` : a.name,
         }))}
         defaultCurrency={b.currency ?? organization.currency}
         onSubmitAction={action}
