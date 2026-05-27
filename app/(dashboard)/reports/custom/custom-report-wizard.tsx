@@ -315,6 +315,7 @@ export function CustomReportWizard({
                   value={filterAccount}
                   onChange={setFilterAccount}
                   placeholder="All Accounts"
+                  stackedOptions
                 />
               </div>
             </div>
