@@ -9,18 +9,38 @@ export const metadata = { title: "Reports Center" };
  *
  * Hydrates the current user's favorited report keys (per-org) so the
  * client `<ReportsCenter>` can render the ☆ buttons in the right
- * initial state. Toggle is handled by the server action invoked from
+ * initial state, plus their saved custom reports for the "My Reports"
+ * tab. Toggle / delete are handled by server actions invoked from
  * the client component.
  */
 export default async function ReportsPage() {
   const { user, organization } = await requireOrganization();
 
-  const favorites = await db.userReportFavorite.findMany({
-    where: { userId: user.id, organizationId: organization.id },
-    select: { reportKey: true },
-  });
+  const [favorites, customReports] = await Promise.all([
+    db.userReportFavorite.findMany({
+      where: { userId: user.id, organizationId: organization.id },
+      select: { reportKey: true },
+    }),
+    db.customReport.findMany({
+      where: { userId: user.id, organizationId: organization.id },
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        name: true,
+        reportKey: true,
+        params: true,
+        createdAt: true,
+      },
+    }),
+  ]);
 
   return (
-    <ReportsCenter initialFavorites={favorites.map((f) => f.reportKey)} />
+    <ReportsCenter
+      initialFavorites={favorites.map((f) => f.reportKey)}
+      initialCustomReports={customReports.map((c) => ({
+        ...c,
+        createdAt: c.createdAt.toISOString(),
+      }))}
+    />
   );
 }

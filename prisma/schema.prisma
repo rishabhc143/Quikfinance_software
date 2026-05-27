@@ -2595,6 +2595,30 @@ model UserReportFavorite {
   @@index([userId, organizationId])
 }
 
+/// REPORTS — A user's saved custom report view. One row per
+/// "Save as Custom Report" action from a report toolbar. `reportKey`
+/// is the catalog key (lib/reports/catalog.ts) of the base report;
+/// `params` is the report page's `exportParams` URL query string,
+/// stored verbatim so reopening the saved view restores its
+/// filters/columns. Surfaced under the "My Reports" tab on /reports.
+/// FK cascade at SQL level only (same lightweight pattern as
+/// UserReportFavorite / ScheduledReport — User + Organization models
+/// stay unchanged).
+model CustomReport {
+  id             String   @id @default(cuid())
+  organizationId String
+  userId         String
+  reportKey      String
+  name           String
+  params         String   @default("")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @default(now()) @updatedAt
+
+  @@unique([userId, organizationId, name])
+  @@index([organizationId, reportKey])
+  @@index([userId, organizationId])
+}
+
 /// GETTING-STARTED — Per-user checklist completion state. Powers the
 /// "Mark as Completed" link on /getting-started. itemKey is free-form
 /// so adding new checklist items doesn't require a migration. FK
