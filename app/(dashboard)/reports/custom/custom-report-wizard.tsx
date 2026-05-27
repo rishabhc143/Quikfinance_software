@@ -4,9 +4,12 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import {
   BookOpen,
+  Calendar,
+  ChevronDown,
   ChevronRight,
   GripVertical,
   Plus,
+  PlusCircle,
   Settings,
   X,
 } from "lucide-react";
@@ -144,6 +147,9 @@ export function CustomReportWizard({
     "all"
   );
   const [compareWith, setCompareWith] = React.useState("none");
+  // "Compare Based on Period/Year" is a collapsible section (Zoho-style);
+  // open by default so the Compare With control shows.
+  const [compareOpen, setCompareOpen] = React.useState(true);
   const [advancedFilters, setAdvancedFilters] = React.useState<
     AdvancedFilter[]
   >([]);
@@ -262,26 +268,33 @@ export function CustomReportWizard({
       {/* ───── Body ───── */}
       <div className="flex-1 px-6 py-6">
         {step === 0 ? (
-          <div className="max-w-2xl space-y-8">
-            {/* General fields */}
-            <div className="space-y-5">
-              <div className="grid grid-cols-[10rem_20rem] items-center gap-4">
+          <div className="max-w-4xl space-y-6">
+            {/* General fields — stacked labels, 2-column grid */}
+            <div className="grid grid-cols-1 gap-x-8 gap-y-5 sm:grid-cols-2">
+              {/* Date Range (own row) */}
+              <div className="space-y-1.5">
                 <Label htmlFor="cr-date-range">Date Range</Label>
-                <select
-                  id="cr-date-range"
-                  value={dateRange}
-                  onChange={(e) => setDateRange(e.target.value)}
-                  className={SELECT_CLASS}
-                >
-                  {DATE_RANGE_OPTIONS.map((o) => (
-                    <option key={o.value} value={o.value}>
-                      {o.label}
-                    </option>
-                  ))}
-                </select>
+                <div className="relative">
+                  <Calendar className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <select
+                    id="cr-date-range"
+                    value={dateRange}
+                    onChange={(e) => setDateRange(e.target.value)}
+                    className={cn(SELECT_CLASS, "pl-9")}
+                  >
+                    {DATE_RANGE_OPTIONS.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
+              {/* keep Date Range alone on its row */}
+              <div className="hidden sm:block" aria-hidden />
 
-              <div className="grid grid-cols-[10rem_20rem] items-center gap-4">
+              {/* Report Basis */}
+              <div className="space-y-1.5">
                 <Label htmlFor="cr-report-basis">Report Basis</Label>
                 <select
                   id="cr-report-basis"
@@ -294,7 +307,8 @@ export function CustomReportWizard({
                 </select>
               </div>
 
-              <div className="grid grid-cols-[10rem_20rem] items-center gap-4">
+              {/* Filter Accounts */}
+              <div className="space-y-1.5">
                 <Label>Filter Accounts</Label>
                 <Combobox
                   options={FILTER_ACCOUNT_OPTIONS}
@@ -305,39 +319,58 @@ export function CustomReportWizard({
               </div>
             </div>
 
+            <div className="border-t border-border" />
+
             {/* COMPARE section */}
             <div className="space-y-4">
-              <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Compare
-              </h2>
-              <div className="grid grid-cols-[10rem_20rem] items-center gap-4">
-                <Label htmlFor="cr-compare-with">
-                  Compare Based on Period/Year
-                </Label>
-                <select
-                  id="cr-compare-with"
-                  value={compareWith}
-                  onChange={(e) => setCompareWith(e.target.value)}
-                  className={SELECT_CLASS}
+              <div className="space-y-2">
+                <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Compare
+                </h2>
+                <button
+                  type="button"
+                  onClick={() => setCompareOpen((o) => !o)}
+                  aria-expanded={compareOpen}
+                  className="flex items-center gap-1.5 text-sm font-semibold"
                 >
-                  {COMPARE_OPTIONS.map((o) => (
-                    <option key={o.value} value={o.value}>
-                      {o.label}
-                    </option>
-                  ))}
-                </select>
+                  Compare Based on Period/Year
+                  <ChevronDown
+                    className={cn(
+                      "h-4 w-4 text-muted-foreground transition-transform",
+                      compareOpen ? "" : "-rotate-90"
+                    )}
+                  />
+                </button>
               </div>
+              {compareOpen ? (
+                <div className="grid grid-cols-1 gap-x-8 sm:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="cr-compare-with">Compare With</Label>
+                    <select
+                      id="cr-compare-with"
+                      value={compareWith}
+                      onChange={(e) => setCompareWith(e.target.value)}
+                      className={SELECT_CLASS}
+                    >
+                      {COMPARE_OPTIONS.map((o) => (
+                        <option key={o.value} value={o.value}>
+                          {o.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              ) : null}
             </div>
 
+            <div className="border-t border-border" />
+
             {/* Advanced Filters section */}
-            <div className="space-y-4">
+            <div className="space-y-3">
               <div className="space-y-1">
-                <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  Advanced Filters
-                </h2>
+                <h2 className="text-base font-semibold">Advanced Filters</h2>
                 <p className="text-sm text-muted-foreground">
-                  Narrow the report to specific records by adding one or more
-                  field conditions.
+                  Use advanced filters to filter the report based on its fields.
                 </p>
               </div>
 
@@ -394,10 +427,14 @@ export function CustomReportWizard({
                 </div>
               ) : null}
 
-              <Button type="button" variant="outline" onClick={addFilter}>
-                <Plus className="mr-1.5 h-4 w-4" />
+              <button
+                type="button"
+                onClick={addFilter}
+                className="inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:underline"
+              >
+                <PlusCircle className="h-4 w-4" />
                 Add Filters
-              </Button>
+              </button>
             </div>
           </div>
         ) : step === 1 ? (
@@ -431,39 +468,35 @@ export function CustomReportWizard({
       </div>
 
       {/* ───── Footer ───── */}
-      <div className="sticky bottom-0 z-10 flex items-center justify-between border-t bg-card px-6 py-3">
-        <div className="flex items-center gap-2">
+      <div className="sticky bottom-0 z-10 flex items-center gap-2 border-t bg-card px-6 py-3">
+        {step > 0 ? (
           <Button
             type="button"
-            variant="ghost"
-            onClick={() => router.push("/reports")}
+            variant="outline"
+            onClick={() => setStep((s) => Math.max(0, s - 1))}
           >
-            Cancel
+            Back
           </Button>
-          {step > 0 ? (
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setStep((s) => Math.max(0, s - 1))}
-            >
-              Back
-            </Button>
-          ) : null}
-        </div>
-        <div className="flex items-center gap-2">
-          {step < STEPS.length - 1 ? (
-            <Button
-              type="button"
-              onClick={() => setStep((s) => Math.min(STEPS.length - 1, s + 1))}
-            >
-              Next
-            </Button>
-          ) : (
-            <Button type="button" onClick={onCreate} disabled={!canCreate}>
-              {pending ? "Creating…" : "Create"}
-            </Button>
-          )}
-        </div>
+        ) : null}
+        {step < STEPS.length - 1 ? (
+          <Button
+            type="button"
+            onClick={() => setStep((s) => Math.min(STEPS.length - 1, s + 1))}
+          >
+            Next
+          </Button>
+        ) : (
+          <Button type="button" onClick={onCreate} disabled={!canCreate}>
+            {pending ? "Creating…" : "Create"}
+          </Button>
+        )}
+        <Button
+          type="button"
+          variant="ghost"
+          onClick={() => router.push("/reports")}
+        >
+          Cancel
+        </Button>
       </div>
     </div>
   );
