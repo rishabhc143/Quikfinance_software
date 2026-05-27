@@ -110,3 +110,87 @@ export function buildCustomReportStructure(
     { kind: "formula", label: "Net Profit/Loss" },
   ];
 }
+
+/* ────────────────────────────────────────────────────────────────────
+ * Step 2 client-side editing
+ *
+ * The server hands the wizard an immutable `CustomReportSectionNode[]`.
+ * To let the user add / rename / remove rows live, the wizard seeds a
+ * local list of `EditableReportNode`s — same shape plus a stable `id`
+ * per node (needed for React keys and targeted edits). These helpers
+ * are pure so the editing behaviour is unit-testable without rendering.
+ * ──────────────────────────────────────────────────────────────────── */
+
+export type EditableReportNode =
+  | {
+      id: string;
+      kind: "section";
+      label: string;
+      accounts: { id: string; name: string }[];
+      /** True for user-added sections (renamable inline). */
+      custom?: boolean;
+    }
+  | { id: string; kind: "formula"; label: string };
+
+function makeNodeId(prefix: string): string {
+  const rand =
+    typeof crypto !== "undefined" && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return `${prefix}-${rand}`;
+}
+
+/**
+ * Seed an editable node list from a server-built structure, assigning a
+ * stable id to each node (sections reuse their `key`; formula rows get
+ * an index-based id since they have no natural key).
+ */
+export function toEditableReportNodes(
+  structure: CustomReportSectionNode[],
+): EditableReportNode[] {
+  return structure.map((node, i) =>
+    node.kind === "section"
+      ? {
+          id: node.key,
+          kind: "section",
+          label: node.label,
+          accounts: node.accounts,
+        }
+      : { id: `formula-${i}`, kind: "formula", label: node.label },
+  );
+}
+
+/** Append a new, empty, user-named section to the end of the list. */
+export function addSection(
+  nodes: EditableReportNode[],
+): EditableReportNode[] {
+  return [
+    ...nodes,
+    {
+      id: makeNodeId("section"),
+      kind: "section",
+      label: "New Section",
+      accounts: [],
+      custom: true,
+    },
+  ];
+}
+
+/** Remove any node (section or formula row) by id. */
+export function removeReportNode(
+  nodes: EditableReportNode[],
+  id: string,
+): EditableReportNode[] {
+  return nodes.filter((n) => n.id !== id);
+}
+
+/** Rename a section node by id. No-op for formula nodes / unknown ids. */
+export function renameReportNode(
+  nodes: EditableReportNode[],
+  id: string,
+  label: string,
+): EditableReportNode[] {
+  return nodes.map((n) =>
+    n.id === id && n.kind === "section" ? { ...n, label } : n,
+  );
+}

@@ -1,8 +1,13 @@
 import { describe, it, expect } from "vitest";
 import {
+  addSection,
   buildCustomReportStructure,
+  removeReportNode,
+  renameReportNode,
+  toEditableReportNodes,
   type AccountForStructure,
   type CustomReportSectionNode,
+  type EditableReportNode,
 } from "@/lib/reports/custom-report-structure";
 
 /**
@@ -171,5 +176,78 @@ describe("buildCustomReportStructure — sort order within a section", () => {
       "Alpha",
       "Charlie",
     ]);
+  });
+});
+
+describe("toEditableReportNodes", () => {
+  it("uses section keys as ids and index-based ids for formula rows", () => {
+    const structure = buildCustomReportStructure("profit-and-loss", [])!;
+    const nodes = toEditableReportNodes(structure);
+    expect(nodes).toHaveLength(structure.length);
+    expect(nodes[0]).toMatchObject({ id: "operating-income", kind: "section" });
+    // Gross Profit formula sits at index 2 in the P&L structure.
+    expect(nodes[2]).toEqual({
+      id: "formula-2",
+      kind: "formula",
+      label: "Gross Profit",
+    });
+  });
+});
+
+describe("addSection", () => {
+  it("appends one custom, empty, renamable section without mutating the input", () => {
+    const before: EditableReportNode[] = [];
+    const after = addSection(before);
+    expect(before).toHaveLength(0); // input not mutated
+    expect(after).toHaveLength(1);
+    const node = after[0];
+    expect(node.kind).toBe("section");
+    if (node.kind === "section") {
+      expect(node.label).toBe("New Section");
+      expect(node.custom).toBe(true);
+      expect(node.accounts).toEqual([]);
+      expect(node.id.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("gives each added section a distinct id", () => {
+    const nodes = addSection(addSection([]));
+    expect(nodes[0].id).not.toBe(nodes[1].id);
+  });
+});
+
+describe("removeReportNode", () => {
+  it("removes the node with the given id and keeps the rest", () => {
+    const nodes = toEditableReportNodes(
+      buildCustomReportStructure("profit-and-loss", [])!,
+    );
+    const next = removeReportNode(nodes, "operating-income");
+    expect(next.find((n) => n.id === "operating-income")).toBeUndefined();
+    expect(next).toHaveLength(nodes.length - 1);
+  });
+
+  it("is a no-op for an unknown id", () => {
+    expect(removeReportNode(addSection([]), "nope")).toHaveLength(1);
+  });
+});
+
+describe("renameReportNode", () => {
+  it("renames a section by id", () => {
+    const nodes = addSection([]);
+    const next = renameReportNode(nodes, nodes[0].id, "Revenue");
+    const node = next[0];
+    expect(node.kind === "section" && node.label).toBe("Revenue");
+  });
+
+  it("leaves formula rows untouched", () => {
+    const nodes = toEditableReportNodes(
+      buildCustomReportStructure("profit-and-loss", [])!,
+    );
+    const next = renameReportNode(nodes, "formula-2", "Hacked");
+    expect(next.find((n) => n.id === "formula-2")).toEqual({
+      id: "formula-2",
+      kind: "formula",
+      label: "Gross Profit",
+    });
   });
 });

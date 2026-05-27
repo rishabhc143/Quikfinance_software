@@ -20,7 +20,14 @@ import { Label } from "@/components/ui/label";
 import { Combobox } from "@/components/ui/combobox";
 import { cn } from "@/lib/utils";
 import { createCustomReportAction } from "@/app/(dashboard)/reports/actions";
-import type { CustomReportSectionNode } from "@/lib/reports/custom-report-structure";
+import {
+  addSection,
+  removeReportNode,
+  renameReportNode,
+  toEditableReportNodes,
+  type CustomReportSectionNode,
+  type EditableReportNode,
+} from "@/lib/reports/custom-report-structure";
 
 /**
  * REPORTS — "Create Custom Report" 4-step wizard (Phase 1).
@@ -533,6 +540,39 @@ function CustomizeRowsAndColumns({
     );
   }
 
+  return <CustomizeTable rootLabel={rootLabel} structure={structure} />;
+}
+
+/**
+ * The editable "Customize Table". Seeds a local node list from the
+ * server-built structure so the row controls work live: "+ New Section"
+ * appends a renamable section, each section / formula row has a remove
+ * button, and custom sections are renamed inline. Drag-reorder, the
+ * Customize Columns editor, persistence, and applying the structure to
+ * the generated report are follow-ups.
+ */
+function CustomizeTable({
+  rootLabel,
+  structure,
+}: {
+  rootLabel: string;
+  structure: CustomReportSectionNode[];
+}) {
+  const [nodes, setNodes] = React.useState<EditableReportNode[]>(() =>
+    toEditableReportNodes(structure)
+  );
+
+  const removeButton = (id: string, label: string) => (
+    <button
+      type="button"
+      aria-label={`Remove ${label}`}
+      onClick={() => setNodes((n) => removeReportNode(n, id))}
+      className="shrink-0 rounded p-1 text-muted-foreground/60 hover:bg-muted hover:text-foreground"
+    >
+      <X className="h-3.5 w-3.5" />
+    </button>
+  );
+
   return (
     <div className="space-y-4">
       {/* Header chrome: title + Preview pill + Customize Columns link */}
@@ -575,17 +615,34 @@ function CustomizeRowsAndColumns({
               <td className="px-4 py-2.5" />
             </tr>
 
-            {structure.map((node, i) =>
+            {nodes.map((node) =>
               node.kind === "section" ? (
-                <React.Fragment key={node.key}>
+                <React.Fragment key={node.id}>
                   {/* Section header */}
                   <tr className="border-b bg-muted/20">
                     <td className="px-4 py-2.5">
-                      <span className="flex items-center gap-2 pl-4 font-medium">
-                        <GripVertical className="h-4 w-4 shrink-0 text-muted-foreground/40" />
-                        <BookOpen className="h-4 w-4 shrink-0 text-muted-foreground" />
-                        {node.label}
-                      </span>
+                      <div className="flex items-center justify-between gap-2 pl-4">
+                        <span className="flex min-w-0 items-center gap-2 font-medium">
+                          <GripVertical className="h-4 w-4 shrink-0 text-muted-foreground/40" />
+                          <BookOpen className="h-4 w-4 shrink-0 text-muted-foreground" />
+                          {node.custom ? (
+                            <input
+                              value={node.label}
+                              onChange={(e) =>
+                                setNodes((n) =>
+                                  renameReportNode(n, node.id, e.target.value)
+                                )
+                              }
+                              aria-label="Section name"
+                              placeholder="Section name"
+                              className="h-7 w-48 rounded-md border border-input bg-background px-2 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                            />
+                          ) : (
+                            <span className="truncate">{node.label}</span>
+                          )}
+                        </span>
+                        {removeButton(node.id, node.label)}
+                      </div>
                     </td>
                     <td className="px-4 py-2.5" />
                     <td className="px-4 py-2.5" />
@@ -628,14 +685,17 @@ function CustomizeRowsAndColumns({
                   </tr>
                 </React.Fragment>
               ) : (
-                <tr key={`formula-${i}`} className="border-b bg-muted/10">
+                <tr key={node.id} className="border-b bg-muted/10">
                   <td className="px-4 py-2.5">
-                    <span className="flex items-center gap-2 pl-4 font-semibold">
-                      <span className="inline-flex h-5 items-center rounded bg-primary/10 px-1.5 font-mono text-xs italic text-primary">
-                        fx
+                    <div className="flex items-center justify-between gap-2 pl-4">
+                      <span className="flex items-center gap-2 font-semibold">
+                        <span className="inline-flex h-5 items-center rounded bg-primary/10 px-1.5 font-mono text-xs italic text-primary">
+                          fx
+                        </span>
+                        {node.label}
                       </span>
-                      {node.label}
-                    </span>
+                      {removeButton(node.id, node.label)}
+                    </div>
                   </td>
                   <td className="px-4 py-2.5" />
                   <td className="px-4 py-2.5" />
@@ -643,12 +703,12 @@ function CustomizeRowsAndColumns({
               )
             )}
 
-            {/* + New Section (stub) */}
+            {/* + New Section */}
             <tr>
               <td colSpan={3} className="px-4 py-2.5">
                 <button
                   type="button"
-                  onClick={() => toast.info("Adding sections is coming soon")}
+                  onClick={() => setNodes(addSection)}
                   className="inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:underline"
                 >
                   <Plus className="h-4 w-4" />
