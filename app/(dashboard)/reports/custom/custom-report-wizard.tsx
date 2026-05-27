@@ -204,7 +204,7 @@ export function CustomReportWizard({
   const canCreate = Boolean(name.trim()) && !pending;
 
   return (
-    <div className="-m-6 flex flex-col min-h-[calc(100vh-4rem)]">
+    <div className="flex flex-col min-h-[calc(100vh-4rem)]">
       {/* ───── Top bar: title + X close ───── */}
       <div className="flex items-center justify-between border-b bg-card px-6 py-4 sticky top-0 z-10">
         <h1 className="text-xl font-semibold leading-tight">
