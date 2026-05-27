@@ -2,7 +2,14 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { ChevronRight, Plus, X } from "lucide-react";
+import {
+  BookOpen,
+  ChevronRight,
+  GripVertical,
+  Plus,
+  Settings,
+  X,
+} from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,6 +17,7 @@ import { Label } from "@/components/ui/label";
 import { Combobox } from "@/components/ui/combobox";
 import { cn } from "@/lib/utils";
 import { createCustomReportAction } from "@/app/(dashboard)/reports/actions";
+import type { CustomReportSectionNode } from "@/lib/reports/custom-report-structure";
 
 /**
  * REPORTS — "Create Custom Report" 4-step wizard (Phase 1).
@@ -32,6 +40,13 @@ type WizardProps = {
   baseKey: string;
   baseName: string;
   baseHref: string | null;
+  /**
+   * Step 2 structural node list (sections + formula rows in display
+   * order). `null` for report types without a structure editor yet —
+   * Step 2 then shows a "coming soon" message. Built server-side by
+   * `buildCustomReportStructure` from the org's Chart of Accounts.
+   */
+  structure: CustomReportSectionNode[] | null;
 };
 
 type AdvancedFilter = {
@@ -99,7 +114,6 @@ const FILTER_OP_OPTIONS: { value: string; label: string }[] = [
 ];
 
 const STEP_PLACEHOLDER: Record<number, string> = {
-  1: "Customize Rows and Columns — configured in an upcoming step.",
   2: "Report Layout — configured in an upcoming step.",
   3: "Report Preferences — configured in an upcoming step.",
 };
@@ -117,6 +131,7 @@ function newFilterId(): string {
 export function CustomReportWizard({
   baseKey,
   baseName,
+  structure,
 }: WizardProps) {
   const router = useRouter();
 
@@ -385,6 +400,13 @@ export function CustomReportWizard({
               </Button>
             </div>
           </div>
+        ) : step === 1 ? (
+          <div className="max-w-5xl">
+            <CustomizeRowsAndColumns
+              rootLabel={baseName}
+              structure={structure}
+            />
+          </div>
         ) : (
           <div className="max-w-2xl space-y-6">
             <div className="rounded-md border bg-muted/30 p-8 text-center">
@@ -442,6 +464,166 @@ export function CustomReportWizard({
             </Button>
           )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Step 2 body — the "Customize Table" structural tree. Renders the
+ * report's account-definition hierarchy as a 3-column table
+ * (Account Definition / Account / Total). The Account + Total columns
+ * are intentionally empty here: this step defines *structure*, not live
+ * amounts. Drag handles, "+ New Section", and "Customize Columns" render
+ * for visual parity but are stubs in this phase (toast "coming soon").
+ *
+ * `structure === null` → report type has no structure editor yet, so we
+ * show a "coming soon" message (Next still advances the wizard).
+ */
+function CustomizeRowsAndColumns({
+  rootLabel,
+  structure,
+}: {
+  rootLabel: string;
+  structure: CustomReportSectionNode[] | null;
+}) {
+  if (!structure) {
+    return (
+      <div className="max-w-2xl">
+        <div className="rounded-md border bg-muted/30 p-8 text-center">
+          <p className="text-sm text-muted-foreground">
+            Row and column customization for this report type is coming soon.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Header chrome: title + Preview pill + Customize Columns link */}
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <h2 className="text-sm font-semibold">Customize Table</h2>
+          <span className="inline-flex items-center rounded-full border border-primary/30 bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary">
+            Preview
+          </span>
+        </div>
+        <button
+          type="button"
+          onClick={() => toast.info("Customize Columns is coming soon")}
+          className="text-sm font-medium text-primary hover:underline"
+        >
+          Customize Columns
+        </button>
+      </div>
+
+      {/* 3-column structural table */}
+      <div className="overflow-hidden rounded-md border">
+        <table className="w-full border-collapse text-sm">
+          <thead>
+            <tr className="border-b bg-muted/40 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              <th className="px-4 py-2.5 text-left">Account Definition</th>
+              <th className="w-40 px-4 py-2.5 text-left">Account</th>
+              <th className="w-40 px-4 py-2.5 text-right">Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            {/* Root */}
+            <tr className="border-b">
+              <td className="px-4 py-2.5">
+                <span className="flex items-center gap-2 font-semibold">
+                  <Settings className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  {rootLabel}
+                </span>
+              </td>
+              <td className="px-4 py-2.5" />
+              <td className="px-4 py-2.5" />
+            </tr>
+
+            {structure.map((node, i) =>
+              node.kind === "section" ? (
+                <React.Fragment key={node.key}>
+                  {/* Section header */}
+                  <tr className="border-b bg-muted/20">
+                    <td className="px-4 py-2.5">
+                      <span className="flex items-center gap-2 pl-4 font-medium">
+                        <GripVertical className="h-4 w-4 shrink-0 text-muted-foreground/40" />
+                        <BookOpen className="h-4 w-4 shrink-0 text-muted-foreground" />
+                        {node.label}
+                      </span>
+                    </td>
+                    <td className="px-4 py-2.5" />
+                    <td className="px-4 py-2.5" />
+                  </tr>
+
+                  {/* Accounts */}
+                  {node.accounts.length > 0 ? (
+                    node.accounts.map((acc) => (
+                      <tr key={acc.id} className="border-b">
+                        <td className="px-4 py-2">
+                          <span className="block pl-14 text-muted-foreground">
+                            {acc.name}
+                          </span>
+                        </td>
+                        <td className="px-4 py-2" />
+                        <td className="px-4 py-2" />
+                      </tr>
+                    ))
+                  ) : (
+                    <tr className="border-b">
+                      <td className="px-4 py-2">
+                        <span className="block pl-14 text-xs italic text-muted-foreground/70">
+                          No accounts in this section
+                        </span>
+                      </td>
+                      <td className="px-4 py-2" />
+                      <td className="px-4 py-2" />
+                    </tr>
+                  )}
+
+                  {/* Section total */}
+                  <tr className="border-b">
+                    <td className="px-4 py-2.5">
+                      <span className="block pl-14 font-semibold">
+                        Total for {node.label}
+                      </span>
+                    </td>
+                    <td className="px-4 py-2.5" />
+                    <td className="px-4 py-2.5" />
+                  </tr>
+                </React.Fragment>
+              ) : (
+                <tr key={`formula-${i}`} className="border-b bg-muted/10">
+                  <td className="px-4 py-2.5">
+                    <span className="flex items-center gap-2 pl-4 font-semibold">
+                      <span className="inline-flex h-5 items-center rounded bg-primary/10 px-1.5 font-mono text-xs italic text-primary">
+                        fx
+                      </span>
+                      {node.label}
+                    </span>
+                  </td>
+                  <td className="px-4 py-2.5" />
+                  <td className="px-4 py-2.5" />
+                </tr>
+              )
+            )}
+
+            {/* + New Section (stub) */}
+            <tr>
+              <td colSpan={3} className="px-4 py-2.5">
+                <button
+                  type="button"
+                  onClick={() => toast.info("Adding sections is coming soon")}
+                  className="inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:underline"
+                >
+                  <Plus className="h-4 w-4" />
+                  New Section
+                </button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
       </div>
     </div>
   );
