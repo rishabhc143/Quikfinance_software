@@ -32,7 +32,6 @@ type WizardProps = {
   baseKey: string;
   baseName: string;
   baseHref: string | null;
-  accountOptions: { value: string; label: string }[];
 };
 
 type AdvancedFilter = {
@@ -60,11 +59,36 @@ const DATE_RANGE_OPTIONS: { value: string; label: string }[] = [
   { value: "custom", label: "Custom" },
 ];
 
+// "Compare With" (under "Compare Based on Period/Year"). None = no
+// comparison column; the other two add a prior-year / prior-period
+// column to the report.
 const COMPARE_OPTIONS: { value: string; label: string }[] = [
   { value: "none", label: "None" },
-  { value: "previous-period", label: "Previous Period" },
-  { value: "previous-year", label: "Previous Year" },
+  { value: "previous-year", label: "Previous Year(s)" },
+  { value: "previous-period", label: "Previous Period(s)" },
 ];
+
+// "Filter Accounts" modes (Zoho-parity). These are filter *modes*, not
+// individual accounts — `hint` renders as the sub-description in the
+// Combobox dropdown.
+const FILTER_ACCOUNT_OPTIONS: { value: string; label: string; hint: string }[] =
+  [
+    {
+      value: "without-zero-balance",
+      label: "Accounts Without Zero Balance",
+      hint: "Filter every account except the ones with zero-balance.",
+    },
+    {
+      value: "all",
+      label: "All Accounts",
+      hint: "Filter all accounts, including the ones with zero-balance.",
+    },
+    {
+      value: "with-transactions",
+      label: "Accounts With Transactions",
+      hint: "Filter the accounts with transactions that were created during the specified period.",
+    },
+  ];
 
 const FILTER_OP_OPTIONS: { value: string; label: string }[] = [
   { value: "equals", label: "equals" },
@@ -93,10 +117,6 @@ function newFilterId(): string {
 export function CustomReportWizard({
   baseKey,
   baseName,
-  // baseHref is part of the prop contract (the page passes the base
-  // report's route) and will drive the live preview in a later phase;
-  // unused in Phase 1.
-  accountOptions,
 }: WizardProps) {
   const router = useRouter();
 
@@ -118,11 +138,6 @@ export function CustomReportWizard({
   const [name, setName] = React.useState(baseName);
 
   const [pending, startTransition] = React.useTransition();
-
-  const accountComboOptions = React.useMemo(
-    () => [{ value: "all", label: "All Accounts" }, ...accountOptions],
-    [accountOptions]
-  );
 
   function addFilter() {
     setAdvancedFilters((rows) => [
@@ -267,7 +282,7 @@ export function CustomReportWizard({
               <div className="grid grid-cols-[12rem_1fr] items-center gap-4">
                 <Label>Filter Accounts</Label>
                 <Combobox
-                  options={accountComboOptions}
+                  options={FILTER_ACCOUNT_OPTIONS}
                   value={filterAccount}
                   onChange={setFilterAccount}
                   placeholder="All Accounts"
