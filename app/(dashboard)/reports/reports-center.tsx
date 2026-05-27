@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   Home,
   Star,
@@ -13,6 +13,7 @@ import {
   Search,
   MoreVertical,
   RefreshCw,
+  Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -37,10 +38,23 @@ import { cn } from "@/lib/utils";
 import {
   REPORTS,
   REPORT_CATEGORIES,
+  findReport,
   type ReportCategory,
   type ReportEntry,
 } from "@/lib/reports/catalog";
-import { toggleReportFavoriteAction } from "./actions";
+import {
+  toggleReportFavoriteAction,
+  deleteCustomReportAction,
+} from "./actions";
+
+/** A saved custom report, serialized for the client. */
+export type CustomReportRow = {
+  id: string;
+  name: string;
+  reportKey: string;
+  params: string;
+  createdAt: string;
+};
 
 /**
  * REPORTS-CENTER — client component for `/reports`.
@@ -75,16 +89,12 @@ const TAB_ICON: Record<Tab, React.ComponentType<{ className?: string }>> = {
 };
 
 const STUB_EMPTY: Record<
-  "shared" | "my" | "scheduled",
+  "shared" | "scheduled",
   { title: string; body: string }
 > = {
   shared: {
     title: "No reports shared with you yet",
     body: "When teammates share a report with you, it'll show up here.",
-  },
-  my: {
-    title: "No custom reports yet",
-    body: "Custom reports arrive in a future release.",
   },
   scheduled: {
     title: "No scheduled reports",
@@ -94,21 +104,36 @@ const STUB_EMPTY: Record<
 
 export function ReportsCenter({
   initialFavorites,
+  initialCustomReports = [],
 }: {
   initialFavorites: string[];
+  initialCustomReports?: CustomReportRow[];
 }) {
   const [favorites, setFavorites] = React.useState<Set<string>>(
     () => new Set(initialFavorites)
   );
-  const [tab, setTab] = React.useState<Tab>("home");
+  const [customReports, setCustomReports] =
+    React.useState<CustomReportRow[]>(initialCustomReports);
+  // Deep-link support: "Save as Custom Report" pushes /reports?tab=my,
+  // so seed the initial tab from the URL when it names a valid tab.
+  const searchParams = useSearchParams();
+  const initialTab = React.useMemo<Tab>(() => {
+    const t = searchParams?.get("tab");
+    return t === "favorites" ||
+      t === "shared" ||
+      t === "my" ||
+      t === "scheduled"
+      ? t
+      : "home";
+  }, [searchParams]);
+  const [tab, setTab] = React.useState<Tab>(initialTab);
   const [category, setCategory] = React.useState<ReportCategory | null>(null);
   const [search, setSearch] = React.useState("");
   const [pending, startTransition] = React.useTransition();
 
   // "Create Custom Report" entry-point modal: pick a base report to
   // customize. Proceed navigates to that report (where the existing
-  // Customize toolbar lets the user tailor it). Persisting a named
-  // custom report under "My Reports" is a follow-up step.
+  // Customize toolbar lets the user tailor it).
   const router = useRouter();
   const [customOpen, setCustomOpen] = React.useState(false);
   const [baseReportKey, setBaseReportKey] = React.useState<string | null>(null);
@@ -156,7 +181,24 @@ export function ReportsCenter({
     return rows;
   }, [tab, favorites, category, search]);
 
-  const isStubTab = tab === "shared" || tab === "my" || tab === "scheduled";
+  // "my" is now a real tab (renders saved custom reports below);
+  // Shared + Scheduled remain coming-soon stubs.
+  const isStubTab = tab === "shared" || tab === "scheduled";
+
+  function deleteCustomReport(id: string) {
+    // Optimistic — drop the row locally, then call the server.
+    const prev = customReports;
+    setCustomReports((rows) => rows.filter((r) => r.id !== id));
+    startTransition(async () => {
+      const res = await deleteCustomReportAction({ id });
+      if (res.ok) {
+        toast.success("Custom report deleted");
+      } else {
+        toast.error(res.error ?? "Couldn't delete custom report");
+        setCustomReports(prev);
+      }
+    });
+  }
 
   function toggleFavorite(key: string) {
     // Optimistic update — flip locally, then call the server.
@@ -322,11 +364,11 @@ export function ReportsCenter({
           <div className="bg-background rounded-md border min-h-full">
             <div className="px-6 py-4 border-b flex items-center gap-3">
               <h2 className="text-lg font-semibold">{headerTitle}</h2>
-              {!isStubTab ? (
+              {isStubTab ? null : (
                 <Badge variant="secondary" className="text-xs">
-                  {visibleReports.length}
+                  {tab === "my" ? customReports.length : visibleReports.length}
                 </Badge>
-              ) : null}
+              )}
             </div>
 
             {isStubTab ? (
@@ -338,6 +380,81 @@ export function ReportsCenter({
                   {STUB_EMPTY[tab as keyof typeof STUB_EMPTY].body}
                 </p>
               </div>
+            ) : tab === "my" ? (
+              customReports.length === 0 ? (
+                <div className="p-12 text-center space-y-2">
+                  <h3 className="text-sm font-medium">No custom reports yet</h3>
+                  <p className="text-xs text-muted-foreground max-w-md mx-auto">
+                    Open any report, tweak it, and click Save as Custom Report.
+                  </p>
+                </div>
+              ) : (
+                <table className="w-full text-sm">
+                  <thead className="bg-muted/30 text-[10px] uppercase tracking-wider text-muted-foreground">
+                    <tr>
+                      <th className="text-left px-6 py-3 font-medium">Name</th>
+                      <th className="text-left px-6 py-3 font-medium">
+                        Base report
+                      </th>
+                      <th className="text-left px-6 py-3 font-medium">
+                        Created
+                      </th>
+                      <th className="text-right px-6 py-3 font-medium">
+                        Actions
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {customReports.map((entry) => {
+                      const base = findReport(entry.reportKey);
+                      const baseName = base?.name ?? entry.reportKey;
+                      const href =
+                        base?.available && base.href
+                          ? `${base.href}${
+                              entry.params ? `?${entry.params}` : ""
+                            }`
+                          : null;
+                      return (
+                        <tr key={entry.id} className="hover:bg-muted/20">
+                          <td className="px-6 py-3">
+                            {href ? (
+                              <Link
+                                href={href}
+                                className="text-primary hover:underline"
+                              >
+                                {entry.name}
+                              </Link>
+                            ) : (
+                              <span className="text-foreground">
+                                {entry.name}
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-6 py-3 text-foreground/80">
+                            {baseName}
+                          </td>
+                          <td className="px-6 py-3 text-muted-foreground">
+                            {new Date(entry.createdAt).toLocaleDateString()}
+                          </td>
+                          <td className="px-6 py-3 text-right">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => deleteCustomReport(entry.id)}
+                              disabled={pending}
+                              aria-label={`Delete ${entry.name}`}
+                              title="Delete"
+                              className="text-destructive hover:text-destructive"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )
             ) : visibleReports.length === 0 ? (
               <div className="p-12 text-center text-sm text-muted-foreground">
                 {tab === "favorites"
