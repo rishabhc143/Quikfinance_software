@@ -446,7 +446,7 @@ export function CustomReportWizard({
             </div>
           </div>
         ) : step === 1 ? (
-          <div className="max-w-5xl">
+          <div className="w-full">
             <CustomizeRowsAndColumns
               rootLabel={baseName}
               structure={structure}
