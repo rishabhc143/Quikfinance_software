@@ -39,7 +39,17 @@ export function DatePicker({
           className={cn("w-full justify-start font-normal", !date && "text-muted-foreground", className)}
         >
           <CalendarIcon className="mr-2 h-4 w-4 shrink-0" />
-          <span className="truncate">{date ? format(date, fmt) : placeholder}</span>
+          {/*
+           * suppressHydrationWarning: `format()` uses the runtime's local
+           * timezone, so a date instant renders as different text on the
+           * server (Vercel US-East) vs the client (e.g. IST). That's an
+           * unavoidable, expected server/client difference — React's
+           * documented escape hatch silences the #418/#423 hydration
+           * mismatch and uses the client (correct-locale) value.
+           */}
+          <span className="truncate" suppressHydrationWarning>
+            {date ? format(date, fmt) : placeholder}
+          </span>
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-auto p-0" align="start">

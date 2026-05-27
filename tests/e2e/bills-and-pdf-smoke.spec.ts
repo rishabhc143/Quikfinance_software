@@ -3,6 +3,34 @@ import { test, expect } from "@playwright/test";
 const ADMIN_EMAIL = "admin@quikfinance.dev";
 const ADMIN_PASSWORD = "Quikfinance!123";
 
+/**
+ * Returns the href of the first link under `prefix` that points at a
+ * real DETAIL page (a single record), skipping nav links like
+ * `<prefix>new`, `<prefix>import`, `<prefix>export`, `<prefix>bulk-pdf`.
+ * Returns null when the list is empty (no seed records) so the caller
+ * can `test.skip`.
+ */
+async function firstInvoiceDetailHref(
+  page: import("@playwright/test").Page,
+  prefix: string,
+): Promise<string | null> {
+  const NON_DETAIL = new Set(["new", "import", "export", "bulk-pdf"]);
+  const hrefs = await page
+    .locator(`a[href^="${prefix}"]`)
+    .evaluateAll((els) =>
+      els.map((e) => (e as HTMLAnchorElement).getAttribute("href")),
+    );
+  for (const h of hrefs) {
+    if (!h) continue;
+    // Must be exactly <prefix><segment> with no further path.
+    const rest = h.slice(prefix.length);
+    if (!rest || rest.includes("/")) continue;
+    if (NON_DETAIL.has(rest)) continue;
+    return h;
+  }
+  return null;
+}
+
 async function signInViaApi(page: import("@playwright/test").Page) {
   const csrfRes = await page.request.get("/api/auth/csrf");
   const { csrfToken } = await csrfRes.json();
@@ -70,9 +98,12 @@ test.describe("Bills module + PDF endpoints smoke", () => {
     // whatever invoices the seed produces — only fails if none exist
     // OR the PDF endpoint 500s.
     await page.goto("/sales/invoices");
-    const firstRow = page.locator('a[href^="/sales/invoices/"]').first();
-    const href = await firstRow.getAttribute("href");
-    if (!href || !/\/sales\/invoices\/[^/]+$/.test(href)) {
+    // Collect all invoice links and pick the first that points at an
+    // actual invoice DETAIL page. The list page also renders nav links
+    // like /sales/invoices/new and /sales/invoices/import — those must
+    // be excluded or we'd request /sales/invoices/new/pdf → 404.
+    const href = await firstInvoiceDetailHref(page, "/sales/invoices/");
+    if (!href) {
       test.skip(true, "no seed invoice to test PDF endpoint");
       return;
     }
@@ -94,9 +125,8 @@ test.describe("Bills module + PDF endpoints smoke", () => {
     await signInViaApi(page);
 
     await page.goto("/purchases/bills");
-    const firstRow = page.locator('a[href^="/purchases/bills/"]').first();
-    const href = await firstRow.getAttribute("href");
-    if (!href || !/\/purchases\/bills\/[^/]+$/.test(href)) {
+    const href = await firstInvoiceDetailHref(page, "/purchases/bills/");
+    if (!href) {
       test.skip(true, "no seed bill to test PDF endpoint");
       return;
     }
