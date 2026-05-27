@@ -33,6 +33,9 @@ export const billLineSchema = z.object({
   quantity: z.coerce.number().nonnegative().default(1),
   rate: z.coerce.number().nonnegative().default(0),
   taxId: z.string().nullable().optional(),
+  discount: z.coerce.number().nonnegative().default(0),
+  discountType: z.enum(["percentage", "amount"]).default("percentage"),
+  itcEligible: z.boolean().default(true),
 });
 export type BillLineInput = z.input<typeof billLineSchema>;
 

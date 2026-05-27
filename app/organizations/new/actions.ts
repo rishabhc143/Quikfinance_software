@@ -62,6 +62,17 @@ export async function createOrganizationAction(formData: FormData) {
           { module: "quote", prefix: "QT-", nextValue: 1, padding: 5 },
         ],
       },
+      paymentTerms: {
+        create: [
+          { name: "Due on Receipt", numberOfDays: 0, isDefault: true },
+          { name: "Net 15", numberOfDays: 15 },
+          { name: "Net 30", numberOfDays: 30 },
+          { name: "Net 45", numberOfDays: 45 },
+          { name: "Net 60", numberOfDays: 60 },
+          { name: "Due end of the month", numberOfDays: 30 },
+          { name: "Due end of next month", numberOfDays: 60 },
+        ],
+      },
     },
   });
 
