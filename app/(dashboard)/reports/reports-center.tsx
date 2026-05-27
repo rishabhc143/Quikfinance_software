@@ -132,8 +132,8 @@ export function ReportsCenter({
   const [pending, startTransition] = React.useTransition();
 
   // "Create Custom Report" entry-point modal: pick a base report to
-  // customize. Proceed navigates to that report (where the existing
-  // Customize toolbar lets the user tailor it).
+  // customize. Proceed opens the 4-step Custom Report wizard seeded
+  // with the chosen base report.
   const router = useRouter();
   const [customOpen, setCustomOpen] = React.useState(false);
   const [baseReportKey, setBaseReportKey] = React.useState<string | null>(null);
@@ -155,7 +155,7 @@ export function ReportsCenter({
     if (!r) return;
     if (r.available && r.href) {
       setCustomOpen(false);
-      router.push(r.href);
+      router.push(`/reports/custom/new?base=${r.key}`);
     } else {
       toast.error("That report isn't available yet — pick another.");
     }
