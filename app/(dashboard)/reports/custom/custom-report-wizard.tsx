@@ -265,7 +265,7 @@ export function CustomReportWizard({
           <div className="max-w-2xl space-y-8">
             {/* General fields */}
             <div className="space-y-5">
-              <div className="grid grid-cols-[12rem_1fr] items-center gap-4">
+              <div className="grid grid-cols-[10rem_20rem] items-center gap-4">
                 <Label htmlFor="cr-date-range">Date Range</Label>
                 <select
                   id="cr-date-range"
@@ -281,7 +281,7 @@ export function CustomReportWizard({
                 </select>
               </div>
 
-              <div className="grid grid-cols-[12rem_1fr] items-center gap-4">
+              <div className="grid grid-cols-[10rem_20rem] items-center gap-4">
                 <Label htmlFor="cr-report-basis">Report Basis</Label>
                 <select
                   id="cr-report-basis"
@@ -294,7 +294,7 @@ export function CustomReportWizard({
                 </select>
               </div>
 
-              <div className="grid grid-cols-[12rem_1fr] items-center gap-4">
+              <div className="grid grid-cols-[10rem_20rem] items-center gap-4">
                 <Label>Filter Accounts</Label>
                 <Combobox
                   options={FILTER_ACCOUNT_OPTIONS}
@@ -310,7 +310,7 @@ export function CustomReportWizard({
               <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                 Compare
               </h2>
-              <div className="grid grid-cols-[12rem_1fr] items-center gap-4">
+              <div className="grid grid-cols-[10rem_20rem] items-center gap-4">
                 <Label htmlFor="cr-compare-with">
                   Compare Based on Period/Year
                 </Label>
@@ -416,7 +416,7 @@ export function CustomReportWizard({
             </div>
 
             {step === 3 ? (
-              <div className="grid grid-cols-[12rem_1fr] items-center gap-4">
+              <div className="grid grid-cols-[10rem_20rem] items-center gap-4">
                 <Label htmlFor="cr-report-name">Report name</Label>
                 <Input
                   id="cr-report-name"
