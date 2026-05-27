@@ -13,7 +13,20 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={`${inter.variable} font-sans antialiased`}>
+      {/*
+       * suppressHydrationWarning on <body>: browser extensions
+       * (Grammarly, Microsoft Editor in Edge, password managers,
+       * ColorZilla, etc.) inject attributes into <body> before React
+       * hydrates — e.g. data-gr-ext-installed, cz-shortcut-listen.
+       * Without this, React flags the server/client <body> attribute
+       * mismatch as a hydration error (#418) and bails to a full-root
+       * client re-render (#423) on every page. Suppressing here only
+       * affects the body element's own attributes, not its children.
+       */}
+      <body
+        className={`${inter.variable} font-sans antialiased`}
+        suppressHydrationWarning
+      >
         <Providers>{children}</Providers>
       </body>
     </html>
