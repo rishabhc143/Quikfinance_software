@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   Home,
   Star,
@@ -23,6 +24,15 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Combobox } from "@/components/ui/combobox";
 import { cn } from "@/lib/utils";
 import {
   REPORTS,
@@ -95,6 +105,37 @@ export function ReportsCenter({
   const [search, setSearch] = React.useState("");
   const [pending, startTransition] = React.useTransition();
 
+  // "Create Custom Report" entry-point modal: pick a base report to
+  // customize. Proceed navigates to that report (where the existing
+  // Customize toolbar lets the user tailor it). Persisting a named
+  // custom report under "My Reports" is a follow-up step.
+  const router = useRouter();
+  const [customOpen, setCustomOpen] = React.useState(false);
+  const [baseReportKey, setBaseReportKey] = React.useState<string | null>(null);
+
+  // All catalog reports as dropdown options; "coming soon" (not yet
+  // built) entries are labelled so the user knows they can't proceed.
+  const customReportOptions = React.useMemo(
+    () =>
+      REPORTS.map((r) => ({
+        value: r.key,
+        label: r.available ? r.name : `${r.name} (coming soon)`,
+        hint: r.category,
+      })),
+    [],
+  );
+
+  function onProceedCustomReport() {
+    const r = REPORTS.find((x) => x.key === baseReportKey);
+    if (!r) return;
+    if (r.available && r.href) {
+      setCustomOpen(false);
+      router.push(r.href);
+    } else {
+      toast.error("That report isn't available yet — pick another.");
+    }
+  }
+
   const visibleReports = React.useMemo<ReportEntry[]>(() => {
     if (tab === "shared" || tab === "my" || tab === "scheduled") return [];
     let rows = [...REPORTS];
@@ -142,6 +183,38 @@ export function ReportsCenter({
 
   return (
     <div className="flex flex-col h-[calc(100vh-3.5rem)]">
+      {/* ── New Custom Report modal ─────────────────────────────── */}
+      <Dialog open={customOpen} onOpenChange={setCustomOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>New Custom Report</DialogTitle>
+            <DialogDescription>
+              Select the report that you want to customize and create a new
+              custom report.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-1">
+            <Combobox
+              options={customReportOptions}
+              value={baseReportKey}
+              onChange={setBaseReportKey}
+              placeholder="Select a Report"
+            />
+          </div>
+          <DialogFooter>
+            <Button
+              onClick={onProceedCustomReport}
+              disabled={!baseReportKey}
+            >
+              Proceed
+            </Button>
+            <Button variant="outline" onClick={() => setCustomOpen(false)}>
+              Cancel
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* ── Top header bar ─────────────────────────────────────── */}
       <div className="flex items-center justify-between gap-4 border-b bg-background px-6 py-3">
         <h1 className="text-lg font-semibold">Reports Center</h1>
@@ -157,10 +230,7 @@ export function ReportsCenter({
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Button
-            disabled
-            title="Coming soon — custom report builder arrives in a future release"
-          >
+          <Button onClick={() => setCustomOpen(true)}>
             Create Custom Report
           </Button>
           <DropdownMenu>
