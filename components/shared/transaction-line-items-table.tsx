@@ -41,6 +41,9 @@ export type LineItem = {
   discount?: string;
   discountType?: "percentage" | "amount";
   taxId?: string | null;
+  // P1 (Purchases): per-line Input Tax Credit eligibility on a Bill
+  // line. Defaults to eligible (undefined treated as true).
+  itcEligible?: boolean;
   // P1 (Purchases): inline account override per line. Reads from the
   // selected item's purchaseAccountId or salesAccountId by default.
   accountId?: string | null;
@@ -93,6 +96,12 @@ export type ColumnConfig = {
    * Bill, Recurring Bill, Expense pass true.
    */
   customerColumnVisible?: boolean;
+  /**
+   * P1 (Purchases): when true, renders a small "Eligible for ITC"
+   * checkbox beneath each line's tax cell (Input Tax Credit). Bill
+   * passes true; sales-side documents leave it off.
+   */
+  itcToggleVisible?: boolean;
 };
 
 export type TransactionLineItemsTableProps = {
@@ -313,6 +322,18 @@ export function TransactionLineItemsTable(props: TransactionLineItemsTableProps)
                           onChange={(v) => patch(l.id, { taxId: v })}
                           placeholder="Select…"
                         />
+                        {cfg.itcToggleVisible ? (
+                          <label className="mt-1.5 flex items-center gap-1.5 text-xs text-muted-foreground">
+                            <input
+                              type="checkbox"
+                              checked={l.itcEligible ?? true}
+                              onChange={(e) =>
+                                patch(l.id, { itcEligible: e.target.checked })
+                              }
+                            />
+                            Eligible for ITC
+                          </label>
+                        ) : null}
                       </td>
                     ) : null}
                     {customerCol ? (
