@@ -73,6 +73,11 @@ type WizardProps = {
    * `buildCustomReportStructure` from the org's Chart of Accounts.
    */
   structure: CustomReportSectionNode[] | null;
+  /**
+   * Current organization name — shown in the Step 3 Preview pane when
+   * "Organization Name" is toggled on.
+   */
+  orgName: string;
 };
 
 type AdvancedFilter = {
@@ -157,6 +162,7 @@ export function CustomReportWizard({
   baseKey,
   baseName,
   structure,
+  orgName,
 }: WizardProps) {
   const router = useRouter();
 
@@ -511,7 +517,9 @@ export function CustomReportWizard({
             />
           </div>
         ) : step === 2 ? (
-          <div className="max-w-4xl space-y-6">
+          <div className="max-w-6xl">
+            <div className="grid grid-cols-1 gap-8 lg:grid-cols-[1fr_22rem]">
+              <div className="space-y-6">
             {/* ── Choose Details to Display ─────────────────────── */}
             <div className="space-y-3">
               <h2 className="text-base font-semibold">
@@ -535,6 +543,10 @@ export function CustomReportWizard({
                     className="accent-primary"
                   />
                   Organization Details
+                  <Settings
+                    className="h-3.5 w-3.5 text-muted-foreground"
+                    aria-hidden
+                  />
                 </label>
                 <label className="flex items-center gap-2">
                   <input
@@ -763,6 +775,36 @@ export function CustomReportWizard({
                   </div>
                 </div>
               </div>
+            </div>
+              </div>
+              {/* ── Preview pane ─────────────────────────────────── */}
+              <aside>
+                <div className="mb-2 text-center text-xs uppercase tracking-wider text-muted-foreground">
+                  Preview
+                </div>
+                <div className="rounded-md border bg-card p-6 shadow-sm">
+                  <div className="space-y-2 text-center">
+                    {showOrgName ? (
+                      <div className="text-sm text-muted-foreground">
+                        {orgName}
+                      </div>
+                    ) : null}
+                    {showReportBasis ? (
+                      <div className="text-lg font-semibold">
+                        Basis: {reportBasis === "cash" ? "Cash" : "Accrual"}
+                      </div>
+                    ) : null}
+                  </div>
+                  <div className="mt-6 space-y-3">
+                    <div className="h-px bg-border" />
+                    <div className="h-px bg-border" />
+                    <div className="h-px bg-border" />
+                    <div className="h-px bg-border" />
+                    <div className="h-px bg-border" />
+                    <div className="h-px bg-border" />
+                  </div>
+                </div>
+              </aside>
             </div>
           </div>
         ) : (

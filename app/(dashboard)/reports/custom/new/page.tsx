@@ -63,6 +63,7 @@ export default async function NewCustomReportPage({
       baseName={base.name}
       baseHref={base.href ?? null}
       structure={structure}
+      orgName={organization.name}
     />
   );
 }
