@@ -140,7 +140,6 @@ const FILTER_OP_OPTIONS: { value: string; label: string }[] = [
 ];
 
 const STEP_PLACEHOLDER: Record<number, string> = {
-  2: "Report Layout — configured in an upcoming step.",
   3: "Report Preferences — configured in an upcoming step.",
 };
 
@@ -181,6 +180,32 @@ export function CustomReportWizard({
   // Preferences (step 3) and required on Create.
   const [name, setName] = React.useState(baseName);
 
+  // ── Step 3 (Report Layout) state ────────────────────────────────
+  // "Choose Details to Display" checkboxes
+  const [showOrgName, setShowOrgName] = React.useState(true);
+  const [showOrgDetails, setShowOrgDetails] = React.useState(false);
+  const [showReportBasis, setShowReportBasis] = React.useState(true);
+  const [showPageNumber, setShowPageNumber] = React.useState(false);
+  const [showGeneratedBy, setShowGeneratedBy] = React.useState(false);
+  const [showGeneratedDate, setShowGeneratedDate] = React.useState(false);
+  const [showGeneratedTime, setShowGeneratedTime] = React.useState(false);
+  // "Report Layout" controls
+  const [tableDensity, setTableDensity] = React.useState<
+    "classic" | "compact" | "comfortable"
+  >("classic");
+  const [autoResize, setAutoResize] = React.useState(true);
+  const [paperSize, setPaperSize] = React.useState<"a4" | "letter">("a4");
+  const [orientation, setOrientation] = React.useState<
+    "portrait" | "landscape"
+  >("portrait");
+  const [fontFamily, setFontFamily] = React.useState<"ubuntu" | "default">(
+    "ubuntu"
+  );
+  const [marginTop, setMarginTop] = React.useState(0.7);
+  const [marginBottom, setMarginBottom] = React.useState(0.7);
+  const [marginLeft, setMarginLeft] = React.useState(0.55);
+  const [marginRight, setMarginRight] = React.useState(0.2);
+
   const [pending, startTransition] = React.useTransition();
 
   function addFilter() {
@@ -208,6 +233,23 @@ export function CustomReportWizard({
       params.set("account", filterAccount);
     if (compareWith && compareWith !== "none")
       params.set("compareWith", compareWith);
+    // Step 3 Report Layout — only emit when non-default (keeps URLs short).
+    if (!showOrgName) params.set("showOrgName", "false");
+    if (showOrgDetails) params.set("showOrgDetails", "true");
+    if (!showReportBasis) params.set("showReportBasis", "false");
+    if (showPageNumber) params.set("showPageNumber", "true");
+    if (showGeneratedBy) params.set("showGeneratedBy", "true");
+    if (showGeneratedDate) params.set("showGeneratedDate", "true");
+    if (showGeneratedTime) params.set("showGeneratedTime", "true");
+    if (tableDensity !== "classic") params.set("tableDensity", tableDensity);
+    if (!autoResize) params.set("autoResize", "false");
+    if (paperSize !== "a4") params.set("paperSize", paperSize);
+    if (orientation !== "portrait") params.set("orientation", orientation);
+    if (fontFamily !== "ubuntu") params.set("fontFamily", fontFamily);
+    if (marginTop !== 0.7) params.set("marginTop", String(marginTop));
+    if (marginBottom !== 0.7) params.set("marginBottom", String(marginBottom));
+    if (marginLeft !== 0.55) params.set("marginLeft", String(marginLeft));
+    if (marginRight !== 0.2) params.set("marginRight", String(marginRight));
 
     startTransition(async () => {
       const res = await createCustomReportAction({
@@ -468,6 +510,261 @@ export function CustomReportWizard({
               structure={structure}
             />
           </div>
+        ) : step === 2 ? (
+          <div className="max-w-4xl space-y-6">
+            {/* ── Choose Details to Display ─────────────────────── */}
+            <div className="space-y-3">
+              <h2 className="text-base font-semibold">
+                Choose Details to Display
+              </h2>
+              <div className="grid grid-cols-1 gap-x-6 gap-y-2 text-sm sm:grid-cols-3">
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={showOrgName}
+                    onChange={(e) => setShowOrgName(e.target.checked)}
+                    className="accent-primary"
+                  />
+                  Organization Name
+                </label>
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={showOrgDetails}
+                    onChange={(e) => setShowOrgDetails(e.target.checked)}
+                    className="accent-primary"
+                  />
+                  Organization Details
+                </label>
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={showReportBasis}
+                    onChange={(e) => setShowReportBasis(e.target.checked)}
+                    className="accent-primary"
+                  />
+                  Report Basis
+                </label>
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={showPageNumber}
+                    onChange={(e) => setShowPageNumber(e.target.checked)}
+                    className="accent-primary"
+                  />
+                  Page Number
+                </label>
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={showGeneratedBy}
+                    onChange={(e) => setShowGeneratedBy(e.target.checked)}
+                    className="accent-primary"
+                  />
+                  Generated By
+                </label>
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={showGeneratedDate}
+                    onChange={(e) => setShowGeneratedDate(e.target.checked)}
+                    className="accent-primary"
+                  />
+                  Generated Date
+                </label>
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={showGeneratedTime}
+                    onChange={(e) => setShowGeneratedTime(e.target.checked)}
+                    className="accent-primary"
+                  />
+                  Generated Time
+                </label>
+              </div>
+            </div>
+
+            <div className="border-t border-border" />
+
+            {/* ── Report Layout ─────────────────────────────────── */}
+            <div className="space-y-4">
+              <h2 className="text-base font-semibold">Report Layout</h2>
+
+              {/* Table Density */}
+              <div className="space-y-1.5">
+                <Label htmlFor="cr-table-density">Table Density</Label>
+                <select
+                  id="cr-table-density"
+                  value={tableDensity}
+                  onChange={(e) =>
+                    setTableDensity(
+                      e.target.value as "classic" | "compact" | "comfortable"
+                    )
+                  }
+                  className={cn(SELECT_CLASS, "max-w-sm")}
+                >
+                  <option value="classic">Classic</option>
+                  <option value="compact">Compact</option>
+                  <option value="comfortable">Comfortable</option>
+                </select>
+              </div>
+
+              {/* Auto-resize */}
+              <label className="flex items-start gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={autoResize}
+                  onChange={(e) => setAutoResize(e.target.checked)}
+                  className="mt-0.5 accent-primary"
+                />
+                <span>
+                  Re-size the table and its font automatically to fit the
+                  content within the table.
+                </span>
+              </label>
+
+              {/* Paper Size + Orientation */}
+              <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label>Paper Size</Label>
+                  <div className="flex items-center gap-4 text-sm">
+                    <label className="flex items-center gap-1.5">
+                      <input
+                        type="radio"
+                        name="cr-paper-size"
+                        value="a4"
+                        checked={paperSize === "a4"}
+                        onChange={() => setPaperSize("a4")}
+                        className="accent-primary"
+                      />
+                      A4
+                    </label>
+                    <label className="flex items-center gap-1.5">
+                      <input
+                        type="radio"
+                        name="cr-paper-size"
+                        value="letter"
+                        checked={paperSize === "letter"}
+                        onChange={() => setPaperSize("letter")}
+                        className="accent-primary"
+                      />
+                      Letter
+                    </label>
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Orientation</Label>
+                  <div className="flex items-center gap-4 text-sm">
+                    <label className="flex items-center gap-1.5">
+                      <input
+                        type="radio"
+                        name="cr-orientation"
+                        value="portrait"
+                        checked={orientation === "portrait"}
+                        onChange={() => setOrientation("portrait")}
+                        className="accent-primary"
+                      />
+                      Portrait
+                    </label>
+                    <label className="flex items-center gap-1.5">
+                      <input
+                        type="radio"
+                        name="cr-orientation"
+                        value="landscape"
+                        checked={orientation === "landscape"}
+                        onChange={() => setOrientation("landscape")}
+                        className="accent-primary"
+                      />
+                      Landscape
+                    </label>
+                  </div>
+                </div>
+              </div>
+
+              {/* Font Family + Margins */}
+              <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label htmlFor="cr-font-family">Font Family</Label>
+                  <select
+                    id="cr-font-family"
+                    value={fontFamily}
+                    onChange={(e) =>
+                      setFontFamily(e.target.value as "ubuntu" | "default")
+                    }
+                    className={SELECT_CLASS}
+                  >
+                    <option value="ubuntu">Ubuntu</option>
+                    <option value="default">Default</option>
+                  </select>
+                  <p className="text-xs text-muted-foreground">
+                    Supports English and European languages. This font can
+                    also render Indian Rupees Symbol.
+                  </p>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Margins</Label>
+                  <div className="grid grid-cols-4 gap-2">
+                    <div className="space-y-1">
+                      <Input
+                        type="number"
+                        step="0.05"
+                        value={marginTop}
+                        onChange={(e) =>
+                          setMarginTop(parseFloat(e.target.value) || 0)
+                        }
+                        aria-label="Top margin"
+                      />
+                      <p className="text-center text-xs text-muted-foreground">
+                        Top
+                      </p>
+                    </div>
+                    <div className="space-y-1">
+                      <Input
+                        type="number"
+                        step="0.05"
+                        value={marginBottom}
+                        onChange={(e) =>
+                          setMarginBottom(parseFloat(e.target.value) || 0)
+                        }
+                        aria-label="Bottom margin"
+                      />
+                      <p className="text-center text-xs text-muted-foreground">
+                        Bottom
+                      </p>
+                    </div>
+                    <div className="space-y-1">
+                      <Input
+                        type="number"
+                        step="0.05"
+                        value={marginLeft}
+                        onChange={(e) =>
+                          setMarginLeft(parseFloat(e.target.value) || 0)
+                        }
+                        aria-label="Left margin"
+                      />
+                      <p className="text-center text-xs text-muted-foreground">
+                        Left
+                      </p>
+                    </div>
+                    <div className="space-y-1">
+                      <Input
+                        type="number"
+                        step="0.05"
+                        value={marginRight}
+                        onChange={(e) =>
+                          setMarginRight(parseFloat(e.target.value) || 0)
+                        }
+                        aria-label="Right margin"
+                      />
+                      <p className="text-center text-xs text-muted-foreground">
+                        Right
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
         ) : (
           <div className="max-w-2xl space-y-6">
             <div className="rounded-md border bg-muted/30 p-8 text-center">
@@ -475,18 +772,15 @@ export function CustomReportWizard({
                 {STEP_PLACEHOLDER[step]}
               </p>
             </div>
-
-            {step === 3 ? (
-              <div className="grid grid-cols-[10rem_20rem] items-center gap-4">
-                <Label htmlFor="cr-report-name">Report name</Label>
-                <Input
-                  id="cr-report-name"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="Report name"
-                />
-              </div>
-            ) : null}
+            <div className="grid grid-cols-[10rem_20rem] items-center gap-4">
+              <Label htmlFor="cr-report-name">Report name</Label>
+              <Input
+                id="cr-report-name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Report name"
+              />
+            </div>
           </div>
         )}
       </div>
