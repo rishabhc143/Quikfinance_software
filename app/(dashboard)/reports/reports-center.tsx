@@ -4,8 +4,6 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
-  Calendar,
-  ChevronDown,
   Home,
   Star,
   Users,
@@ -36,7 +34,6 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Combobox } from "@/components/ui/combobox";
-import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import {
   REPORTS,
@@ -48,7 +45,6 @@ import {
 import {
   toggleReportFavoriteAction,
   deleteCustomReportAction,
-  createCustomReportAction,
 } from "./actions";
 
 /** A saved custom report, serialized for the client. */
@@ -59,47 +55,6 @@ export type CustomReportRow = {
   params: string;
   createdAt: string;
 };
-
-/* ── "Create Custom Report" modal: form options + select styling ──── */
-
-const DATE_RANGE_OPTIONS: { value: string; label: string }[] = [
-  { value: "today", label: "Today" },
-  { value: "this-month", label: "This Month" },
-  { value: "this-quarter", label: "This Quarter" },
-  { value: "this-year", label: "This Year" },
-  { value: "previous-month", label: "Previous Month" },
-  { value: "previous-quarter", label: "Previous Quarter" },
-  { value: "previous-year", label: "Previous Year" },
-  { value: "custom", label: "Custom" },
-];
-
-const COMPARE_OPTIONS: { value: string; label: string }[] = [
-  { value: "none", label: "None" },
-  { value: "previous-year", label: "Previous Year(s)" },
-  { value: "previous-period", label: "Previous Period(s)" },
-];
-
-const FILTER_ACCOUNT_OPTIONS: { value: string; label: string; hint: string }[] =
-  [
-    {
-      value: "without-zero-balance",
-      label: "Accounts Without Zero Balance",
-      hint: "Filter every account except the ones with zero-balance.",
-    },
-    {
-      value: "all",
-      label: "All Accounts",
-      hint: "Filter all accounts, including the ones with zero-balance.",
-    },
-    {
-      value: "with-transactions",
-      label: "Accounts With Transactions",
-      hint: "Filter the accounts with transactions that were created during the specified period.",
-    },
-  ];
-
-const SELECT_CLASS =
-  "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50";
 
 /**
  * REPORTS-CENTER — client component for `/reports`.
@@ -176,29 +131,12 @@ export function ReportsCenter({
   const [search, setSearch] = React.useState("");
   const [pending, startTransition] = React.useTransition();
 
-  // "Create Custom Report" modal — inline form. The user picks a base
-  // report, names it, and chooses default filters; Create persists via
-  // `createCustomReportAction` and refreshes the My Reports tab.
+  // "Create Custom Report" entry-point modal: pick a base report to
+  // customize. Proceed opens the 4-step Custom Report wizard seeded
+  // with the chosen base report.
   const router = useRouter();
   const [customOpen, setCustomOpen] = React.useState(false);
   const [baseReportKey, setBaseReportKey] = React.useState<string | null>(null);
-  const [name, setName] = React.useState("");
-  const [dateRange, setDateRange] = React.useState("today");
-  const [reportBasis, setReportBasis] = React.useState("accrual");
-  const [filterAccount, setFilterAccount] = React.useState<string | null>(
-    "all"
-  );
-  const [compareWith, setCompareWith] = React.useState("none");
-  // Report Layout (Zoho's Step 3) — collapsed by default; saves with the
-  // report's params, but the PDF generators don't read these yet.
-  const [layoutOpen, setLayoutOpen] = React.useState(false);
-  const [paperSize, setPaperSize] = React.useState<"a4" | "letter">("a4");
-  const [orientation, setOrientation] = React.useState<
-    "portrait" | "landscape"
-  >("portrait");
-  const [showOrgName, setShowOrgName] = React.useState(true);
-  const [showGeneratedDate, setShowGeneratedDate] = React.useState(true);
-  const [showPageNumber, setShowPageNumber] = React.useState(false);
 
   // All catalog reports as dropdown options; "coming soon" (not yet
   // built) entries are labelled so the user knows they can't proceed.
@@ -212,74 +150,15 @@ export function ReportsCenter({
     [],
   );
 
-  // Picking a base auto-fills the report name (unless the user has
-  // already typed something — never overwrite custom input).
-  function onBaseChange(key: string | null) {
-    setBaseReportKey(key);
-    if (key && !name.trim()) {
-      const r = REPORTS.find((x) => x.key === key);
-      if (r) setName(r.name);
-    }
-  }
-
-  function resetCustomForm() {
-    setBaseReportKey(null);
-    setName("");
-    setDateRange("today");
-    setReportBasis("accrual");
-    setFilterAccount("all");
-    setCompareWith("none");
-    setLayoutOpen(false);
-    setPaperSize("a4");
-    setOrientation("portrait");
-    setShowOrgName(true);
-    setShowGeneratedDate(true);
-    setShowPageNumber(false);
-  }
-
-  function onCustomOpenChange(open: boolean) {
-    setCustomOpen(open);
-    if (!open) resetCustomForm();
-  }
-
-  function onCreateCustomReport() {
+  function onProceedCustomReport() {
     const r = REPORTS.find((x) => x.key === baseReportKey);
     if (!r) return;
-    if (!r.available || !r.href) {
+    if (r.available && r.href) {
+      setCustomOpen(false);
+      router.push(`/reports/custom/new?base=${r.key}`);
+    } else {
       toast.error("That report isn't available yet — pick another.");
-      return;
     }
-    const params = new URLSearchParams();
-    if (dateRange) params.set("dateRange", dateRange);
-    if (reportBasis) params.set("basis", reportBasis);
-    if (filterAccount && filterAccount !== "all")
-      params.set("account", filterAccount);
-    if (compareWith && compareWith !== "none")
-      params.set("compareWith", compareWith);
-    // Report Layout — only emit when different from defaults (keeps URLs short).
-    if (paperSize !== "a4") params.set("paperSize", paperSize);
-    if (orientation !== "portrait") params.set("orientation", orientation);
-    if (!showOrgName) params.set("showOrgName", "false");
-    if (!showGeneratedDate) params.set("showGeneratedDate", "false");
-    if (showPageNumber) params.set("showPageNumber", "true");
-
-    startTransition(async () => {
-      const res = await createCustomReportAction({
-        name: name.trim(),
-        reportKey: r.key,
-        params: params.toString(),
-      });
-      if (res.ok) {
-        toast.success("Custom report created");
-        setCustomOpen(false);
-        resetCustomForm();
-        // Switch to My Reports + refresh server data so the new row shows.
-        router.push("/reports?tab=my");
-        router.refresh();
-      } else {
-        toast.error(res.error ?? "Couldn't create custom report");
-      }
-    });
   }
 
   const visibleReports = React.useMemo<ReportEntry[]>(() => {
@@ -347,228 +226,31 @@ export function ReportsCenter({
   return (
     <div className="flex flex-col h-[calc(100vh-3.5rem)]">
       {/* ── New Custom Report modal ─────────────────────────────── */}
-      <Dialog open={customOpen} onOpenChange={onCustomOpenChange}>
+      <Dialog open={customOpen} onOpenChange={setCustomOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Create Custom Report</DialogTitle>
+            <DialogTitle>New Custom Report</DialogTitle>
             <DialogDescription>
-              Pick a base report, name it, and choose default filters.
+              Select the report that you want to customize and create a new
+              custom report.
             </DialogDescription>
           </DialogHeader>
-          <div className="max-h-[70vh] space-y-4 overflow-y-auto py-2">
-            {/* Base Report */}
-            <div className="space-y-1.5">
-              <Label htmlFor="cr-base">Base Report</Label>
-              <Combobox
-                options={customReportOptions}
-                value={baseReportKey}
-                onChange={onBaseChange}
-                placeholder="Select a Report"
-              />
-            </div>
-
-            {/* Report Name */}
-            <div className="space-y-1.5">
-              <Label htmlFor="cr-name">Report Name</Label>
-              <Input
-                id="cr-name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Report name"
-              />
-            </div>
-
-            {/* Date Range */}
-            <div className="space-y-1.5">
-              <Label htmlFor="cr-date-range">Date Range</Label>
-              <div className="relative">
-                <Calendar className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <select
-                  id="cr-date-range"
-                  value={dateRange}
-                  onChange={(e) => setDateRange(e.target.value)}
-                  className={cn(SELECT_CLASS, "pl-9")}
-                >
-                  {DATE_RANGE_OPTIONS.map((o) => (
-                    <option key={o.value} value={o.value}>
-                      {o.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            {/* Report Basis */}
-            <div className="space-y-1.5">
-              <Label htmlFor="cr-basis">Report Basis</Label>
-              <select
-                id="cr-basis"
-                value={reportBasis}
-                onChange={(e) => setReportBasis(e.target.value)}
-                className={SELECT_CLASS}
-              >
-                <option value="accrual">Accrual</option>
-                <option value="cash">Cash</option>
-              </select>
-            </div>
-
-            {/* Filter Accounts */}
-            <div className="space-y-1.5">
-              <Label>Filter Accounts</Label>
-              <Combobox
-                options={FILTER_ACCOUNT_OPTIONS}
-                value={filterAccount}
-                onChange={setFilterAccount}
-                placeholder="All Accounts"
-                stackedOptions
-              />
-            </div>
-
-            {/* Compare With */}
-            <div className="space-y-1.5">
-              <Label htmlFor="cr-compare-with">Compare With</Label>
-              <select
-                id="cr-compare-with"
-                value={compareWith}
-                onChange={(e) => setCompareWith(e.target.value)}
-                className={SELECT_CLASS}
-              >
-                {COMPARE_OPTIONS.map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* Report Layout (collapsible, defaults closed) */}
-            <div className="space-y-2 pt-1">
-              <button
-                type="button"
-                onClick={() => setLayoutOpen((o) => !o)}
-                aria-expanded={layoutOpen}
-                className="flex items-center gap-1.5 text-sm font-semibold"
-              >
-                Report Layout
-                <ChevronDown
-                  className={cn(
-                    "h-4 w-4 text-muted-foreground transition-transform",
-                    layoutOpen ? "" : "-rotate-90"
-                  )}
-                />
-              </button>
-              {layoutOpen ? (
-                <div className="space-y-4 pt-2">
-                  {/* Paper Size */}
-                  <div className="space-y-1.5">
-                    <Label>Paper Size</Label>
-                    <div className="flex items-center gap-4 text-sm">
-                      <label className="flex items-center gap-1.5">
-                        <input
-                          type="radio"
-                          name="cr-paper-size"
-                          value="a4"
-                          checked={paperSize === "a4"}
-                          onChange={() => setPaperSize("a4")}
-                          className="accent-primary"
-                        />
-                        A4
-                      </label>
-                      <label className="flex items-center gap-1.5">
-                        <input
-                          type="radio"
-                          name="cr-paper-size"
-                          value="letter"
-                          checked={paperSize === "letter"}
-                          onChange={() => setPaperSize("letter")}
-                          className="accent-primary"
-                        />
-                        Letter
-                      </label>
-                    </div>
-                  </div>
-
-                  {/* Orientation */}
-                  <div className="space-y-1.5">
-                    <Label>Orientation</Label>
-                    <div className="flex items-center gap-4 text-sm">
-                      <label className="flex items-center gap-1.5">
-                        <input
-                          type="radio"
-                          name="cr-orientation"
-                          value="portrait"
-                          checked={orientation === "portrait"}
-                          onChange={() => setOrientation("portrait")}
-                          className="accent-primary"
-                        />
-                        Portrait
-                      </label>
-                      <label className="flex items-center gap-1.5">
-                        <input
-                          type="radio"
-                          name="cr-orientation"
-                          value="landscape"
-                          checked={orientation === "landscape"}
-                          onChange={() => setOrientation("landscape")}
-                          className="accent-primary"
-                        />
-                        Landscape
-                      </label>
-                    </div>
-                  </div>
-
-                  {/* Show on PDF */}
-                  <div className="space-y-1.5">
-                    <Label>Show on PDF</Label>
-                    <div className="space-y-1.5 text-sm">
-                      <label className="flex items-center gap-2">
-                        <input
-                          type="checkbox"
-                          checked={showOrgName}
-                          onChange={(e) => setShowOrgName(e.target.checked)}
-                          className="accent-primary"
-                        />
-                        Organization Name
-                      </label>
-                      <label className="flex items-center gap-2">
-                        <input
-                          type="checkbox"
-                          checked={showGeneratedDate}
-                          onChange={(e) =>
-                            setShowGeneratedDate(e.target.checked)
-                          }
-                          className="accent-primary"
-                        />
-                        Generated Date
-                      </label>
-                      <label className="flex items-center gap-2">
-                        <input
-                          type="checkbox"
-                          checked={showPageNumber}
-                          onChange={(e) =>
-                            setShowPageNumber(e.target.checked)
-                          }
-                          className="accent-primary"
-                        />
-                        Page Number
-                      </label>
-                    </div>
-                  </div>
-                </div>
-              ) : null}
-            </div>
+          <div className="py-1">
+            <Combobox
+              options={customReportOptions}
+              value={baseReportKey}
+              onChange={setBaseReportKey}
+              placeholder="Select a Report"
+            />
           </div>
           <DialogFooter>
             <Button
-              onClick={onCreateCustomReport}
-              disabled={!baseReportKey || !name.trim() || pending}
+              onClick={onProceedCustomReport}
+              disabled={!baseReportKey}
             >
-              {pending ? "Creating…" : "Create"}
+              Proceed
             </Button>
-            <Button
-              variant="outline"
-              onClick={() => onCustomOpenChange(false)}
-            >
+            <Button variant="outline" onClick={() => setCustomOpen(false)}>
               Cancel
             </Button>
           </DialogFooter>
