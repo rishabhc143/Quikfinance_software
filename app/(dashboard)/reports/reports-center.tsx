@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   Calendar,
+  ChevronDown,
   Home,
   Star,
   Users,
@@ -188,6 +189,16 @@ export function ReportsCenter({
     "all"
   );
   const [compareWith, setCompareWith] = React.useState("none");
+  // Report Layout (Zoho's Step 3) — collapsed by default; saves with the
+  // report's params, but the PDF generators don't read these yet.
+  const [layoutOpen, setLayoutOpen] = React.useState(false);
+  const [paperSize, setPaperSize] = React.useState<"a4" | "letter">("a4");
+  const [orientation, setOrientation] = React.useState<
+    "portrait" | "landscape"
+  >("portrait");
+  const [showOrgName, setShowOrgName] = React.useState(true);
+  const [showGeneratedDate, setShowGeneratedDate] = React.useState(true);
+  const [showPageNumber, setShowPageNumber] = React.useState(false);
 
   // All catalog reports as dropdown options; "coming soon" (not yet
   // built) entries are labelled so the user knows they can't proceed.
@@ -218,6 +229,12 @@ export function ReportsCenter({
     setReportBasis("accrual");
     setFilterAccount("all");
     setCompareWith("none");
+    setLayoutOpen(false);
+    setPaperSize("a4");
+    setOrientation("portrait");
+    setShowOrgName(true);
+    setShowGeneratedDate(true);
+    setShowPageNumber(false);
   }
 
   function onCustomOpenChange(open: boolean) {
@@ -239,6 +256,12 @@ export function ReportsCenter({
       params.set("account", filterAccount);
     if (compareWith && compareWith !== "none")
       params.set("compareWith", compareWith);
+    // Report Layout — only emit when different from defaults (keeps URLs short).
+    if (paperSize !== "a4") params.set("paperSize", paperSize);
+    if (orientation !== "portrait") params.set("orientation", orientation);
+    if (!showOrgName) params.set("showOrgName", "false");
+    if (!showGeneratedDate) params.set("showGeneratedDate", "false");
+    if (showPageNumber) params.set("showPageNumber", "true");
 
     startTransition(async () => {
       const res = await createCustomReportAction({
@@ -416,6 +439,123 @@ export function ReportsCenter({
                   </option>
                 ))}
               </select>
+            </div>
+
+            {/* Report Layout (collapsible, defaults closed) */}
+            <div className="space-y-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setLayoutOpen((o) => !o)}
+                aria-expanded={layoutOpen}
+                className="flex items-center gap-1.5 text-sm font-semibold"
+              >
+                Report Layout
+                <ChevronDown
+                  className={cn(
+                    "h-4 w-4 text-muted-foreground transition-transform",
+                    layoutOpen ? "" : "-rotate-90"
+                  )}
+                />
+              </button>
+              {layoutOpen ? (
+                <div className="space-y-4 pt-2">
+                  {/* Paper Size */}
+                  <div className="space-y-1.5">
+                    <Label>Paper Size</Label>
+                    <div className="flex items-center gap-4 text-sm">
+                      <label className="flex items-center gap-1.5">
+                        <input
+                          type="radio"
+                          name="cr-paper-size"
+                          value="a4"
+                          checked={paperSize === "a4"}
+                          onChange={() => setPaperSize("a4")}
+                          className="accent-primary"
+                        />
+                        A4
+                      </label>
+                      <label className="flex items-center gap-1.5">
+                        <input
+                          type="radio"
+                          name="cr-paper-size"
+                          value="letter"
+                          checked={paperSize === "letter"}
+                          onChange={() => setPaperSize("letter")}
+                          className="accent-primary"
+                        />
+                        Letter
+                      </label>
+                    </div>
+                  </div>
+
+                  {/* Orientation */}
+                  <div className="space-y-1.5">
+                    <Label>Orientation</Label>
+                    <div className="flex items-center gap-4 text-sm">
+                      <label className="flex items-center gap-1.5">
+                        <input
+                          type="radio"
+                          name="cr-orientation"
+                          value="portrait"
+                          checked={orientation === "portrait"}
+                          onChange={() => setOrientation("portrait")}
+                          className="accent-primary"
+                        />
+                        Portrait
+                      </label>
+                      <label className="flex items-center gap-1.5">
+                        <input
+                          type="radio"
+                          name="cr-orientation"
+                          value="landscape"
+                          checked={orientation === "landscape"}
+                          onChange={() => setOrientation("landscape")}
+                          className="accent-primary"
+                        />
+                        Landscape
+                      </label>
+                    </div>
+                  </div>
+
+                  {/* Show on PDF */}
+                  <div className="space-y-1.5">
+                    <Label>Show on PDF</Label>
+                    <div className="space-y-1.5 text-sm">
+                      <label className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={showOrgName}
+                          onChange={(e) => setShowOrgName(e.target.checked)}
+                          className="accent-primary"
+                        />
+                        Organization Name
+                      </label>
+                      <label className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={showGeneratedDate}
+                          onChange={(e) =>
+                            setShowGeneratedDate(e.target.checked)
+                          }
+                          className="accent-primary"
+                        />
+                        Generated Date
+                      </label>
+                      <label className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={showPageNumber}
+                          onChange={(e) =>
+                            setShowPageNumber(e.target.checked)
+                          }
+                          className="accent-primary"
+                        />
+                        Page Number
+                      </label>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
             </div>
           </div>
           <DialogFooter>
