@@ -194,3 +194,56 @@ export function renameReportNode(
     n.id === id && n.kind === "section" ? { ...n, label } : n,
   );
 }
+
+/* ────────────────────────────────────────────────────────────────────
+ * Step 2 — Customize Columns
+ *
+ * Which value columns appear to the right of the (fixed) Account
+ * Definition tree. The user picks from this catalog via the Customize
+ * Columns dialog. Pure helpers so the move / filter behaviour is
+ * unit-testable without rendering.
+ * ──────────────────────────────────────────────────────────────────── */
+
+export type ReportColumn = {
+  key: string;
+  label: string;
+  /** Right-align numeric columns. */
+  align?: "right";
+};
+
+/** Catalog of selectable value columns (Account Definition is always shown). */
+export const REPORT_COLUMNS: ReportColumn[] = [
+  { key: "account", label: "Account" },
+  { key: "total", label: "Total", align: "right" },
+  { key: "account-description", label: "Account Description" },
+  { key: "year-to-date", label: "Year To Date", align: "right" },
+];
+
+/** Columns shown by default (mirrors the report's normal layout). */
+export const DEFAULT_REPORT_COLUMNS: string[] = ["account", "total"];
+
+export function reportColumn(key: string): ReportColumn | undefined {
+  return REPORT_COLUMNS.find((c) => c.key === key);
+}
+
+export function reportColumnLabel(key: string): string {
+  return reportColumn(key)?.label ?? key;
+}
+
+/** Catalog columns not currently selected (the "Available Columns" list). */
+export function availableReportColumns(selected: string[]): ReportColumn[] {
+  return REPORT_COLUMNS.filter((c) => !selected.includes(c.key));
+}
+
+/** Add a column key to the selected list (append, no duplicates). */
+export function addReportColumn(selected: string[], key: string): string[] {
+  return selected.includes(key) ? selected : [...selected, key];
+}
+
+/** Remove a column key from the selected list. */
+export function removeReportColumn(
+  selected: string[],
+  key: string,
+): string[] {
+  return selected.filter((k) => k !== key);
+}
