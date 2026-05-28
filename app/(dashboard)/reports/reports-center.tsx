@@ -4,6 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
+  Calendar,
   Home,
   Star,
   Users,
@@ -34,6 +35,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Combobox } from "@/components/ui/combobox";
+import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import {
   REPORTS,
@@ -45,6 +47,7 @@ import {
 import {
   toggleReportFavoriteAction,
   deleteCustomReportAction,
+  createCustomReportAction,
 } from "./actions";
 
 /** A saved custom report, serialized for the client. */
@@ -55,6 +58,47 @@ export type CustomReportRow = {
   params: string;
   createdAt: string;
 };
+
+/* ── "Create Custom Report" modal: form options + select styling ──── */
+
+const DATE_RANGE_OPTIONS: { value: string; label: string }[] = [
+  { value: "today", label: "Today" },
+  { value: "this-month", label: "This Month" },
+  { value: "this-quarter", label: "This Quarter" },
+  { value: "this-year", label: "This Year" },
+  { value: "previous-month", label: "Previous Month" },
+  { value: "previous-quarter", label: "Previous Quarter" },
+  { value: "previous-year", label: "Previous Year" },
+  { value: "custom", label: "Custom" },
+];
+
+const COMPARE_OPTIONS: { value: string; label: string }[] = [
+  { value: "none", label: "None" },
+  { value: "previous-year", label: "Previous Year(s)" },
+  { value: "previous-period", label: "Previous Period(s)" },
+];
+
+const FILTER_ACCOUNT_OPTIONS: { value: string; label: string; hint: string }[] =
+  [
+    {
+      value: "without-zero-balance",
+      label: "Accounts Without Zero Balance",
+      hint: "Filter every account except the ones with zero-balance.",
+    },
+    {
+      value: "all",
+      label: "All Accounts",
+      hint: "Filter all accounts, including the ones with zero-balance.",
+    },
+    {
+      value: "with-transactions",
+      label: "Accounts With Transactions",
+      hint: "Filter the accounts with transactions that were created during the specified period.",
+    },
+  ];
+
+const SELECT_CLASS =
+  "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50";
 
 /**
  * REPORTS-CENTER — client component for `/reports`.
@@ -131,12 +175,19 @@ export function ReportsCenter({
   const [search, setSearch] = React.useState("");
   const [pending, startTransition] = React.useTransition();
 
-  // "Create Custom Report" entry-point modal: pick a base report to
-  // customize. Proceed opens the 4-step Custom Report wizard seeded
-  // with the chosen base report.
+  // "Create Custom Report" modal — inline form. The user picks a base
+  // report, names it, and chooses default filters; Create persists via
+  // `createCustomReportAction` and refreshes the My Reports tab.
   const router = useRouter();
   const [customOpen, setCustomOpen] = React.useState(false);
   const [baseReportKey, setBaseReportKey] = React.useState<string | null>(null);
+  const [name, setName] = React.useState("");
+  const [dateRange, setDateRange] = React.useState("today");
+  const [reportBasis, setReportBasis] = React.useState("accrual");
+  const [filterAccount, setFilterAccount] = React.useState<string | null>(
+    "all"
+  );
+  const [compareWith, setCompareWith] = React.useState("none");
 
   // All catalog reports as dropdown options; "coming soon" (not yet
   // built) entries are labelled so the user knows they can't proceed.
@@ -150,15 +201,62 @@ export function ReportsCenter({
     [],
   );
 
-  function onProceedCustomReport() {
+  // Picking a base auto-fills the report name (unless the user has
+  // already typed something — never overwrite custom input).
+  function onBaseChange(key: string | null) {
+    setBaseReportKey(key);
+    if (key && !name.trim()) {
+      const r = REPORTS.find((x) => x.key === key);
+      if (r) setName(r.name);
+    }
+  }
+
+  function resetCustomForm() {
+    setBaseReportKey(null);
+    setName("");
+    setDateRange("today");
+    setReportBasis("accrual");
+    setFilterAccount("all");
+    setCompareWith("none");
+  }
+
+  function onCustomOpenChange(open: boolean) {
+    setCustomOpen(open);
+    if (!open) resetCustomForm();
+  }
+
+  function onCreateCustomReport() {
     const r = REPORTS.find((x) => x.key === baseReportKey);
     if (!r) return;
-    if (r.available && r.href) {
-      setCustomOpen(false);
-      router.push(`/reports/custom/new?base=${r.key}`);
-    } else {
+    if (!r.available || !r.href) {
       toast.error("That report isn't available yet — pick another.");
+      return;
     }
+    const params = new URLSearchParams();
+    if (dateRange) params.set("dateRange", dateRange);
+    if (reportBasis) params.set("basis", reportBasis);
+    if (filterAccount && filterAccount !== "all")
+      params.set("account", filterAccount);
+    if (compareWith && compareWith !== "none")
+      params.set("compareWith", compareWith);
+
+    startTransition(async () => {
+      const res = await createCustomReportAction({
+        name: name.trim(),
+        reportKey: r.key,
+        params: params.toString(),
+      });
+      if (res.ok) {
+        toast.success("Custom report created");
+        setCustomOpen(false);
+        resetCustomForm();
+        // Switch to My Reports + refresh server data so the new row shows.
+        router.push("/reports?tab=my");
+        router.refresh();
+      } else {
+        toast.error(res.error ?? "Couldn't create custom report");
+      }
+    });
   }
 
   const visibleReports = React.useMemo<ReportEntry[]>(() => {
@@ -226,31 +324,111 @@ export function ReportsCenter({
   return (
     <div className="flex flex-col h-[calc(100vh-3.5rem)]">
       {/* ── New Custom Report modal ─────────────────────────────── */}
-      <Dialog open={customOpen} onOpenChange={setCustomOpen}>
+      <Dialog open={customOpen} onOpenChange={onCustomOpenChange}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>New Custom Report</DialogTitle>
+            <DialogTitle>Create Custom Report</DialogTitle>
             <DialogDescription>
-              Select the report that you want to customize and create a new
-              custom report.
+              Pick a base report, name it, and choose default filters.
             </DialogDescription>
           </DialogHeader>
-          <div className="py-1">
-            <Combobox
-              options={customReportOptions}
-              value={baseReportKey}
-              onChange={setBaseReportKey}
-              placeholder="Select a Report"
-            />
+          <div className="max-h-[70vh] space-y-4 overflow-y-auto py-2">
+            {/* Base Report */}
+            <div className="space-y-1.5">
+              <Label htmlFor="cr-base">Base Report</Label>
+              <Combobox
+                options={customReportOptions}
+                value={baseReportKey}
+                onChange={onBaseChange}
+                placeholder="Select a Report"
+              />
+            </div>
+
+            {/* Report Name */}
+            <div className="space-y-1.5">
+              <Label htmlFor="cr-name">Report Name</Label>
+              <Input
+                id="cr-name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Report name"
+              />
+            </div>
+
+            {/* Date Range */}
+            <div className="space-y-1.5">
+              <Label htmlFor="cr-date-range">Date Range</Label>
+              <div className="relative">
+                <Calendar className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <select
+                  id="cr-date-range"
+                  value={dateRange}
+                  onChange={(e) => setDateRange(e.target.value)}
+                  className={cn(SELECT_CLASS, "pl-9")}
+                >
+                  {DATE_RANGE_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* Report Basis */}
+            <div className="space-y-1.5">
+              <Label htmlFor="cr-basis">Report Basis</Label>
+              <select
+                id="cr-basis"
+                value={reportBasis}
+                onChange={(e) => setReportBasis(e.target.value)}
+                className={SELECT_CLASS}
+              >
+                <option value="accrual">Accrual</option>
+                <option value="cash">Cash</option>
+              </select>
+            </div>
+
+            {/* Filter Accounts */}
+            <div className="space-y-1.5">
+              <Label>Filter Accounts</Label>
+              <Combobox
+                options={FILTER_ACCOUNT_OPTIONS}
+                value={filterAccount}
+                onChange={setFilterAccount}
+                placeholder="All Accounts"
+                stackedOptions
+              />
+            </div>
+
+            {/* Compare With */}
+            <div className="space-y-1.5">
+              <Label htmlFor="cr-compare-with">Compare With</Label>
+              <select
+                id="cr-compare-with"
+                value={compareWith}
+                onChange={(e) => setCompareWith(e.target.value)}
+                className={SELECT_CLASS}
+              >
+                {COMPARE_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
           <DialogFooter>
             <Button
-              onClick={onProceedCustomReport}
-              disabled={!baseReportKey}
+              onClick={onCreateCustomReport}
+              disabled={!baseReportKey || !name.trim() || pending}
             >
-              Proceed
+              {pending ? "Creating…" : "Create"}
             </Button>
-            <Button variant="outline" onClick={() => setCustomOpen(false)}>
+            <Button
+              variant="outline"
+              onClick={() => onCustomOpenChange(false)}
+            >
               Cancel
             </Button>
           </DialogFooter>
