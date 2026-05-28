@@ -1,9 +1,14 @@
 import { describe, it, expect } from "vitest";
 import {
+  addReportColumn,
   addSection,
+  availableReportColumns,
   buildCustomReportStructure,
+  DEFAULT_REPORT_COLUMNS,
+  removeReportColumn,
   removeReportNode,
   renameReportNode,
+  reportColumnLabel,
   toEditableReportNodes,
   type AccountForStructure,
   type CustomReportSectionNode,
@@ -249,5 +254,35 @@ describe("renameReportNode", () => {
       kind: "formula",
       label: "Gross Profit",
     });
+  });
+});
+
+describe("report columns (Customize Columns)", () => {
+  it("defaults to Account + Total", () => {
+    expect(DEFAULT_REPORT_COLUMNS).toEqual(["account", "total"]);
+  });
+
+  it("availableReportColumns returns the catalog minus selected", () => {
+    const avail = availableReportColumns(["account", "total"]);
+    expect(avail.map((c) => c.key)).toEqual([
+      "account-description",
+      "year-to-date",
+    ]);
+  });
+
+  it("addReportColumn appends without duplicating", () => {
+    expect(addReportColumn(["account"], "total")).toEqual(["account", "total"]);
+    expect(addReportColumn(["account"], "account")).toEqual(["account"]);
+  });
+
+  it("removeReportColumn drops the key", () => {
+    expect(removeReportColumn(["account", "total"], "account")).toEqual([
+      "total",
+    ]);
+  });
+
+  it("reportColumnLabel resolves labels and falls back to the key", () => {
+    expect(reportColumnLabel("year-to-date")).toBe("Year To Date");
+    expect(reportColumnLabel("nope")).toBe("nope");
   });
 });

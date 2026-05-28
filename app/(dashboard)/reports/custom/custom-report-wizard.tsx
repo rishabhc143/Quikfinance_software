@@ -3,6 +3,8 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import {
+  ArrowLeft,
+  ArrowRight,
   BookOpen,
   Calendar,
   ChevronDown,
@@ -10,6 +12,7 @@ import {
   GripVertical,
   Plus,
   PlusCircle,
+  Search,
   Settings,
   X,
 } from "lucide-react";
@@ -18,12 +21,25 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Combobox } from "@/components/ui/combobox";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { createCustomReportAction } from "@/app/(dashboard)/reports/actions";
 import {
+  addReportColumn,
   addSection,
+  availableReportColumns,
+  DEFAULT_REPORT_COLUMNS,
+  removeReportColumn,
   removeReportNode,
   renameReportNode,
+  reportColumn,
+  reportColumnLabel,
   toEditableReportNodes,
   type CustomReportSectionNode,
   type EditableReportNode,
@@ -562,6 +578,11 @@ function CustomizeTable({
     toEditableReportNodes(structure)
   );
 
+  const [columns, setColumns] = React.useState<string[]>(
+    DEFAULT_REPORT_COLUMNS
+  );
+  const [columnsOpen, setColumnsOpen] = React.useState(false);
+
   const removeButton = (id: string, label: string) => (
     <button
       type="button"
@@ -572,6 +593,11 @@ function CustomizeTable({
       <X className="h-3.5 w-3.5" />
     </button>
   );
+
+  // One empty value cell per selected column. This step defines the
+  // table *structure*, so the value cells are intentionally blank.
+  const valueCells = (cls: string) =>
+    columns.map((key) => <td key={key} className={cls} />);
 
   return (
     <div className="space-y-4">
@@ -585,21 +611,33 @@ function CustomizeTable({
         </div>
         <button
           type="button"
-          onClick={() => toast.info("Customize Columns is coming soon")}
+          onClick={() => setColumnsOpen(true)}
           className="text-sm font-medium text-primary hover:underline"
         >
           Customize Columns
         </button>
       </div>
 
-      {/* 3-column structural table */}
+      {/* Structural table: Account Definition tree + selected value columns */}
       <div className="overflow-hidden rounded-md border">
         <table className="w-full border-collapse text-sm">
           <thead>
             <tr className="border-b bg-muted/40 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
               <th className="px-4 py-2.5 text-left">Account Definition</th>
-              <th className="w-40 px-4 py-2.5 text-left">Account</th>
-              <th className="w-40 px-4 py-2.5 text-right">Total</th>
+              {columns.map((key) => {
+                const col = reportColumn(key);
+                return (
+                  <th
+                    key={key}
+                    className={cn(
+                      "w-40 px-4 py-2.5",
+                      col?.align === "right" ? "text-right" : "text-left"
+                    )}
+                  >
+                    {col?.label ?? key}
+                  </th>
+                );
+              })}
             </tr>
           </thead>
           <tbody>
@@ -611,8 +649,7 @@ function CustomizeTable({
                   {rootLabel}
                 </span>
               </td>
-              <td className="px-4 py-2.5" />
-              <td className="px-4 py-2.5" />
+              {valueCells("px-4 py-2.5")}
             </tr>
 
             {nodes.map((node) =>
@@ -644,8 +681,7 @@ function CustomizeTable({
                         {removeButton(node.id, node.label)}
                       </div>
                     </td>
-                    <td className="px-4 py-2.5" />
-                    <td className="px-4 py-2.5" />
+                    {valueCells("px-4 py-2.5")}
                   </tr>
 
                   {/* Accounts */}
@@ -657,8 +693,7 @@ function CustomizeTable({
                             {acc.name}
                           </span>
                         </td>
-                        <td className="px-4 py-2" />
-                        <td className="px-4 py-2" />
+                        {valueCells("px-4 py-2")}
                       </tr>
                     ))
                   ) : (
@@ -668,8 +703,7 @@ function CustomizeTable({
                           No accounts in this section
                         </span>
                       </td>
-                      <td className="px-4 py-2" />
-                      <td className="px-4 py-2" />
+                      {valueCells("px-4 py-2")}
                     </tr>
                   )}
 
@@ -680,8 +714,7 @@ function CustomizeTable({
                         Total for {node.label}
                       </span>
                     </td>
-                    <td className="px-4 py-2.5" />
-                    <td className="px-4 py-2.5" />
+                    {valueCells("px-4 py-2.5")}
                   </tr>
                 </React.Fragment>
               ) : (
@@ -697,15 +730,14 @@ function CustomizeTable({
                       {removeButton(node.id, node.label)}
                     </div>
                   </td>
-                  <td className="px-4 py-2.5" />
-                  <td className="px-4 py-2.5" />
+                  {valueCells("px-4 py-2.5")}
                 </tr>
               )
             )}
 
             {/* + New Section */}
             <tr>
-              <td colSpan={3} className="px-4 py-2.5">
+              <td colSpan={1 + columns.length} className="px-4 py-2.5">
                 <button
                   type="button"
                   onClick={() => setNodes(addSection)}
@@ -719,6 +751,200 @@ function CustomizeTable({
           </tbody>
         </table>
       </div>
+
+      <CustomizeColumnsDialog
+        open={columnsOpen}
+        onOpenChange={setColumnsOpen}
+        selected={columns}
+        onExecute={setColumns}
+      />
     </div>
+  );
+}
+
+/**
+ * "Customize Columns" dual-list picker (Zoho-style). Left = Available
+ * Columns (catalog minus selected, searchable); right = Selected
+ * Columns. Click a column to highlight it, then the middle arrow moves
+ * it across (→ to select, ← to remove); double-click moves it directly.
+ * Execute applies the working selection to the table; Cancel discards.
+ */
+function CustomizeColumnsDialog({
+  open,
+  onOpenChange,
+  selected,
+  onExecute,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  selected: string[];
+  onExecute: (next: string[]) => void;
+}) {
+  const [working, setWorking] = React.useState<string[]>(selected);
+  const [search, setSearch] = React.useState("");
+  const [active, setActive] = React.useState<{
+    list: "available" | "selected";
+    key: string;
+  } | null>(null);
+
+  // Reset the working copy each time the dialog opens.
+  React.useEffect(() => {
+    if (open) {
+      setWorking(selected);
+      setSearch("");
+      setActive(null);
+    }
+  }, [open, selected]);
+
+  const available = availableReportColumns(working).filter((c) =>
+    c.label.toLowerCase().includes(search.trim().toLowerCase())
+  );
+
+  function moveActive() {
+    if (!active) return;
+    setWorking((w) =>
+      active.list === "available"
+        ? addReportColumn(w, active.key)
+        : removeReportColumn(w, active.key)
+    );
+    setActive(null);
+  }
+
+  const MoveIcon = active?.list === "selected" ? ArrowLeft : ArrowRight;
+
+  const itemClass = (isActive: boolean) =>
+    cn(
+      "flex w-full items-center rounded px-2 py-1.5 text-left text-sm hover:bg-accent",
+      isActive && "bg-accent"
+    );
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-3xl">
+        <DialogHeader>
+          <DialogTitle>Customize Columns</DialogTitle>
+        </DialogHeader>
+
+        <div className="grid grid-cols-[1fr_auto_1fr] gap-4">
+          {/* Available */}
+          <div className="space-y-2">
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Available Columns
+            </p>
+            <div className="flex h-80 flex-col rounded-md border">
+              <div className="flex items-center gap-2 border-b px-3">
+                <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
+                <input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search"
+                  aria-label="Search columns"
+                  className="h-10 w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+                />
+              </div>
+              <ul className="flex-1 overflow-y-auto p-2">
+                <li className="px-1 py-1 text-xs font-medium text-muted-foreground">
+                  Reports
+                </li>
+                {available.length === 0 ? (
+                  <li className="px-2 py-6 text-center text-sm text-muted-foreground">
+                    No columns
+                  </li>
+                ) : (
+                  available.map((col) => (
+                    <li key={col.key}>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setActive({ list: "available", key: col.key })
+                        }
+                        onDoubleClick={() => {
+                          setWorking((w) => addReportColumn(w, col.key));
+                          setActive(null);
+                        }}
+                        className={itemClass(
+                          active?.list === "available" &&
+                            active.key === col.key
+                        )}
+                      >
+                        {col.label}
+                      </button>
+                    </li>
+                  ))
+                )}
+              </ul>
+            </div>
+          </div>
+
+          {/* Move arrow (direction follows the highlighted side) */}
+          <div className="flex items-center">
+            <button
+              type="button"
+              onClick={moveActive}
+              disabled={!active}
+              aria-label={
+                active?.list === "selected" ? "Remove column" : "Add column"
+              }
+              className="rounded-full border p-2 text-muted-foreground enabled:hover:bg-accent enabled:hover:text-foreground disabled:opacity-40"
+            >
+              <MoveIcon className="h-4 w-4" />
+            </button>
+          </div>
+
+          {/* Selected */}
+          <div className="space-y-2">
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Selected Columns
+            </p>
+            <div className="flex h-80 flex-col rounded-md border">
+              <ul className="flex-1 overflow-y-auto p-2">
+                {working.length === 0 ? (
+                  <li className="px-2 py-6 text-center text-sm text-muted-foreground">
+                    No columns selected
+                  </li>
+                ) : (
+                  working.map((key) => (
+                    <li key={key}>
+                      <button
+                        type="button"
+                        onClick={() => setActive({ list: "selected", key })}
+                        onDoubleClick={() => {
+                          setWorking((w) => removeReportColumn(w, key));
+                          setActive(null);
+                        }}
+                        className={itemClass(
+                          active?.list === "selected" && active.key === key
+                        )}
+                      >
+                        {reportColumnLabel(key)}
+                      </button>
+                    </li>
+                  ))
+                )}
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <DialogFooter className="sm:justify-start">
+          <Button
+            type="button"
+            onClick={() => {
+              onExecute(working);
+              onOpenChange(false);
+            }}
+          >
+            Execute
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+          >
+            Cancel
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
