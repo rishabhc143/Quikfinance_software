@@ -30,7 +30,7 @@ export default async function NewCustomReportPage({
 }: {
   searchParams?: { base?: string };
 }) {
-  const { organization } = await requireOrganization();
+  const { user, organization } = await requireOrganization();
 
   const base = searchParams?.base ? findReport(searchParams.base) : undefined;
   if (!base) {
@@ -64,6 +64,7 @@ export default async function NewCustomReportPage({
       baseHref={base.href ?? null}
       structure={structure}
       orgName={organization.name}
+      userName={user.name ?? user.email ?? null}
     />
   );
 }
