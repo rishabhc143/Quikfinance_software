@@ -92,7 +92,6 @@ export default async function HomePage() {
   // Receivables delta — overdue moves the needle, so flag direction by overdue share.
   const recvTotal = recvCurrent + recvOverdue;
   const payTotal = payCurrent + payOverdue;
-  const moneyFmt = (n: number) => formatMoney(n, cur);
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">
@@ -143,7 +142,7 @@ export default async function HomePage() {
           <CardContent>
             <AnimatedCounter
               value={recvTotal}
-              format={moneyFmt}
+              currency={cur}
               className="text-3xl font-semibold tabular-nums"
             />
             <div className="text-xs text-muted-foreground mt-1">Total Unpaid Invoices</div>
@@ -168,7 +167,7 @@ export default async function HomePage() {
           <CardContent>
             <AnimatedCounter
               value={payTotal}
-              format={moneyFmt}
+              currency={cur}
               className="text-3xl font-semibold tabular-nums"
             />
             <div className="text-xs text-muted-foreground mt-1">Total Unpaid Bills</div>
@@ -184,7 +183,7 @@ export default async function HomePage() {
         <KpiCard
           title="Sales (paid)"
           value={Number(salesAgg._sum.total ?? 0)}
-          format={moneyFmt}
+          currency={cur}
           series={incomeSeries}
           delta={pctDelta(lastIncome, prevIncome)}
           trendDir="up-is-good"
@@ -192,21 +191,13 @@ export default async function HomePage() {
         <KpiCard
           title="Total Expenses"
           value={Number(expensesAgg._sum.amount ?? 0)}
-          format={moneyFmt}
+          currency={cur}
           series={expenseSeries}
           delta={pctDelta(lastExpense, prevExpense)}
           trendDir="down-is-good"
         />
-        <KpiCard
-          title="Active Invoices"
-          value={invoices.length}
-          format={(n) => String(Math.round(n))}
-        />
-        <KpiCard
-          title="Active Bills"
-          value={bills.length}
-          format={(n) => String(Math.round(n))}
-        />
+        <KpiCard title="Active Invoices" value={invoices.length} />
+        <KpiCard title="Active Bills" value={bills.length} />
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">
@@ -298,14 +289,16 @@ function TrendChip({ pct, dir }: { pct: number | null; dir: TrendDir }) {
 function KpiCard({
   title,
   value,
-  format,
+  currency,
   series,
   delta,
   trendDir,
 }: {
   title: string;
   value: number;
-  format: (n: number) => string;
+  /** Optional ISO currency code. When set, value renders as money;
+   *  when absent, value renders as a plain integer count. */
+  currency?: string;
   series?: number[];
   delta?: number | null;
   trendDir?: TrendDir;
@@ -322,7 +315,7 @@ function KpiCard({
         <div className="mt-1 flex items-end justify-between gap-2">
           <AnimatedCounter
             value={value}
-            format={format}
+            currency={currency}
             className="text-2xl font-semibold tabular-nums"
           />
           {series && series.length > 0 ? (

@@ -1,26 +1,35 @@
 "use client";
 
 import * as React from "react";
+import { formatMoney } from "@/lib/money";
 
 /**
- * Counts up from 0 (or the previous value) to `value` over `durationMs`
- * using requestAnimationFrame + an ease-out curve. The displayed string is
- * produced by `format(currentNumber)` so callers control thousand-grouping,
- * currency symbol, decimals, etc. without this component knowing about
- * locale.
+ * Counts up from the previous value to `value` over `durationMs` using
+ * requestAnimationFrame + an ease-out curve. Formatting is done inside
+ * this client component from primitive props (currency / decimals) — we
+ * intentionally don't accept a `format` function because Next.js Server
+ * Components can't pass functions to Client Components, and this
+ * component is rendered from server pages (the dashboard home).
  *
- * Used by the dashboard home to make the big money numbers feel "alive"
- * on first paint — a Stripe Dashboard / Linear visual cue. Pure React,
- * no dependencies.
+ *   <AnimatedCounter value={123456.78} currency="INR" />
+ *   <AnimatedCounter value={42} decimals={0} />
+ *
+ * Honours `prefers-reduced-motion` — snaps to the final value instead
+ * of animating when the user has the OS preference set.
  */
 export function AnimatedCounter({
   value,
-  format,
+  currency,
+  decimals,
   durationMs = 900,
   className,
 }: {
   value: number;
-  format: (n: number) => string;
+  /** When set, output is formatted with formatMoney(value, currency). */
+  currency?: string;
+  /** When set (and currency is not), output is rendered as a number
+   *  with this many fraction digits. Default: 0. */
+  decimals?: number;
   durationMs?: number;
   className?: string;
 }) {
@@ -30,7 +39,6 @@ export function AnimatedCounter({
   const targetRef = React.useRef(value);
 
   React.useEffect(() => {
-    // If the user prefers reduced motion, snap to the final value.
     const prefersReducedMotion =
       typeof window !== "undefined" &&
       window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
@@ -49,7 +57,6 @@ export function AnimatedCounter({
     const step = (now: number) => {
       if (startRef.current == null) startRef.current = now;
       const t = Math.min(1, (now - startRef.current) / durationMs);
-      // ease-out cubic: 1 - (1 - t)^3
       const eased = 1 - Math.pow(1 - t, 3);
       const current = fromRef.current + (targetRef.current - fromRef.current) * eased;
       setDisplay(current);
@@ -57,11 +64,16 @@ export function AnimatedCounter({
     };
     raf = requestAnimationFrame(step);
     return () => cancelAnimationFrame(raf);
-    // We intentionally exclude `display` from deps — we read the current
-    // displayed value when starting a new tween, but we don't want every
-    // intermediate frame to retrigger the effect.
+    // We read `display` once when starting a new tween, but we don't
+    // want every intermediate frame to retrigger the effect.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value, durationMs]);
 
-  return <span className={className}>{format(display)}</span>;
+  const text = currency
+    ? formatMoney(display, currency)
+    : Math.round(display).toLocaleString("en-IN", {
+        maximumFractionDigits: decimals ?? 0,
+      });
+
+  return <span className={className}>{text}</span>;
 }
