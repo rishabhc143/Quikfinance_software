@@ -306,18 +306,16 @@ export async function getSavedViews(
 > {
   const seeded = SYSTEM_VIEWS[module] ?? [];
 
-  // Lazy-seed system rows that don't exist yet for this org+module.
-  // The migration created the SavedView table without seeded data, so
-  // the first read on any new org triggers this.
-  const existing = await db.savedView.findMany({
-    where: { organizationId, module, isSystem: true },
-    select: { name: true },
-  });
-  const existingNames = new Set(existing.map((v) => v.name));
-  const missing = seeded.filter((v) => !existingNames.has(v.slug));
-  if (missing.length > 0) {
+  // Lazy-seed system rows. We used to do a "findMany (existing) → diff →
+  // createMany (missing)" dance, but `createMany({ skipDuplicates: true })`
+  // is idempotent on the unique key — INSERTs that conflict simply no-op.
+  // Skipping the existence-check saves a full Prisma round trip on every
+  // page load (this function fires on most list pages: Invoices, Bills,
+  // Customers, Vendors, Quotes…), which is one of the biggest contributors
+  // to the 5-6s-per-nav perf issue tracked in fix/dashboard-nav-perf.
+  if (seeded.length > 0) {
     await db.savedView.createMany({
-      data: missing.map((v, i) => ({
+      data: seeded.map((v, i) => ({
         organizationId,
         module,
         name: v.slug,
