@@ -3,15 +3,19 @@ import { Sidebar } from "@/components/shell/sidebar";
 import { TopHeader, MobileSearch } from "@/components/shell/top-header";
 import { RightRail } from "@/components/shell/right-rail";
 import { AiAssistant } from "@/components/dashboard/ai-assistant";
-import { db } from "@/lib/db";
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
+  // `requireOrganization()` is `react.cache`-wrapped (see lib/auth-helpers.ts),
+  // so the page below this layout calling the same helper resolves to the
+  // already-fetched user+memberships — no second auth() + DB roundtrip.
+  // We also read memberships off `user` here instead of issuing a separate
+  // `db.organizationMembership.findMany` query (the deep include already
+  // loaded them sorted by Prisma's default ordering, then we sort here for
+  // the TopHeader's org switcher).
   const { user, organization } = await requireOrganization();
-  const memberships = await db.organizationMembership.findMany({
-    where: { userId: user.id },
-    include: { organization: true },
-    orderBy: { createdAt: "asc" },
-  });
+  const memberships = [...user.memberships].sort(
+    (a, b) => a.createdAt.getTime() - b.createdAt.getTime(),
+  );
 
   return (
     <div className="flex min-h-screen">
