@@ -10,6 +10,9 @@ import {
   ChevronDown,
   ChevronRight,
   GripVertical,
+  Info,
+  Lightbulb,
+  Lock,
   Plus,
   PlusCircle,
   Search,
@@ -155,10 +158,6 @@ const FILTER_OP_OPTIONS: { value: string; label: string }[] = [
   { value: "less-than", label: "less than" },
 ];
 
-const STEP_PLACEHOLDER: Record<number, string> = {
-  3: "Report Preferences — configured in an upcoming step.",
-};
-
 /** Shared styling for native <select> controls to match the Input. */
 const SELECT_CLASS =
   "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50";
@@ -225,6 +224,12 @@ export function CustomReportWizard({
   const [marginLeft, setMarginLeft] = React.useState(0.55);
   const [marginRight, setMarginRight] = React.useState(0.2);
 
+  // ── Step 4 (Report Preferences) state ───────────────────────────
+  // Mirrors Zoho's Step 4: report basics (Name + Name in Export),
+  // Description, and a (locked) "Only Me" permission.
+  const [nameInExport, setNameInExport] = React.useState(baseName);
+  const [description, setDescription] = React.useState("");
+
   const [pending, startTransition] = React.useTransition();
 
   function addFilter() {
@@ -269,6 +274,11 @@ export function CustomReportWizard({
     if (marginBottom !== 0.7) params.set("marginBottom", String(marginBottom));
     if (marginLeft !== 0.55) params.set("marginLeft", String(marginLeft));
     if (marginRight !== 0.2) params.set("marginRight", String(marginRight));
+    // Step 4 Report Preferences — only emit non-defaults.
+    if (nameInExport.trim() && nameInExport.trim() !== baseName) {
+      params.set("nameInExport", nameInExport.trim());
+    }
+    if (description.trim()) params.set("description", description.trim());
 
     startTransition(async () => {
       const res = await createCustomReportAction({
@@ -867,21 +877,95 @@ export function CustomReportWizard({
             </div>
           </div>
         ) : (
-          <div className="max-w-2xl space-y-6">
-            <div className="rounded-md border bg-muted/30 p-8 text-center">
-              <p className="text-sm text-muted-foreground">
-                {STEP_PLACEHOLDER[step]}
-              </p>
-            </div>
-            <div className="grid grid-cols-[10rem_20rem] items-center gap-4">
-              <Label htmlFor="cr-report-name">Report name</Label>
-              <Input
-                id="cr-report-name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Report name"
+          <div className="space-y-6">
+            {/* ── Section 1: Report basics (gray block) ────────────── */}
+            <section className="-mx-6 -mt-6 border-b bg-muted/30 px-6 py-6">
+              <div className="grid max-w-3xl grid-cols-1 gap-x-8 gap-y-5 sm:grid-cols-[160px_1fr] sm:items-start">
+                {/* Report Name (required, max 50) */}
+                <Label
+                  htmlFor="cr-report-name"
+                  className="sm:pt-2 sm:text-right"
+                >
+                  <span className="text-destructive">*</span> Report Name
+                </Label>
+                <div>
+                  <Input
+                    id="cr-report-name"
+                    value={name}
+                    onChange={(e) => setName(e.target.value.slice(0, 50))}
+                    maxLength={50}
+                    placeholder="Report name"
+                  />
+                  <div className="mt-1 text-right text-xs text-muted-foreground">
+                    {name.length} / 50
+                  </div>
+                </div>
+
+                {/* Name in Export (defaults to base name) */}
+                <Label
+                  htmlFor="cr-name-in-export"
+                  className="sm:pt-2 sm:text-right"
+                >
+                  Name in Export
+                </Label>
+                <Input
+                  id="cr-name-in-export"
+                  value={nameInExport}
+                  onChange={(e) => setNameInExport(e.target.value)}
+                  placeholder={baseName}
+                />
+              </div>
+            </section>
+
+            {/* ── Section 2: Report Description ────────────────────── */}
+            <section className="max-w-3xl space-y-3">
+              <h3 className="text-sm font-semibold">Report Description</h3>
+              <textarea
+                id="cr-description"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Add a description to your report"
+                rows={5}
+                className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               />
-            </div>
+              <div className="flex items-start gap-2 rounded-md border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+                <Lightbulb className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-500" />
+                <span>
+                  You can use report descriptions to help you identify the
+                  details of the reports for your reference.
+                </span>
+              </div>
+            </section>
+
+            <div className="-mx-6 border-b" />
+
+            {/* ── Section 3: Configure Permissions ─────────────────── */}
+            <section className="max-w-3xl space-y-3">
+              <h3 className="text-sm font-semibold">Configure Permissions</h3>
+              <div className="rounded-md border bg-card p-4">
+                <div className="text-xs font-medium text-muted-foreground">
+                  Share With
+                </div>
+                <div className="mt-2 inline-flex items-center gap-2 rounded-md border bg-background px-3 py-1.5 text-sm">
+                  <input
+                    type="radio"
+                    checked
+                    readOnly
+                    className="accent-primary"
+                    aria-label="Only Me"
+                  />
+                  <span>Only Me</span>
+                  <Lock className="h-3.5 w-3.5 text-muted-foreground" />
+                </div>
+              </div>
+              <div className="flex items-start gap-2 rounded-md border border-blue-100 bg-blue-50/60 px-3 py-2 text-xs text-muted-foreground dark:border-blue-900/40 dark:bg-blue-950/40">
+                <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-blue-500" />
+                <span>
+                  Admins have complete access to custom reports by default,
+                  including edit and delete permissions.
+                </span>
+              </div>
+            </section>
           </div>
         )}
       </div>
@@ -906,7 +990,7 @@ export function CustomReportWizard({
           </Button>
         ) : (
           <Button type="button" onClick={onCreate} disabled={!canCreate}>
-            {pending ? "Creating…" : "Create"}
+            {pending ? "Saving…" : "Save Custom Report"}
           </Button>
         )}
         <Button
