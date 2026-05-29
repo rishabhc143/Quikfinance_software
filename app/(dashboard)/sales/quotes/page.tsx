@@ -3,7 +3,7 @@ import { FileCheck } from "lucide-react";
 import { SalesEmptyState } from "@/components/shared/sales-empty-state";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
-import { Badge } from "@/components/ui/badge";
+import { StatusPill, type StatusVariant } from "@/components/ui/status-pill";
 import { TransactionListPage } from "@/components/shared/transaction-list-page";
 import { BulkAwareDataTable } from "@/components/shared/bulk-aware-data-table";
 import { SalesExportDialog } from "@/components/shared/sales-export-dialog";
@@ -23,13 +23,15 @@ import {
 
 export const metadata = { title: "Quotes" };
 
-const STATUS_VARIANT: Record<string, "secondary" | "outline" | "destructive"> = {
-  DRAFT: "outline",
-  SENT: "secondary",
-  ACCEPTED: "secondary",
-  DECLINED: "destructive",
-  EXPIRED: "destructive",
-  INVOICED: "secondary",
+// Quote lifecycle status → semantic StatusPill variant. Matches the
+// invoices/bills mapping for visual consistency.
+const STATUS_VARIANT: Record<string, StatusVariant> = {
+  DRAFT: "neutral",
+  SENT: "info",
+  ACCEPTED: "success",
+  DECLINED: "danger",
+  EXPIRED: "danger",
+  INVOICED: "success",
 };
 
 export default async function QuotesListPage({
@@ -102,9 +104,9 @@ export default async function QuotesListPage({
       </span>,
       <span key="ref">{qq.referenceNumber ?? "—"}</span>,
       <span key="cust">{qq.contact.displayName}</span>,
-      <Badge key="st" variant={STATUS_VARIANT[qq.status] ?? "outline"}>
+      <StatusPill key="st" variant={STATUS_VARIANT[qq.status] ?? "neutral"}>
         {qq.status}
-      </Badge>,
+      </StatusPill>,
       <span key="amt" className="text-right tabular-nums">
         {formatMoney(Number(qq.total), qq.currency)}
       </span>,

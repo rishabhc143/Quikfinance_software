@@ -2,7 +2,7 @@ import { format } from "date-fns";
 import { Receipt } from "lucide-react";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
-import { Badge } from "@/components/ui/badge";
+import { StatusPill, type StatusVariant } from "@/components/ui/status-pill";
 import { TransactionListPage } from "@/components/shared/transaction-list-page";
 import { BulkAwareDataTable } from "@/components/shared/bulk-aware-data-table";
 import { SavedViewBuilderDialog } from "@/components/shared/saved-view-builder-dialog";
@@ -23,17 +23,17 @@ export const metadata = { title: "Bills" };
 
 const PAGE_SIZE_DEFAULT = 25;
 
-const STATUS_VARIANT: Record<
-  string,
-  "default" | "secondary" | "outline" | "destructive"
-> = {
-  DRAFT: "outline",
-  OPEN: "secondary",
-  PARTIALLY_PAID: "secondary",
-  PAID: "secondary",
-  OVERDUE: "destructive",
-  VOID: "destructive",
-  WRITTEN_OFF: "outline",
+// Bill lifecycle status → semantic StatusPill variant. Matches the
+// invoices mapping in sales/invoices/page.tsx for visual consistency:
+// PAID is success-green, OVERDUE is destructive-red, PARTIAL is warning.
+const STATUS_VARIANT: Record<string, StatusVariant> = {
+  DRAFT: "neutral",
+  OPEN: "info",
+  PARTIALLY_PAID: "warning",
+  PAID: "success",
+  OVERDUE: "danger",
+  VOID: "danger",
+  WRITTEN_OFF: "neutral",
 };
 
 type SearchParams = {
@@ -137,9 +137,9 @@ export default async function BillsListPage({
         <span key="n" className="font-mono">{b.number}</span>,
         <span key="r">{b.referenceNumber ?? "—"}</span>,
         <span key="v">{b.contact.displayName}</span>,
-        <Badge key="s" variant={STATUS_VARIANT[displayStatus] ?? "outline"}>
+        <StatusPill key="s" variant={STATUS_VARIANT[displayStatus] ?? "neutral"}>
           {displayStatus.replaceAll("_", " ")}
-        </Badge>,
+        </StatusPill>,
         <span key="dd">{format(b.dueDate, "dd MMM yyyy")}</span>,
         <span key="a" className="text-right tabular-nums">
           {formatMoney(
