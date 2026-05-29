@@ -36,6 +36,8 @@
     "@anthropic-ai/sdk": "^0.30.1",
     "@auth/prisma-adapter": "^2.7.4",
     "@hookform/resolvers": "^3.9.1",
+    "@neondatabase/serverless": "^1.1.0",
+    "@prisma/adapter-neon": "^5.22.0",
     "@prisma/client": "^5.22.0",
     "@radix-ui/react-accordion": "^1.2.1",
     "@radix-ui/react-alert-dialog": "^1.1.2",
@@ -89,6 +91,7 @@
     "sonner": "^1.7.0",
     "tailwind-merge": "^2.5.4",
     "tailwindcss-animate": "^1.0.7",
+    "ws": "^8.21.0",
     "zod": "^3.23.8"
   },
   "devDependencies": {
@@ -98,6 +101,7 @@
     "@types/papaparse": "^5.3.15",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
+    "@types/ws": "^8.18.1",
     "autoprefixer": "^10.4.20",
     "docx": "^9.6.1",
     "embedded-postgres": "18.3.0-beta.17",

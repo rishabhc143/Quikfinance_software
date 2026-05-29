@@ -2,7 +2,8 @@
 // Money is Decimal(18,4). Multi-tenant: every business table has organizationId.
 
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  previewFeatures = ["driverAdapters"]
 }
 
 datasource db {
@@ -62,6 +63,8 @@ model Session {
   userId       String
   expires      DateTime
   user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 model VerificationToken {
@@ -185,6 +188,7 @@ model OrganizationMembership {
 
   @@unique([userId, organizationId])
   @@index([organizationId])
+  @@index([userId])
 }
 
 enum Role {
