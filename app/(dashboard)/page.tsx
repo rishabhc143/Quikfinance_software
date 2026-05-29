@@ -5,9 +5,12 @@ import { db } from "@/lib/db";
 import { Card, CardHeader, CardContent, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { formatMoney } from "@/lib/money";
-import { ArrowUpRight } from "lucide-react";
+import { ArrowUpRight, ArrowDownRight, Minus } from "lucide-react";
 import { CashFlowMini, IncomeVsExpenseMini, TopExpensesPie } from "@/components/dashboard/charts";
 import { NewRecordDropdown } from "./_dashboard-new-dropdown";
+import { AnimatedCounter } from "@/components/ui/animated-counter";
+import { Sparkline } from "@/components/ui/sparkline";
+import { cn } from "@/lib/utils";
 
 export default async function HomePage() {
   const { user, organization } = await requireOrganization();
@@ -77,6 +80,19 @@ export default async function HomePage() {
   const cur = organization.currency;
   const firstName = (user.name ?? user.email).split(" ")[0];
 
+  // 6-month series for the KPI sparklines + month-over-month deltas.
+  // `incomeExpense` is already computed above as a 6-row [{ month, income, expense }],
+  // so we reuse it instead of issuing more queries.
+  const incomeSeries = incomeExpense.map((m) => m.income);
+  const expenseSeries = incomeExpense.map((m) => m.expense);
+  const lastIncome = incomeSeries.at(-1) ?? 0;
+  const prevIncome = incomeSeries.at(-2) ?? 0;
+  const lastExpense = expenseSeries.at(-1) ?? 0;
+  const prevExpense = expenseSeries.at(-2) ?? 0;
+  // Receivables delta — overdue moves the needle, so flag direction by overdue share.
+  const recvTotal = recvCurrent + recvOverdue;
+  const payTotal = payCurrent + payOverdue;
+
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">
       <div>
@@ -124,11 +140,15 @@ export default async function HomePage() {
             />
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-semibold">{formatMoney(recvCurrent + recvOverdue, cur)}</div>
+            <AnimatedCounter
+              value={recvTotal}
+              currency={cur}
+              className="text-3xl font-semibold tabular-nums"
+            />
             <div className="text-xs text-muted-foreground mt-1">Total Unpaid Invoices</div>
             <div className="mt-4 space-y-2">
-              <BarRow label="Current" amount={recvCurrent} max={recvCurrent + recvOverdue} currency={cur} color="bg-emerald-500" href="/sales/invoices?status=open" />
-              <BarRow label="Overdue" amount={recvOverdue} max={recvCurrent + recvOverdue} currency={cur} color="bg-red-500" href="/sales/invoices?status=overdue" />
+              <BarRow label="Current" amount={recvCurrent} max={recvTotal} currency={cur} color="bg-success" href="/sales/invoices?status=open" />
+              <BarRow label="Overdue" amount={recvOverdue} max={recvTotal} currency={cur} color="bg-destructive" href="/sales/invoices?status=overdue" />
             </div>
           </CardContent>
         </Card>
@@ -145,21 +165,39 @@ export default async function HomePage() {
             />
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-semibold">{formatMoney(payCurrent + payOverdue, cur)}</div>
+            <AnimatedCounter
+              value={payTotal}
+              currency={cur}
+              className="text-3xl font-semibold tabular-nums"
+            />
             <div className="text-xs text-muted-foreground mt-1">Total Unpaid Bills</div>
             <div className="mt-4 space-y-2">
-              <BarRow label="Current" amount={payCurrent} max={payCurrent + payOverdue} currency={cur} color="bg-emerald-500" href="/purchases/bills?status=open" />
-              <BarRow label="Overdue" amount={payOverdue} max={payCurrent + payOverdue} currency={cur} color="bg-red-500" href="/purchases/bills?status=overdue" />
+              <BarRow label="Current" amount={payCurrent} max={payTotal} currency={cur} color="bg-success" href="/purchases/bills?status=open" />
+              <BarRow label="Overdue" amount={payOverdue} max={payTotal} currency={cur} color="bg-destructive" href="/purchases/bills?status=overdue" />
             </div>
           </CardContent>
         </Card>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <KpiCard title="Sales (paid)" value={formatMoney(salesAgg._sum.total ?? 0, cur)} />
-        <KpiCard title="Total Expenses" value={formatMoney(expensesAgg._sum.amount ?? 0, cur)} />
-        <KpiCard title="Active Invoices" value={String(invoices.length)} />
-        <KpiCard title="Active Bills" value={String(bills.length)} />
+        <KpiCard
+          title="Sales (paid)"
+          value={Number(salesAgg._sum.total ?? 0)}
+          currency={cur}
+          series={incomeSeries}
+          delta={pctDelta(lastIncome, prevIncome)}
+          trendDir="up-is-good"
+        />
+        <KpiCard
+          title="Total Expenses"
+          value={Number(expensesAgg._sum.amount ?? 0)}
+          currency={cur}
+          series={expenseSeries}
+          delta={pctDelta(lastExpense, prevExpense)}
+          trendDir="down-is-good"
+        />
+        <KpiCard title="Active Invoices" value={invoices.length} />
+        <KpiCard title="Active Bills" value={bills.length} />
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">
@@ -213,12 +251,87 @@ function BarRow({ label, amount, max, currency, color, href }: { label: string; 
   );
 }
 
-function KpiCard({ title, value }: { title: string; value: string }) {
+/** Month-over-month delta as a percent, null when the previous bucket
+ *  is zero (avoids div-by-zero + meaningless "+∞%" badges on cold orgs). */
+function pctDelta(curr: number, prev: number): number | null {
+  if (!prev) return null;
+  return ((curr - prev) / prev) * 100;
+}
+
+type TrendDir = "up-is-good" | "down-is-good";
+
+/** Delta chip rendered next to the KPI title. Hidden when delta is null. */
+function TrendChip({ pct, dir }: { pct: number | null; dir: TrendDir }) {
+  if (pct == null) return null;
+  const up = pct > 0;
+  const flat = Math.abs(pct) < 0.5;
+  const positive = flat ? "neutral" : up === (dir === "up-is-good") ? "good" : "bad";
+  const colorClass =
+    positive === "good"
+      ? "text-success bg-success/10"
+      : positive === "bad"
+        ? "text-destructive bg-destructive/10"
+        : "text-muted-foreground bg-muted";
+  const Icon = flat ? Minus : up ? ArrowUpRight : ArrowDownRight;
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-medium",
+        colorClass,
+      )}
+    >
+      <Icon className="h-3 w-3" />
+      {Math.abs(pct).toFixed(0)}%
+    </span>
+  );
+}
+
+function KpiCard({
+  title,
+  value,
+  currency,
+  series,
+  delta,
+  trendDir,
+}: {
+  title: string;
+  value: number;
+  /** Optional ISO currency code. When set, value renders as money;
+   *  when absent, value renders as a plain integer count. */
+  currency?: string;
+  series?: number[];
+  delta?: number | null;
+  trendDir?: TrendDir;
+}) {
+  const showTrend =
+    series && series.length > 0 && delta != null && trendDir;
   return (
     <Card>
       <CardContent className="pt-6">
-        <div className="text-xs text-muted-foreground">{title}</div>
-        <div className="text-2xl font-semibold mt-1">{value}</div>
+        <div className="flex items-center justify-between gap-2">
+          <div className="text-xs text-muted-foreground">{title}</div>
+          {showTrend ? <TrendChip pct={delta} dir={trendDir} /> : null}
+        </div>
+        <div className="mt-1 flex items-end justify-between gap-2">
+          <AnimatedCounter
+            value={value}
+            currency={currency}
+            className="text-2xl font-semibold tabular-nums"
+          />
+          {series && series.length > 0 ? (
+            <Sparkline
+              data={series}
+              variant={
+                trendDir === "down-is-good"
+                  ? // For "expenses" cards, an upward sparkline is bad → muted color.
+                    delta != null && delta > 0
+                    ? "destructive"
+                    : "success"
+                  : "primary"
+              }
+            />
+          ) : null}
+        </div>
       </CardContent>
     </Card>
   );
