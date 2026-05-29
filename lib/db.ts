@@ -4,31 +4,44 @@ import { PrismaClient } from "@prisma/client";
 import ws from "ws";
 
 /**
- * Prisma client wired through Neon's HTTP serverless driver.
+ * Prisma client wiring.
  *
- * Why: on Vercel's serverless runtime each cold function instance otherwise
- * opens a fresh TCP socket to Neon (TLS handshake + auth ping = ~500ms-2s
- * per cold start). The Neon HTTP driver uses `fetch()` instead, so every
- * query is a stateless HTTP call with effectively zero connection cost.
- * This was the dominant source of the 5-6s "every nav is slow" complaint.
+ * On Neon (prod) we use `@prisma/adapter-neon` so queries go over
+ * fetch()-based HTTP instead of a long-lived TCP socket. That kills the
+ * ~500ms-2s TLS-handshake-per-cold-function-instance penalty on Vercel
+ * — the dominant remaining contributor to the "every nav is slow"
+ * complaint after the cache() fix in #299.
  *
- * `neonConfig.webSocketConstructor = ws` is required on Node runtimes
- * (Vercel's default server runtime + local dev). On Edge runtimes the
- * global `WebSocket` is already available and this is a no-op.
+ * Everywhere else (CI's Playwright runner, local Docker Postgres,
+ * self-hosted PG) we fall back to Prisma's default TCP driver. The HTTP
+ * driver only speaks Neon's wire protocol, so pointing it at vanilla
+ * Postgres makes every query throw — which is exactly what broke the
+ * Playwright smoke job on the first attempt at this fix (PR #300).
+ *
+ * Detection is by hostname: any `DATABASE_URL` containing `.neon.tech`
+ * uses the adapter, otherwise default Prisma client.
  */
-if (typeof WebSocket === "undefined") {
-  neonConfig.webSocketConstructor = ws;
-}
+const isNeonUrl =
+  !!process.env.DATABASE_URL && /\.neon\.tech/i.test(process.env.DATABASE_URL);
 
 const globalForPrisma = globalThis as unknown as { prisma: PrismaClient | undefined };
 
-function makeClient() {
-  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-  const adapter = new PrismaNeon(pool);
-  return new PrismaClient({
-    adapter,
-    log: process.env.NODE_ENV === "development" ? ["error", "warn"] : ["error"],
-  });
+function makeClient(): PrismaClient {
+  const logLevels =
+    process.env.NODE_ENV === "development"
+      ? (["error", "warn"] as const)
+      : (["error"] as const);
+
+  if (isNeonUrl) {
+    if (typeof WebSocket === "undefined") {
+      neonConfig.webSocketConstructor = ws;
+    }
+    const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+    const adapter = new PrismaNeon(pool);
+    return new PrismaClient({ adapter, log: [...logLevels] });
+  }
+
+  return new PrismaClient({ log: [...logLevels] });
 }
 
 export const db = globalForPrisma.prisma ?? makeClient();
