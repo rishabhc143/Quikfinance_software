@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, Package, FileText, ShoppingCart, Wallet,
-  Clock, BookOpen, BarChart3, FolderOpen, CreditCard, BadgeIndianRupee,
+  Clock, BookOpen, BarChart3, FolderOpen, CreditCard,
   Settings, ChevronDown,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -123,7 +123,6 @@ const NAV: NavItem[] = [
     icon: BarChart3,
   },
   { label: "Documents", href: "/documents", icon: FolderOpen },
-  { label: "Payroll", href: "/payroll", icon: BadgeIndianRupee },
   { label: "Payments", href: "/payments", icon: CreditCard },
   // Contacts intentionally removed from the sidebar — customers live under
   // /sales/customers and vendors live under /purchases/vendors. The legacy

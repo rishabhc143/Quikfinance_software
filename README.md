@@ -24,7 +24,7 @@ Production-grade accounting SaaS — Next.js 14 (App Router) + Prisma + PostgreS
 | **Purchases — Expenses** | Placeholder per spec — list parity-complete + deferred-feature banner on form; Mileage / OCR / Convert-to-Bill ship in refinement patch |
 | **Purchases — Billable expenses integration** | Complete — Bill lines + Expenses marked `billableToCustomerId` surface on customer's next Invoice via `<BillableExpensesPanel>`; save action marks source rows used |
 | **Purchases — Partner-bank integration** | Stub page at `/settings/integrations/bill-pay-banks` with 3 banks (ICICI/HDFC/Axis), "Notify me" opt-in. Full API integration deferred — separate procurement workstream |
-| **Banking / Accountant / Time / Documents / Payroll / Payments** | Schema + landing pages; CRUD UI is sparse |
+| **Banking / Accountant / Time / Documents / Payments** | Schema + landing pages; CRUD UI is sparse |
 | **AI Assistant** | Streaming Claude chat in the bottom-right rail |
 
 ## Setup (one-time)
