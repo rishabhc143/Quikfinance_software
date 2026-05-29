@@ -49,15 +49,6 @@ const GROUPS: Group[] = [
       { label: "Vendor Credit", href: "/purchases/vendor-credits/new" },
     ],
   },
-  {
-    name: "BANKING",
-    items: [
-      { label: "Bank Transfer", href: "/banking/transfers/new" },
-      { label: "Card Payment", href: "/banking/card-payments/new" },
-      { label: "Owner Drawings", href: "/banking/owner-drawings/new" },
-      { label: "Other Income", href: "/banking/other-income/new" },
-    ],
-  },
 ];
 
 export function QuickCreate({ children }: { children: React.ReactNode }) {

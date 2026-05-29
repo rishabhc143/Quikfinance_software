@@ -101,9 +101,10 @@ describe("documents/associated-to", () => {
       expect(hrefForAssociated("ManualJournal", "mj-1")).toBe(
         "/accountant/manual-journals/mj-1"
       );
-      expect(hrefForAssociated("BankTransaction", "bt-1")).toBe(
-        "/banking/transactions/bt-1"
-      );
+      // BankTransaction no longer has its own per-ID route after the
+      // Banking sub-modules were trimmed; the helper falls back to /banking
+      // and the user picks the account from there.
+      expect(hrefForAssociated("BankTransaction", "bt-1")).toBe("/banking");
     });
   });
 
