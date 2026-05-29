@@ -10,8 +10,12 @@
     --card-foreground: 222.2 47.4% 11.2%;
     --popover: 0 0% 100%;
     --popover-foreground: 222.2 47.4% 11.2%;
-    --primary: 221 83% 53%;
-    --primary-foreground: 210 40% 98%;
+    /* Brand: deep emerald — signature Quikfinance color. Pairs with
+       slate/zinc neutrals like the rest of the finance design world
+       (Stripe, Wealthfront). Replaces the default shadcn blue
+       (221 83% 53%) which read as generic. */
+    --primary: 155 47% 42%;
+    --primary-foreground: 150 40% 98%;
     --secondary: 210 40% 96.1%;
     --secondary-foreground: 222.2 47.4% 11.2%;
     --muted: 210 40% 96.1%;
@@ -22,8 +26,18 @@
     --destructive-foreground: 210 40% 98%;
     --border: 214 32% 91%;
     --input: 214 32% 91%;
-    --ring: 221 83% 53%;
+    --ring: 155 47% 42%;
     --radius: 0.5rem;
+
+    /* Semantic status tokens — one source of truth for Paid / Overdue /
+       Pending / Info pills across every module. Use `bg-success`,
+       `text-warning`, etc. via the Tailwind config that exposes these. */
+    --success: 152 60% 36%;
+    --success-foreground: 150 40% 98%;
+    --warning: 38 92% 50%;
+    --warning-foreground: 30 92% 12%;
+    --info: 199 89% 48%;
+    --info-foreground: 200 90% 98%;
   }
   .dark {
     --background: 222.2 47.4% 6%;
@@ -32,8 +46,9 @@
     --card-foreground: 210 40% 98%;
     --popover: 222.2 47.4% 8%;
     --popover-foreground: 210 40% 98%;
-    --primary: 217 91% 60%;
-    --primary-foreground: 222 47% 11%;
+    /* Lighter emerald in dark mode so it doesn't disappear into the bg. */
+    --primary: 155 55% 50%;
+    --primary-foreground: 152 60% 8%;
     --secondary: 217 33% 18%;
     --secondary-foreground: 210 40% 98%;
     --muted: 217 33% 18%;
@@ -44,7 +59,14 @@
     --destructive-foreground: 210 40% 98%;
     --border: 217 33% 18%;
     --input: 217 33% 18%;
-    --ring: 217 91% 60%;
+    --ring: 155 55% 50%;
+
+    --success: 152 55% 45%;
+    --success-foreground: 152 60% 8%;
+    --warning: 38 92% 60%;
+    --warning-foreground: 30 92% 12%;
+    --info: 199 89% 58%;
+    --info-foreground: 200 90% 8%;
   }
   * { @apply border-border; }
   body { @apply bg-background text-foreground; }

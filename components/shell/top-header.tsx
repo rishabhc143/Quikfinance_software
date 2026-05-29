@@ -21,7 +21,13 @@ export function TopHeader({ user, organization, memberships }: Props) {
   const trialDays = trialEnds ? Math.max(0, Math.ceil((trialEnds.getTime() - Date.now()) / 86_400_000)) : null;
 
   return (
-    <header className="border-b bg-background">
+    <header className="relative border-b bg-background">
+      {/* Brand accent strip — subtle gradient that gives every page a
+          signature without redesigning the header. */}
+      <div
+        aria-hidden
+        className="absolute inset-x-0 top-0 h-[2px] bg-gradient-to-r from-primary via-primary/70 to-primary/30"
+      />
       <div className="flex h-14 items-center gap-2 px-4">
         {/* 1. Search / command palette */}
         <CommandPaletteTrigger />

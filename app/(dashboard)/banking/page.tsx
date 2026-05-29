@@ -4,6 +4,7 @@ import { requireOrganization } from "@/lib/auth-helpers";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { StatusPill } from "@/components/ui/status-pill";
 import { Plus } from "lucide-react";
 import { formatMoney } from "@/lib/money";
 import { BankingEmptyState } from "@/components/banking/empty-state";
@@ -60,11 +61,9 @@ export default async function BankingPage() {
                 >
                   {a.name}
                 </Link>
-                <div className="flex items-center gap-1">
+                <div className="flex items-center gap-1.5">
                   {a.isPrimary ? (
-                    <Badge variant="secondary" className="text-[10px]">
-                      Primary
-                    </Badge>
+                    <StatusPill variant="success">Primary</StatusPill>
                   ) : null}
                   <Badge variant="outline">
                     {ACCOUNT_TYPE_LABEL[a.type] ?? a.type}
