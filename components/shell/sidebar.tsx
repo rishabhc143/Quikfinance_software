@@ -81,20 +81,7 @@ const NAV: NavItem[] = [
       { label: "Timesheet", href: "/time/entries" },
     ],
   },
-  {
-    label: "Banking",
-    href: "/banking",
-    icon: Wallet,
-    children: [
-      { label: "Accounts", href: "/banking/accounts" },
-      { label: "Transactions", href: "/banking/transactions" },
-      { label: "Rules", href: "/banking/rules" },
-      { label: "Transfers", href: "/banking/transfers" },
-      { label: "Card Payments", href: "/banking/card-payments" },
-      { label: "Other Income", href: "/banking/other-income" },
-      { label: "Owner Drawings", href: "/banking/owner-drawings" },
-    ],
-  },
+  { label: "Banking", href: "/banking", icon: Wallet },
   {
     label: "Accountant",
     href: "/accountant",

@@ -147,7 +147,11 @@ export function hrefForAssociated(
     case "Project":
       return `/time/projects/${id}`;
     case "BankTransaction":
-      return `/banking/transactions/${id}`;
+      // We no longer have a global /banking/transactions list — fall back
+      // to the Banking landing page (user picks the account from there).
+      // The deep BankTransaction ID is dropped but the link still lands
+      // in the right module.
+      return `/banking`;
   }
 }
 
