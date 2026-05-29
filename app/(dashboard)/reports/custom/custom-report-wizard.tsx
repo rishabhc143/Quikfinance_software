@@ -155,10 +155,6 @@ const FILTER_OP_OPTIONS: { value: string; label: string }[] = [
   { value: "less-than", label: "less than" },
 ];
 
-const STEP_PLACEHOLDER: Record<number, string> = {
-  3: "Report Preferences — configured in an upcoming step.",
-};
-
 /** Shared styling for native <select> controls to match the Input. */
 const SELECT_CLASS =
   "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50";
@@ -225,6 +221,12 @@ export function CustomReportWizard({
   const [marginLeft, setMarginLeft] = React.useState(0.55);
   const [marginRight, setMarginRight] = React.useState(0.2);
 
+  // ── Step 4 (Report Preferences) state ───────────────────────────
+  const [description, setDescription] = React.useState("");
+  const [decimals, setDecimals] = React.useState<0 | 1 | 2 | 3 | 4>(2);
+  const [negParens, setNegParens] = React.useState(false);
+  const [hideZeroRows, setHideZeroRows] = React.useState(false);
+
   const [pending, startTransition] = React.useTransition();
 
   function addFilter() {
@@ -269,6 +271,11 @@ export function CustomReportWizard({
     if (marginBottom !== 0.7) params.set("marginBottom", String(marginBottom));
     if (marginLeft !== 0.55) params.set("marginLeft", String(marginLeft));
     if (marginRight !== 0.2) params.set("marginRight", String(marginRight));
+    // Step 4 Report Preferences — only emit non-defaults.
+    if (description.trim()) params.set("description", description.trim());
+    if (decimals !== 2) params.set("decimals", String(decimals));
+    if (negParens) params.set("negParens", "true");
+    if (hideZeroRows) params.set("hideZeroRows", "true");
 
     startTransition(async () => {
       const res = await createCustomReportAction({
@@ -867,20 +874,70 @@ export function CustomReportWizard({
             </div>
           </div>
         ) : (
-          <div className="max-w-2xl space-y-6">
-            <div className="rounded-md border bg-muted/30 p-8 text-center">
-              <p className="text-sm text-muted-foreground">
-                {STEP_PLACEHOLDER[step]}
-              </p>
-            </div>
-            <div className="grid grid-cols-[10rem_20rem] items-center gap-4">
-              <Label htmlFor="cr-report-name">Report name</Label>
+          <div className="max-w-2xl space-y-5">
+            {/* Report Name */}
+            <div className="space-y-1.5">
+              <Label htmlFor="cr-report-name">Report Name</Label>
               <Input
                 id="cr-report-name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="Report name"
               />
+            </div>
+
+            {/* Description */}
+            <div className="space-y-1.5">
+              <Label htmlFor="cr-description">Description</Label>
+              <textarea
+                id="cr-description"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Optional notes about this report"
+                rows={3}
+                className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              />
+            </div>
+
+            {/* Decimal Places */}
+            <div className="space-y-1.5">
+              <Label htmlFor="cr-decimals">Decimal Places</Label>
+              <select
+                id="cr-decimals"
+                value={decimals}
+                onChange={(e) =>
+                  setDecimals(Number(e.target.value) as 0 | 1 | 2 | 3 | 4)
+                }
+                className={cn(SELECT_CLASS, "max-w-sm")}
+              >
+                <option value={0}>0</option>
+                <option value={1}>1</option>
+                <option value={2}>2</option>
+                <option value={3}>3</option>
+                <option value={4}>4</option>
+              </select>
+            </div>
+
+            {/* Toggles */}
+            <div className="space-y-2 pt-1 text-sm">
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={negParens}
+                  onChange={(e) => setNegParens(e.target.checked)}
+                  className="accent-primary"
+                />
+                Show negative numbers in parentheses
+              </label>
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={hideZeroRows}
+                  onChange={(e) => setHideZeroRows(e.target.checked)}
+                  className="accent-primary"
+                />
+                Hide zero-balance rows
+              </label>
             </div>
           </div>
         )}
