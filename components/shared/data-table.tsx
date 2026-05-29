@@ -15,10 +15,30 @@ export type ColumnDef = {
   className?: string;
 };
 
+export type RowStatusVariant =
+  | "success"
+  | "warning"
+  | "danger"
+  | "info"
+  | "neutral";
+
 export type DataRow = {
   id: string;
   href?: string;
   cells: React.ReactNode[];
+  /** When set, draws a 2px colored strip on the left edge of the row —
+   *  scan cue for Paid/Overdue/Draft/etc. without reading the status
+   *  text. Wire up per-list-page by mapping each row's status enum to
+   *  one of the five variants. */
+  statusVariant?: RowStatusVariant;
+};
+
+const ROW_STRIP_CLASS: Record<RowStatusVariant, string> = {
+  success: "border-l-2 border-success",
+  warning: "border-l-2 border-warning",
+  danger: "border-l-2 border-destructive",
+  info: "border-l-2 border-info",
+  neutral: "border-l-2 border-muted-foreground/30",
 };
 
 export function DataTable({
@@ -102,12 +122,18 @@ export function DataTable({
               <tr><td colSpan={columns.length} className="p-8 text-center text-sm text-muted-foreground">No rows match.</td></tr>
             )}
             {rows.map((row) => (
-              <tr key={row.id} className="hover:bg-muted/30">
+              <tr key={row.id} className="hover:bg-muted/30 transition-colors">
                 {row.cells.map((cell, i) => {
                   const c = columns[i];
                   const isFirst = i === 0;
+                  // Tabular nums on right-aligned columns — keeps money
+                  // columns visually aligned across rows.
+                  const isRight = c?.align === "right";
                   return (
-                    <td key={c?.key ?? i} className={`p-3 ${c?.align === "right" ? "text-right" : c?.align === "center" ? "text-center" : ""} ${c?.className ?? ""}`}>
+                    <td
+                      key={c?.key ?? i}
+                      className={`p-3 ${isRight ? "text-right tabular-nums" : c?.align === "center" ? "text-center" : ""} ${isFirst && row.statusVariant ? ROW_STRIP_CLASS[row.statusVariant] : ""} ${c?.className ?? ""}`}
+                    >
                       {isFirst && row.href ? <Link href={row.href} className="hover:underline">{cell}</Link> : cell}
                     </td>
                   );
