@@ -191,7 +191,7 @@ export function Sidebar({ orgName }: { orgName: string }) {
     <aside className="hidden md:flex md:w-60 md:flex-col border-r bg-muted/30">
       <div className="px-4 py-4 border-b">
         <Link href="/" className="flex items-center gap-2">
-          <div className="h-8 w-8 rounded-md bg-gradient-to-br from-primary to-blue-700 grid place-items-center text-primary-foreground font-bold">Q</div>
+          <div className="h-8 w-8 rounded-md bg-gradient-to-br from-primary to-primary/60 grid place-items-center text-primary-foreground font-bold shadow-sm">Q</div>
           <div>
             <div className="text-sm font-semibold leading-tight">Quikfinance</div>
             <div className="text-xs text-muted-foreground leading-tight flex items-center gap-1">
@@ -212,9 +212,9 @@ export function Sidebar({ orgName }: { orgName: string }) {
                 key={item.href}
                 href={item.href}
                 className={cn(
-                  "flex items-center gap-3 px-4 py-2 text-sm",
+                  "flex items-center gap-3 px-4 py-2 text-sm transition-colors",
                   groupActive
-                    ? "bg-primary/10 text-primary border-r-2 border-primary"
+                    ? "bg-primary/10 text-primary font-semibold border-r-2 border-primary"
                     : "text-muted-foreground hover:text-foreground hover:bg-accent"
                 )}
               >
