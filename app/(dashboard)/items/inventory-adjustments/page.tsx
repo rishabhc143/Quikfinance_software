@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { format } from "date-fns";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Boxes } from "lucide-react";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
 import { Button } from "@/components/ui/button";
@@ -57,6 +57,7 @@ export default async function InventoryAdjustmentsPage({ searchParams }: { searc
       </div>
       {total === 0 ? (
         <EmptyState
+          icon={Boxes}
           title="Adjust inventory levels"
           description="Record stock corrections, breakage, internal use, or count discrepancies. Each adjustment shifts an item's running quantity up or down."
           ctaHref="/items/inventory-adjustments/new"
