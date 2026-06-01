@@ -3,7 +3,7 @@ import { format } from "date-fns";
 import { ShoppingBag } from "lucide-react";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
-import { Badge } from "@/components/ui/badge";
+import { StatusPill, type StatusVariant } from "@/components/ui/status-pill";
 import { TransactionListPage } from "@/components/shared/transaction-list-page";
 import { BulkAwareDataTable } from "@/components/shared/bulk-aware-data-table";
 import { SavedViewBuilderDialog } from "@/components/shared/saved-view-builder-dialog";
@@ -24,16 +24,16 @@ export const metadata = { title: "Purchase Orders" };
 
 const PAGE_SIZE_DEFAULT = 25;
 
-const STATUS_VARIANT: Record<
-  string,
-  "secondary" | "outline" | "destructive"
-> = {
-  DRAFT: "outline",
-  ISSUED: "secondary",
-  PARTIALLY_BILLED: "secondary",
-  BILLED: "secondary",
-  CLOSED: "secondary",
-  CANCELLED: "destructive",
+// Map PO lifecycle to semantic StatusPill variants — DRAFT neutral,
+// ISSUED info (in flight to vendor), PARTIALLY_BILLED warning (needs
+// follow-up), BILLED / CLOSED success, CANCELLED danger.
+const STATUS_VARIANT: Record<string, StatusVariant> = {
+  DRAFT: "neutral",
+  ISSUED: "info",
+  PARTIALLY_BILLED: "warning",
+  BILLED: "success",
+  CLOSED: "success",
+  CANCELLED: "danger",
 };
 
 type SearchParams = {
@@ -125,9 +125,9 @@ export default async function PurchaseOrdersListPage({
       <span key="n" className="font-mono">{po.number}</span>,
       <span key="r">{po.referenceNumber ?? "—"}</span>,
       <span key="v">{po.contact.displayName}</span>,
-      <Badge key="s" variant={STATUS_VARIANT[po.status] ?? "outline"}>
+      <StatusPill key="s" variant={STATUS_VARIANT[po.status] ?? "neutral"}>
         {po.status.replaceAll("_", " ")}
-      </Badge>,
+      </StatusPill>,
       <span key="a" className="text-right tabular-nums">
         {formatMoney(Number(po.total), po.currency ?? organization.currency)}
       </span>,

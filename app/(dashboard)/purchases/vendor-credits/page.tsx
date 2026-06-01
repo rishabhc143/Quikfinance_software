@@ -2,7 +2,7 @@ import { format } from "date-fns";
 import { FileMinus } from "lucide-react";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
-import { Badge } from "@/components/ui/badge";
+import { StatusPill, type StatusVariant } from "@/components/ui/status-pill";
 import { TransactionListPage } from "@/components/shared/transaction-list-page";
 import { BulkAwareDataTable } from "@/components/shared/bulk-aware-data-table";
 import { SavedViewBuilderDialog } from "@/components/shared/saved-view-builder-dialog";
@@ -19,13 +19,13 @@ export const metadata = { title: "Vendor Credits" };
 
 const PAGE_SIZE_DEFAULT = 25;
 
-const STATUS_VARIANT: Record<
-  string,
-  "secondary" | "outline" | "destructive"
-> = {
-  OPEN: "secondary",
-  CLOSED: "secondary",
-  VOID: "destructive",
+// Map vendor-credit lifecycle to semantic StatusPill variants — OPEN info
+// (credit still has balance), CLOSED success (fully applied/refunded),
+// VOID danger.
+const STATUS_VARIANT: Record<string, StatusVariant> = {
+  OPEN: "info",
+  CLOSED: "success",
+  VOID: "danger",
 };
 
 type SearchParams = {
@@ -115,9 +115,9 @@ export default async function VendorCreditsListPage({
         <span key="n" className="font-mono">{c.number}</span>,
         <span key="r">{c.referenceNumber ?? "—"}</span>,
         <span key="v">{c.contact.displayName}</span>,
-        <Badge key="s" variant={STATUS_VARIANT[c.status] ?? "outline"}>
+        <StatusPill key="s" variant={STATUS_VARIANT[c.status] ?? "neutral"}>
           {c.status}
-        </Badge>,
+        </StatusPill>,
         <span key="t" className="text-right tabular-nums">
           {formatMoney(
             Number(c.total),

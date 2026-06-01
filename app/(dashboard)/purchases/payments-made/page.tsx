@@ -2,7 +2,7 @@ import { format } from "date-fns";
 import { Wallet } from "lucide-react";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
-import { Badge } from "@/components/ui/badge";
+import { StatusPill } from "@/components/ui/status-pill";
 import { TransactionListPage } from "@/components/shared/transaction-list-page";
 import { BulkAwareDataTable } from "@/components/shared/bulk-aware-data-table";
 import { SavedViewBuilderDialog } from "@/components/shared/saved-view-builder-dialog";
@@ -117,14 +117,12 @@ export default async function PaymentsMadeListPage({
         <span key="d">{format(p.paymentDate, "dd MMM yyyy")}</span>,
         <span key="n" className="font-mono">{p.number}</span>,
         <span key="v">{p.contact.displayName}</span>,
-        <Badge
+        <StatusPill
           key="t"
-          variant={
-            p.paymentType === "VENDOR_ADVANCE" ? "secondary" : "outline"
-          }
+          variant={p.paymentType === "VENDOR_ADVANCE" ? "info" : "neutral"}
         >
           {p.paymentType === "VENDOR_ADVANCE" ? "Advance" : "Bill payment"}
-        </Badge>,
+        </StatusPill>,
         <span key="m">{p.paymentMode ?? p.method ?? "—"}</span>,
         <span key="a" className="text-right tabular-nums">
           {formatMoney(Number(p.amount), organization.currency)}

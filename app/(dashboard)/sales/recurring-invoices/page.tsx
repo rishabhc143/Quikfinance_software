@@ -3,7 +3,7 @@ import { Repeat } from "lucide-react";
 import { SalesEmptyState } from "@/components/shared/sales-empty-state";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
-import { Badge } from "@/components/ui/badge";
+import { StatusPill, type StatusVariant } from "@/components/ui/status-pill";
 import { TransactionListPage } from "@/components/shared/transaction-list-page";
 import { BulkAwareDataTable } from "@/components/shared/bulk-aware-data-table";
 import { SalesExportDialog } from "@/components/shared/sales-export-dialog";
@@ -17,11 +17,14 @@ import {
 
 export const metadata = { title: "Recurring Invoices" };
 
-const STATUS_VARIANT: Record<string, "secondary" | "outline" | "destructive"> = {
-  ACTIVE: "secondary",
-  PAUSED: "outline",
-  STOPPED: "destructive",
-  EXPIRED: "outline",
+// Map recurring-profile lifecycle to semantic StatusPill variants —
+// ACTIVE success (running), PAUSED warning (user can resume), STOPPED /
+// EXPIRED neutral (terminal, low-emphasis).
+const STATUS_VARIANT: Record<string, StatusVariant> = {
+  ACTIVE: "success",
+  PAUSED: "warning",
+  STOPPED: "neutral",
+  EXPIRED: "neutral",
 };
 
 export default async function RecurringInvoicesListPage({
@@ -78,7 +81,7 @@ export default async function RecurringInvoicesListPage({
       </span>,
       <span key="s">{format(r.startDate, "dd MMM yyyy")}</span>,
       <span key="n">{format(r.nextOccurrenceDate, "dd MMM yyyy")}</span>,
-      <Badge key="st" variant={STATUS_VARIANT[r.status] ?? "outline"}>{r.status}</Badge>,
+      <StatusPill key="st" variant={STATUS_VARIANT[r.status] ?? "neutral"}>{r.status}</StatusPill>,
       <span key="a" className="text-right tabular-nums">
         {formatMoney(Number(r.amount), organization.currency)}
       </span>,

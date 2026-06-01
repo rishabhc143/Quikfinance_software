@@ -10,11 +10,19 @@ import {
   EmptyState,
   type ColumnDef,
 } from "@/components/shared/data-table";
-import { Badge } from "@/components/ui/badge";
+import { StatusPill, type StatusVariant } from "@/components/ui/status-pill";
 import { Button } from "@/components/ui/button";
 import { formatMoney } from "@/lib/money";
 
 export const metadata = { title: "Manual Journals" };
+
+// Map manual-journal status to semantic StatusPill variants — DRAFT
+// neutral (editable, not in the ledger yet), PUBLISHED success (locked
+// into the canonical ledger).
+const STATUS_VARIANT: Record<string, StatusVariant> = {
+  DRAFT: "neutral",
+  PUBLISHED: "success",
+};
 
 const COLUMNS: ColumnDef[] = [
   { key: "number", header: "Number", sortable: true },
@@ -148,13 +156,9 @@ export default async function ManualJournalsPage({
           {j.number}
         </Link>,
         format(j.date, "dd MMM yyyy"),
-        <Badge
-          key="s"
-          variant={j.status === "PUBLISHED" ? "secondary" : "outline"}
-          className="text-[10px]"
-        >
+        <StatusPill key="s" variant={STATUS_VARIANT[j.status] ?? "neutral"}>
           {j.status === "PUBLISHED" ? "Published" : "Draft"}
-        </Badge>,
+        </StatusPill>,
         <span key="r" className="font-mono text-xs text-muted-foreground">
           {j.referenceNumber ?? "—"}
         </span>,

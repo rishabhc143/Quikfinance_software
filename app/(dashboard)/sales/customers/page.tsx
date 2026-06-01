@@ -3,6 +3,7 @@ import { SalesEmptyState } from "@/components/shared/sales-empty-state";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
 import { Badge } from "@/components/ui/badge";
+import { StatusPill } from "@/components/ui/status-pill";
 import { TransactionListPage } from "@/components/shared/transaction-list-page";
 import { SalesExportDialog } from "@/components/shared/sales-export-dialog";
 import { CustomersTable } from "./customers-table";
@@ -97,9 +98,7 @@ export default async function CustomersListPage({
         <div key="name" className="flex items-center gap-2">
           <span className="font-medium">{c.displayName}</span>
           {c.isInactive ? (
-            <Badge variant="outline" className="text-xs">
-              Inactive
-            </Badge>
+            <StatusPill variant="neutral">Inactive</StatusPill>
           ) : null}
         </div>,
         <span key="company">{c.companyName ?? "—"}</span>,

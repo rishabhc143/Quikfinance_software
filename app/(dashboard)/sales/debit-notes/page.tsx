@@ -4,7 +4,7 @@ import { FileMinus, Plus } from "lucide-react";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { StatusPill, type StatusVariant } from "@/components/ui/status-pill";
 import { TransactionListPage } from "@/components/shared/transaction-list-page";
 import { BulkAwareDataTable } from "@/components/shared/bulk-aware-data-table";
 import {
@@ -14,6 +14,13 @@ import {
 import { formatMoney } from "@/lib/money";
 
 export const metadata = { title: "Debit Notes" };
+
+// Map debit-note lifecycle to semantic StatusPill variants.
+const STATUS_VARIANT: Record<string, StatusVariant> = {
+  DRAFT: "neutral",
+  OPEN: "info",
+  VOID: "danger",
+};
 
 /**
  * M17f: minimal Debit Notes list. Schema is in (M17a); the spec
@@ -69,9 +76,9 @@ export default async function DebitNotesListPage({
       </span>,
       <span key="ref">{d.referenceNumber ?? "—"}</span>,
       <span key="c">{d.contact.displayName}</span>,
-      <Badge key="s" variant="outline">
+      <StatusPill key="s" variant={STATUS_VARIANT[d.status] ?? "neutral"}>
         {d.status}
-      </Badge>,
+      </StatusPill>,
       <span key="t" className="text-right tabular-nums">
         {formatMoney(Number(d.total), d.currency)}
       </span>,

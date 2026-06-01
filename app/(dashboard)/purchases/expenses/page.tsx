@@ -2,7 +2,7 @@ import { format } from "date-fns";
 import { ReceiptText } from "lucide-react";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
-import { Badge } from "@/components/ui/badge";
+import { StatusPill } from "@/components/ui/status-pill";
 import { TransactionListPage } from "@/components/shared/transaction-list-page";
 import { BulkAwareDataTable } from "@/components/shared/bulk-aware-data-table";
 import { SavedViewBuilderDialog } from "@/components/shared/saved-view-builder-dialog";
@@ -94,12 +94,9 @@ export default async function ExpensesListPage({
       <span key="r">{e.reference ?? "—"}</span>,
       <span key="b">
         {e.isBillable ? (
-          <Badge
-            variant={e.isBilled ? "secondary" : "outline"}
-            className="text-xs"
-          >
+          <StatusPill variant={e.isBilled ? "success" : "info"}>
             {e.isBilled ? "Billed" : "Billable"}
-          </Badge>
+          </StatusPill>
         ) : (
           "—"
         )}
