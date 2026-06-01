@@ -3,6 +3,7 @@ import { Repeat } from "lucide-react";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
 import { Badge } from "@/components/ui/badge";
+import { StatusPill, type StatusVariant } from "@/components/ui/status-pill";
 import { TransactionListPage } from "@/components/shared/transaction-list-page";
 import { BulkAwareDataTable } from "@/components/shared/bulk-aware-data-table";
 import { SavedViewBuilderDialog } from "@/components/shared/saved-view-builder-dialog";
@@ -22,6 +23,15 @@ import {
 export const metadata = { title: "Recurring Expenses" };
 
 const PAGE_SIZE_DEFAULT = 25;
+
+// Map recurring-expense lifecycle to semantic StatusPill variants —
+// matches the recurring-bills convention.
+const STATUS_VARIANT: Record<string, StatusVariant> = {
+  ACTIVE: "success",
+  PAUSED: "warning",
+  EXPIRED: "neutral",
+  STOPPED: "neutral",
+};
 
 type SearchParams = {
   q?: string;
@@ -89,12 +99,9 @@ export default async function RecurringExpensesListPage({
       <span key="a" className="text-right tabular-nums">
         {formatMoney(Number(r.amount), organization.currency)}
       </span>,
-      <Badge
-        key="s"
-        variant={r.status === "ACTIVE" ? "secondary" : "outline"}
-      >
+      <StatusPill key="s" variant={STATUS_VARIANT[r.status] ?? "neutral"}>
         {r.status}
-      </Badge>,
+      </StatusPill>,
     ],
   }));
 

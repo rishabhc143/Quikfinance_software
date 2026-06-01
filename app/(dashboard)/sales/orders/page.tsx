@@ -3,7 +3,7 @@ import { ShoppingBag } from "lucide-react";
 import { SalesEmptyState } from "@/components/shared/sales-empty-state";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
-import { Badge } from "@/components/ui/badge";
+import { StatusPill, type StatusVariant } from "@/components/ui/status-pill";
 import { TransactionListPage } from "@/components/shared/transaction-list-page";
 import { BulkAwareDataTable } from "@/components/shared/bulk-aware-data-table";
 import { SalesExportDialog } from "@/components/shared/sales-export-dialog";
@@ -22,11 +22,14 @@ import {
 
 export const metadata = { title: "Sales Orders" };
 
-const STATUS_VARIANT: Record<string, "secondary" | "outline" | "destructive"> = {
-  DRAFT: "outline",
-  CONFIRMED: "secondary",
-  CLOSED: "secondary",
-  VOID: "destructive",
+// Map SO lifecycle to semantic StatusPill variants — matches the Invoices /
+// Bills / Quotes convention (PR #305): DRAFT neutral, CONFIRMED info,
+// CLOSED success, VOID danger.
+const STATUS_VARIANT: Record<string, StatusVariant> = {
+  DRAFT: "neutral",
+  CONFIRMED: "info",
+  CLOSED: "success",
+  VOID: "danger",
 };
 
 export default async function SalesOrdersListPage({
@@ -97,7 +100,7 @@ export default async function SalesOrdersListPage({
       <span key="n" className="font-mono">{so.number}</span>,
       <span key="r">{so.referenceNumber ?? "—"}</span>,
       <span key="c">{so.contact.displayName}</span>,
-      <Badge key="s" variant={STATUS_VARIANT[so.status] ?? "outline"}>{so.status}</Badge>,
+      <StatusPill key="s" variant={STATUS_VARIANT[so.status] ?? "neutral"}>{so.status}</StatusPill>,
       <span key="a" className="text-right tabular-nums">
         {formatMoney(Number(so.total), so.currency)}
       </span>,

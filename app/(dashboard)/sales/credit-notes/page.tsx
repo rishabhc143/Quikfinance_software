@@ -3,7 +3,7 @@ import { ReceiptText } from "lucide-react";
 import { SalesEmptyState } from "@/components/shared/sales-empty-state";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
-import { Badge } from "@/components/ui/badge";
+import { StatusPill, type StatusVariant } from "@/components/ui/status-pill";
 import { TransactionListPage } from "@/components/shared/transaction-list-page";
 import { BulkAwareDataTable } from "@/components/shared/bulk-aware-data-table";
 import { SalesExportDialog } from "@/components/shared/sales-export-dialog";
@@ -15,6 +15,14 @@ import {
 } from "./actions";
 
 export const metadata = { title: "Credit Notes" };
+
+// Map credit-note lifecycle to semantic StatusPill variants — OPEN info,
+// CLOSED success (fully applied), VOID danger.
+const STATUS_VARIANT: Record<string, StatusVariant> = {
+  OPEN: "info",
+  CLOSED: "success",
+  VOID: "danger",
+};
 
 export default async function CreditNotesListPage({
   searchParams,
@@ -70,7 +78,7 @@ export default async function CreditNotesListPage({
         <span key="n" className="font-mono">{c.number}</span>,
         <span key="r">{c.referenceNumber ?? "—"}</span>,
         <span key="c">{c.contact.displayName}</span>,
-        <Badge key="s" variant="outline">{c.status}</Badge>,
+        <StatusPill key="s" variant={STATUS_VARIANT[c.status] ?? "neutral"}>{c.status}</StatusPill>,
         <span key="a" className="text-right tabular-nums">
           {formatMoney(Number(c.total), c.currency)}
         </span>,
