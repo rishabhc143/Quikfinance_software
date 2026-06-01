@@ -94,7 +94,17 @@ export default async function HomePage() {
   const payTotal = payCurrent + payOverdue;
 
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-6">
+    <div className="relative p-6 max-w-7xl mx-auto space-y-6">
+      {/* Mercury-style dotted-grid backdrop, only on the dashboard home.
+          Sits at -z-10 behind every Card so the content is readable, but
+          gives the home page a "control center" texture that distinguishes
+          it from the regular list pages. Pure CSS, no asset. The dots use
+          `--muted-foreground` at 12% opacity so they read on both the
+          light cool-grey canvas and the dark canvas. */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 -z-10 [background:radial-gradient(circle_at_1px_1px,hsl(var(--muted-foreground)/0.12)_1px,transparent_0)] [background-size:24px_24px]"
+      />
       <div>
         <h1 className="text-2xl font-semibold">Hello, {firstName}</h1>
         <p className="text-sm text-muted-foreground">{organization.name}</p>
