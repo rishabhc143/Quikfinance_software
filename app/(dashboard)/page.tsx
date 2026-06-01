@@ -23,10 +23,32 @@ export default async function HomePage() {
     const d = subMonths(today, i);
     months.push({ from: startOfMonth(d), to: endOfMonth(d), label: format(d, "MMM") });
   }
+  // Full 6-month window for the slim queries below.
+  const sixMonthsStart = months[0].from;
+  const sixMonthsEnd = months[months.length - 1].to;
+
+  // Bucket a row-set into the 6-month windows in-memory. Replaces what
+  // used to be 30 separate `aggregate` queries (5 sources × 6 months) —
+  // those fired sequentially over HTTP and dominated the cold-nav
+  // latency on Neon. One findMany + JS bucketing is ~10× cheaper.
+  function bucketByMonth<T>(
+    rows: T[],
+    dateAccessor: (row: T) => Date,
+    valueAccessor: (row: T) => number,
+  ): number[] {
+    const buckets = new Array(months.length).fill(0);
+    for (const row of rows) {
+      const d = dateAccessor(row);
+      const idx = months.findIndex((m) => d >= m.from && d <= m.to);
+      if (idx >= 0) buckets[idx] += valueAccessor(row);
+    }
+    return buckets;
+  }
 
   const [
     invoices, bills, recentTxns, expensesAgg, salesAgg, banner,
-    cashFlow, incomeExpense, expensesByCategory,
+    paymentReceivedRows, paymentMadeRows, expenseRows, invoicePaidRows,
+    expensesByCategory,
   ] = await Promise.all([
     db.invoice.findMany({
       where: { organizationId: orgId, deletedAt: null, status: { in: ["SENT", "PARTIALLY_PAID", "OVERDUE"] } },
@@ -44,28 +66,48 @@ export default async function HomePage() {
     db.expense.aggregate({ where: { organizationId: orgId }, _sum: { amount: true } }),
     db.invoice.aggregate({ where: { organizationId: orgId, deletedAt: null, status: { in: ["PAID"] } }, _sum: { total: true } }),
     db.promoBanner.findFirst({ where: { organizationId: orgId, dismissedAt: null }, orderBy: { createdAt: "desc" } }),
-    Promise.all(months.map(async (m) => {
-      const [received, made, exp] = await Promise.all([
-        db.paymentReceived.aggregate({ where: { organizationId: orgId, paymentDate: { gte: m.from, lte: m.to } }, _sum: { amount: true } }),
-        db.paymentMade.aggregate({ where: { organizationId: orgId, paymentDate: { gte: m.from, lte: m.to } }, _sum: { amount: true } }),
-        db.expense.aggregate({ where: { organizationId: orgId, date: { gte: m.from, lte: m.to } }, _sum: { amount: true } }),
-      ]);
-      const inflow = Number(received._sum.amount ?? 0);
-      const outflow = Number(made._sum.amount ?? 0) + Number(exp._sum.amount ?? 0);
-      return { month: m.label, inflow, outflow, net: inflow - outflow };
-    })),
-    Promise.all(months.map(async (m) => {
-      const [income, exp] = await Promise.all([
-        db.invoice.aggregate({ where: { organizationId: orgId, deletedAt: null, status: "PAID", issueDate: { gte: m.from, lte: m.to } }, _sum: { total: true } }),
-        db.expense.aggregate({ where: { organizationId: orgId, date: { gte: m.from, lte: m.to } }, _sum: { amount: true } }),
-      ]);
-      return { month: m.label, income: Number(income._sum.total ?? 0), expense: Number(exp._sum.amount ?? 0) };
-    })),
+    // Slim 6-month series: one findMany per source table for the full
+    // window, then bucket per month in JS below. Was previously 30
+    // separate aggregate fan-outs over HTTP — see PR comment above.
+    db.paymentReceived.findMany({
+      where: { organizationId: orgId, paymentDate: { gte: sixMonthsStart, lte: sixMonthsEnd } },
+      select: { paymentDate: true, amount: true },
+    }),
+    db.paymentMade.findMany({
+      where: { organizationId: orgId, paymentDate: { gte: sixMonthsStart, lte: sixMonthsEnd } },
+      select: { paymentDate: true, amount: true },
+    }),
+    db.expense.findMany({
+      where: { organizationId: orgId, date: { gte: sixMonthsStart, lte: sixMonthsEnd } },
+      select: { date: true, amount: true },
+    }),
+    db.invoice.findMany({
+      where: { organizationId: orgId, deletedAt: null, status: "PAID", issueDate: { gte: sixMonthsStart, lte: sixMonthsEnd } },
+      select: { issueDate: true, total: true },
+    }),
     db.expense.groupBy({
       by: ["category"], where: { organizationId: orgId },
       _sum: { amount: true }, orderBy: { _sum: { amount: "desc" } }, take: 7,
     }),
   ]);
+
+  // Build the original `cashFlow` and `incomeExpense` shapes from the
+  // bucketed in-memory data. Output shape is identical to before so the
+  // chart components (CashFlowMini, IncomeVsExpenseMini) don't change.
+  const receivedByMonth = bucketByMonth(paymentReceivedRows, (r) => r.paymentDate, (r) => Number(r.amount));
+  const madeByMonth = bucketByMonth(paymentMadeRows, (r) => r.paymentDate, (r) => Number(r.amount));
+  const expenseByMonth = bucketByMonth(expenseRows, (r) => r.date, (r) => Number(r.amount));
+  const incomeByMonth = bucketByMonth(invoicePaidRows, (r) => r.issueDate, (r) => Number(r.total));
+  const cashFlow = months.map((m, idx) => {
+    const inflow = receivedByMonth[idx];
+    const outflow = madeByMonth[idx] + expenseByMonth[idx];
+    return { month: m.label, inflow, outflow, net: inflow - outflow };
+  });
+  const incomeExpense = months.map((m, idx) => ({
+    month: m.label,
+    income: incomeByMonth[idx],
+    expense: expenseByMonth[idx],
+  }));
 
   const expensesPie = expensesByCategory.map((g) => ({
     name: g.category,

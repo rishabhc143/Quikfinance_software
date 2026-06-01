@@ -108,7 +108,7 @@ Required for full functionality:
 - `NEXTAUTH_URL` — canonical URL
 - `BLOB_READ_WRITE_TOKEN` — auto-injected by Vercel Blob; do not set manually
 - `MIGRATION_KEY` — protects `/api/admin/migrate`
-- `QUIK_AUTO_MIGRATE=1` — runs migrations on cold start via `instrumentation.ts`
+- `QUIK_MIGRATE_ON_BOOT=1` — runs migrations on cold start via `instrumentation.ts`. **Off by default in prod** since the migration-table-scan added ~1s per cold function instance. After shipping a migration: either set this temporarily for one cold-start cycle, OR hit `POST /api/admin/migrate` with the `MIGRATION_KEY` header manually. (Was `QUIK_AUTO_MIGRATE=1` until PR #314.)
 
 Optional (gates specific features):
 - `ANTHROPIC_API_KEY` — enables D4.4 LLM fallback + the in-app chat assistant
@@ -120,6 +120,12 @@ Optional (gates specific features):
 - `main` HEAD: `d70adf2` (PR #239 — D4.3 AR/AP suggested matches merged)
 - Prod deploy live: `quikfinance-software-ik8jri9xg-…` — ● Ready
 - Pending PR: `feat/documents-d4-4-llm-fallback` (commit `37b36aa`, pushed but NOT yet opened as PR — see `docs/NEXT_SESSION_PROMPT.md`)
+
+## Local dev performance (not a bug)
+
+`pnpm dev` is intentionally slow on first-visit-to-a-route — Next.js compiles each route on demand the first time it's hit (1-3s per route). Subsequent visits to the same route are fast. If "everything feels slow" while running `pnpm dev`, that's the dev mode tax, not a code defect. To benchmark prod-like perf locally: `pnpm build && pnpm start`.
+
+Both prod AND local share the same Neon DB. Neon's free-tier compute scales to zero after 30 min idle, costing ~1-2s to wake on the next query. A Vercel cron at `/api/ping` runs every 4 min (`vercel.json` cron entry) to keep Neon warm. If you ever disable the cron to stay under Neon free-tier hours, accept the ~1-2s cold-DB tax on the first click after idle. Real fix for "I want production performance": Neon Launch plan at ~$19/mo gets you always-on compute by default.
 
 ## Tone / interaction guidelines
 

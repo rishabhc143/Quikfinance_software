@@ -11,11 +11,23 @@
  *
  * Gates:
  *  - Skip on the Edge runtime (no Node APIs available)
- *  - Skip unless `QUIK_AUTO_MIGRATE=1` is set in the env so devs
+ *  - Skip unless `QUIK_MIGRATE_ON_BOOT=1` is set in the env so devs
  *    running locally don't accidentally run migrations against
- *    arbitrary databases
+ *    arbitrary databases, AND so steady-state prod doesn't pay the
+ *    ~500-1500ms migration-table-scan cost on every cold function
+ *    start. Was previously `QUIK_AUTO_MIGRATE=1` — renamed to make
+ *    its intent explicit and to force a deliberate re-enable when
+ *    shipping a migration (default OFF in prod).
  *  - Module-level `attempted` flag so each process tries at most
- *    once per cold-start
+ *    once per cold-start.
+ *
+ * Workflow when shipping a migration:
+ *  1. Push the migration PR.
+ *  2. Either (a) hit `POST /api/admin/migrate` with the migration
+ *     key once after the deploy goes live (preferred — zero cold-start
+ *     overhead afterward), OR (b) temporarily set
+ *     `QUIK_MIGRATE_ON_BOOT=1` in Vercel before pushing, then unset it
+ *     after the next cold start has run the migration.
  *
  * Idempotent at the SQL layer: `runPendingMigrations` skips rows
  * already recorded in `_prisma_migrations`. Concurrent function
@@ -31,7 +43,7 @@ let attempted = false;
 
 export async function register() {
   if (process.env.NEXT_RUNTIME !== "nodejs") return;
-  if (process.env.QUIK_AUTO_MIGRATE !== "1") return;
+  if (process.env.QUIK_MIGRATE_ON_BOOT !== "1") return;
   if (attempted) return;
   attempted = true;
 
