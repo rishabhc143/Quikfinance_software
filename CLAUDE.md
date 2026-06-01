@@ -125,7 +125,14 @@ Optional (gates specific features):
 
 `pnpm dev` is intentionally slow on first-visit-to-a-route — Next.js compiles each route on demand the first time it's hit (1-3s per route). Subsequent visits to the same route are fast. If "everything feels slow" while running `pnpm dev`, that's the dev mode tax, not a code defect. To benchmark prod-like perf locally: `pnpm build && pnpm start`.
 
-Both prod AND local share the same Neon DB. Neon's free-tier compute scales to zero after 30 min idle, costing ~1-2s to wake on the next query. A Vercel cron at `/api/ping` runs every 4 min (`vercel.json` cron entry) to keep Neon warm. If you ever disable the cron to stay under Neon free-tier hours, accept the ~1-2s cold-DB tax on the first click after idle. Real fix for "I want production performance": Neon Launch plan at ~$19/mo gets you always-on compute by default.
+Both prod AND local share the same Neon DB. Neon's free-tier compute scales to zero after 30 min idle, costing ~1-2s to wake on the next query.
+
+A `/api/ping` route exists for keep-warm purposes but is NOT wired into Vercel Cron — sub-daily cron schedules require Vercel Pro plan ($20/mo); Hobby is daily-only. Keep-warm options:
+
+1. **Free, no code:** Set up UptimeRobot.com (free tier, pings every 5 min). Point it at `https://quikfinance-software.vercel.app/api/ping`. Keeps Neon warm 24/7.
+2. **$20/mo (Vercel Pro):** Allows sub-daily crons. Add `{ "path": "/api/ping", "schedule": "*/4 * * * *" }` back to `vercel.json` after upgrade.
+3. **$19/mo (Neon Launch plan):** Always-on compute, no cron needed at all. Cleanest fix.
+4. **Free, accept the tax:** Do nothing. First click after 30 min idle adds 1-2s.
 
 ## Tone / interaction guidelines
 
