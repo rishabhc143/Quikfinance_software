@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { format } from "date-fns";
+import { CalendarClock } from "lucide-react";
 import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
@@ -124,6 +125,7 @@ export default async function RecurringManualJournalsPage({
       />
       {total === 0 && !q ? (
         <EmptyState
+          icon={CalendarClock}
           title="Automate periodic journals"
           description="Set up a template for recurring entries like monthly depreciation or quarterly accruals. Each occurrence is generated as a DRAFT so you can review before publishing."
           ctaHref="/accountant/recurring-manual-journals/new"

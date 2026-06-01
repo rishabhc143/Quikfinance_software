@@ -145,11 +145,14 @@ export function SalesEmptyState({
         </>
       ) : null}
 
-      {/* Key Benefits card */}
+      {/* Key Benefits card — uses semantic `success` / `warning` tokens so
+          the accent block + check marks track the brand emerald palette,
+          not a hardcoded amber-100 / emerald-600 (those don't update
+          when the palette changes). */}
       <div className="w-full rounded-lg border bg-card px-6 py-5">
         <div className="flex items-center gap-2 mb-4">
           <span
-            className="inline-block h-4 w-4 rounded-sm bg-amber-100 dark:bg-amber-950"
+            className="inline-block h-4 w-4 rounded-sm bg-warning/15"
             aria-hidden
           />
           <span className="text-sm font-semibold">Key Benefits</span>
@@ -158,7 +161,7 @@ export function SalesEmptyState({
           {benefits.map((benefit) => (
             <div key={benefit} className="flex items-start gap-2 text-sm">
               <Check
-                className="h-4 w-4 text-emerald-600 mt-0.5 shrink-0"
+                className="h-4 w-4 text-success mt-0.5 shrink-0"
                 strokeWidth={3}
                 aria-hidden
               />

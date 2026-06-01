@@ -1,10 +1,9 @@
-import Link from "next/link";
 import { format } from "date-fns";
-import { FileMinus, Plus } from "lucide-react";
+import { FileMinus } from "lucide-react";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
-import { Button } from "@/components/ui/button";
 import { StatusPill, type StatusVariant } from "@/components/ui/status-pill";
+import { SalesEmptyState } from "@/components/shared/sales-empty-state";
 import { TransactionListPage } from "@/components/shared/transaction-list-page";
 import { BulkAwareDataTable } from "@/components/shared/bulk-aware-data-table";
 import {
@@ -86,24 +85,19 @@ export default async function DebitNotesListPage({
   }));
 
   const empty = (
-    <div className="space-y-4">
-      <FileMinus className="h-12 w-12 mx-auto text-primary" aria-hidden />
-      <h2 className="text-xl font-semibold">No debit notes yet.</h2>
-      <p className="text-sm text-muted-foreground max-w-md mx-auto">
-        Import existing debit notes from a CSV, or add them via the
-        Invoice Refinement workflow.
-      </p>
-      <div className="flex items-center justify-center gap-2">
-        <Button asChild>
-          <Link href="/sales/debit-notes/new" className="gap-1">
-            <Plus className="h-4 w-4" /> Create Debit Note
-          </Link>
-        </Button>
-        <Button asChild variant="outline">
-          <Link href="/sales/debit-notes/import">Import Debit Notes</Link>
-        </Button>
-      </div>
-    </div>
+    <SalesEmptyState
+      icon={FileMinus}
+      title="Track customer adjustments"
+      description="Issue a debit note when you need to increase what a customer owes — late fees, price corrections, or extra services on a closed invoice."
+      primaryAction={{ label: "Create Debit Note", href: "/sales/debit-notes/new" }}
+      secondaryAction={{ label: "Import Debit Notes", href: "/sales/debit-notes/import" }}
+      benefits={[
+        "Increase a customer's outstanding balance",
+        "Reference the original Invoice on every debit note",
+        "Import historical debit notes from CSV",
+        "GST-compliant CN-prefixed numbering",
+      ]}
+    />
   );
 
   return (

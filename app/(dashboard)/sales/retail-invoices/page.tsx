@@ -1,4 +1,5 @@
 import { format } from "date-fns";
+import { ShoppingCart } from "lucide-react";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
 import { Badge } from "@/components/ui/badge";
@@ -48,6 +49,7 @@ export default async function RetailInvoicesPage({ searchParams }: { searchParam
       <PageHeader title="Retail Invoices" ctaHref="/sales/retail-invoices/new" ctaLabel="+ New Retail Invoice" />
       {total === 0 ? (
         <EmptyState
+          icon={ShoppingCart}
           title="Cash sales at the counter"
           description="Walk-in retail sales — no contact needed, paid on the spot. Quikfinance creates a paid invoice tagged as retail."
           ctaHref="/sales/retail-invoices/new"

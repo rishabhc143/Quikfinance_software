@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
-import { ArrowUp, ArrowDown, ArrowUpDown, Search } from "lucide-react";
+import { ArrowUp, ArrowDown, ArrowUpDown, Search, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
@@ -177,16 +177,56 @@ export function PageHeader({
   );
 }
 
+/**
+ * Generic empty state for tables — the simpler sibling of
+ * `SalesEmptyState` (which adds an icon-with-plus-badge, an Import row,
+ * and a Key Benefits card). Use this for accountant / items / reports
+ * tables where the richer treatment is overkill.
+ *
+ * Pass an optional Lucide `icon` to add a muted illustration at the top —
+ * raises the empty state from "blank rectangle" to "intentional moment"
+ * without any per-page work.
+ */
 export function EmptyState({
-  title, description, ctaHref, ctaLabel,
-}: { title: string; description: string; ctaHref?: string; ctaLabel?: string }) {
+  icon: Icon,
+  title,
+  description,
+  ctaHref,
+  ctaLabel,
+  secondaryHref,
+  secondaryLabel,
+}: {
+  icon?: LucideIcon;
+  title: string;
+  description: string;
+  ctaHref?: string;
+  ctaLabel?: string;
+  secondaryHref?: string;
+  secondaryLabel?: string;
+}) {
   return (
-    <div className="rounded-lg border bg-background p-12 text-center space-y-3">
+    <div className="rounded-lg border bg-card p-12 text-center space-y-3">
+      {Icon ? (
+        <div className="flex justify-center">
+          <Icon
+            className="h-12 w-12 text-muted-foreground/40"
+            strokeWidth={1.5}
+            aria-hidden
+          />
+        </div>
+      ) : null}
       <h2 className="text-base font-medium">{title}</h2>
       <p className="text-sm text-muted-foreground max-w-md mx-auto">{description}</p>
-      {ctaHref && ctaLabel && (
-        <Button asChild className="mt-2"><Link href={ctaHref}>{ctaLabel}</Link></Button>
-      )}
+      {(ctaHref && ctaLabel) || (secondaryHref && secondaryLabel) ? (
+        <div className="flex items-center justify-center gap-2 pt-2">
+          {ctaHref && ctaLabel ? (
+            <Button asChild><Link href={ctaHref}>{ctaLabel}</Link></Button>
+          ) : null}
+          {secondaryHref && secondaryLabel ? (
+            <Button asChild variant="outline"><Link href={secondaryHref}>{secondaryLabel}</Link></Button>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }

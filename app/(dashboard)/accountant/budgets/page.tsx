@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Target } from "lucide-react";
 import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
@@ -127,6 +128,7 @@ export default async function BudgetsPage({
       />
       {total === 0 && !q ? (
         <EmptyState
+          icon={Target}
           title="Plan vs reality"
           description="Set annual P&L targets per account, then track how the ledger is performing against them. Budget vs Actuals appears on the detail page."
           ctaHref="/accountant/budgets/new"

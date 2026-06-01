@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { format } from "date-fns";
-import { ExternalLink } from "lucide-react";
+import { ExternalLink, BookOpen } from "lucide-react";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
 import {
@@ -181,6 +181,7 @@ export default async function JournalEntriesPage({
 
       {total === 0 ? (
         <EmptyState
+          icon={BookOpen}
           title={
             source === "auto"
               ? "No auto-created entries"

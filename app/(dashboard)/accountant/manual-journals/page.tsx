@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Download, Upload } from "lucide-react";
+import { Download, Upload, BookOpen } from "lucide-react";
 import { format } from "date-fns";
 import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
@@ -211,6 +211,7 @@ export default async function ManualJournalsPage({
       </PageHeader>
       {total === 0 && !q ? (
         <EmptyState
+          icon={BookOpen}
           title="Adjustments and reclassifications"
           description="Manual journals let accountants post one-off balanced debit / credit corrections that aren't tied to invoices or bills."
           ctaHref="/accountant/manual-journals/new"
