@@ -4,7 +4,12 @@
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
+    /* Canvas is a barely-perceptible cool grey so cards (`--card`, pure
+       white below) visibly "lift" off the page — the Stripe Dashboard /
+       Mercury layering. 220° hue is the same cool family as our emerald
+       primary, 14% sat is just enough to read as "not pure grey", 96%
+       lightness keeps it light without losing the lift effect. */
+    --background: 220 14% 96%;
     --foreground: 222.2 47.4% 11.2%;
     --card: 0 0% 100%;
     --card-foreground: 222.2 47.4% 11.2%;
@@ -40,7 +45,11 @@
     --info-foreground: 200 90% 98%;
   }
   .dark {
-    --background: 222.2 47.4% 6%;
+    /* Same trick in dark mode: canvas is a touch deeper than the card
+       surface (4% vs 8% lightness) so cards still lift visibly against
+       it. Was previously 6% canvas + 8% card — too close to read as
+       layered. */
+    --background: 222.2 47.4% 4%;
     --foreground: 210 40% 98%;
     --card: 222.2 47.4% 8%;
     --card-foreground: 210 40% 98%;
