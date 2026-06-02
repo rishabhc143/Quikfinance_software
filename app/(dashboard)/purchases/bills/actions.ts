@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
 import { writeAuditLog } from "@/lib/audit";
-import { computeDocument } from "@/lib/sales/totals";
+import { computeDocumentTotals } from "@/lib/sales/document-totals";
 import { billSchema, type BillInput } from "@/lib/validations/bill";
 import {
   postBillOpenJe,
@@ -261,37 +261,6 @@ export async function checkBillNumberDuplicateAction(input: {
   return { duplicate: true, existing };
 }
 
-async function totalsFor(orgId: string, input: BillInput) {
-  const taxes = await db.tax.findMany({
-    where: { organizationId: orgId, isActive: true },
-    select: { id: true, rate: true },
-  });
-  const taxRate = (id?: string | null) =>
-    (id ? taxes.find((t) => t.id === id)?.rate : null) ?? 0;
-  const docTaxRate = input.documentTax
-    ? Number(taxRate(input.documentTax.taxId))
-    : 0;
-  return computeDocument({
-    lines: input.lines.map((l) => ({
-      quantity: l.quantity ?? 0,
-      rate: l.rate ?? 0,
-      discount: l.discount ?? 0,
-      discountType: l.discountType ?? "percentage",
-      taxRate: Number(taxRate(l.taxId)),
-    })),
-    documentDiscount: input.documentDiscount
-      ? {
-          value: input.documentDiscount.value ?? 0,
-          type: input.documentDiscount.type ?? "percentage",
-        }
-      : undefined,
-    documentTax: input.documentTax
-      ? { rate: docTaxRate, type: input.documentTax.type }
-      : undefined,
-    adjustment: input.adjustmentValue ?? 0,
-  });
-}
-
 export async function createBillAction(
   input: BillInput,
   opts?: { open?: boolean }
@@ -314,7 +283,7 @@ export async function createBillAction(
     select: { id: true, issueDate: true },
   });
 
-  const totals = await totalsFor(organization.id, data);
+  const totals = await computeDocumentTotals(organization.id, data);
   // "Save as Open" promotes the saved status from DRAFT → OPEN even
   // when the form payload says DRAFT (dual-button UX).
   const status = opts?.open ? "OPEN" : data.status;
@@ -449,7 +418,7 @@ export async function updateBillAction(
     }
   }
 
-  const totals = await totalsFor(organization.id, data);
+  const totals = await computeDocumentTotals(organization.id, data);
   const nextStatus =
     opts?.open && before.status === "DRAFT" ? "OPEN" : before.status;
 

@@ -6,6 +6,7 @@ import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
 import { writeAuditLog } from "@/lib/audit";
 import { computeDocument } from "@/lib/sales/totals";
+import { computeDocumentTotals } from "@/lib/sales/document-totals";
 import {
   recurringBillSchema,
   type RecurringBillInput,
@@ -26,35 +27,6 @@ export type { RecurringBillInput };
  * `templateJson` set here and unpacks into Bill + BillLineItem
  * rows.
  */
-
-async function totalsFor(orgId: string, input: RecurringBillInput) {
-  const taxes = await db.tax.findMany({
-    where: { organizationId: orgId, isActive: true },
-    select: { id: true, rate: true },
-  });
-  const taxRate = (id?: string | null) =>
-    (id ? taxes.find((t) => t.id === id)?.rate : null) ?? 0;
-  const docTaxRate = input.documentTax
-    ? Number(taxRate(input.documentTax.taxId))
-    : 0;
-  return computeDocument({
-    lines: input.lines.map((l) => ({
-      quantity: l.quantity ?? 0,
-      rate: l.rate ?? 0,
-      taxRate: Number(taxRate(l.taxId)),
-    })),
-    documentDiscount: input.documentDiscount
-      ? {
-          value: input.documentDiscount.value ?? 0,
-          type: input.documentDiscount.type ?? "percentage",
-        }
-      : undefined,
-    documentTax: input.documentTax
-      ? { rate: docTaxRate, type: input.documentTax.type }
-      : undefined,
-    adjustment: input.adjustmentValue ?? 0,
-  });
-}
 
 function buildTemplateJson(input: RecurringBillInput, totals: ReturnType<typeof computeDocument>) {
   return {
@@ -90,7 +62,7 @@ function buildTemplateJson(input: RecurringBillInput, totals: ReturnType<typeof 
 export async function createRecurringBillAction(input: RecurringBillInput) {
   const { user, organization } = await requireOrganization();
   const data = recurringBillSchema.parse(input);
-  const totals = await totalsFor(organization.id, data);
+  const totals = await computeDocumentTotals(organization.id, data);
   const template = buildTemplateJson(data, totals);
   const total = Number(totals.total);
 
@@ -146,7 +118,7 @@ export async function updateRecurringBillAction(
       `Cannot edit a ${before.status.toLowerCase()} profile.`
     );
   }
-  const totals = await totalsFor(organization.id, data);
+  const totals = await computeDocumentTotals(organization.id, data);
   const template = buildTemplateJson(data, totals);
   const total = Number(totals.total);
 

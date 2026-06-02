@@ -6,7 +6,7 @@ import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
 import { writeAuditLog } from "@/lib/audit";
 import { getNextDocumentNumber } from "@/lib/sales/numbering";
-import { computeDocument } from "@/lib/sales/totals";
+import { computeDocumentTotals } from "@/lib/sales/document-totals";
 import {
   applyCreditNoteStockReturn,
   reverseCreditNoteStockReturn,
@@ -26,29 +26,11 @@ import {
   resolveBankCoaForPayment,
 } from "@/lib/accounting/post-domain-je";
 
-async function totalsFor(orgId: string, input: CreditNoteInput) {
-  const taxes = await db.tax.findMany({
-    where: { organizationId: orgId, isActive: true },
-    select: { id: true, rate: true },
-  });
-  const taxRate = (id?: string | null) =>
-    (id ? taxes.find((t) => t.id === id)?.rate : null) ?? 0;
-  return computeDocument({
-    lines: input.lines.map((l) => ({
-      quantity: l.quantity ?? 0,
-      rate: l.rate ?? 0,
-      discount: l.discount ?? 0,
-      discountType: l.discountType ?? "percentage",
-      taxRate: Number(taxRate(l.taxId)),
-    })),
-  });
-}
-
 export async function createCreditNoteAction(input: CreditNoteInput) {
   const { user, organization } = await requireOrganization();
   const data = creditNoteSchema.parse(input);
   const number = await getNextDocumentNumber(organization.id, "CREDIT_NOTE");
-  const totals = await totalsFor(organization.id, data);
+  const totals = await computeDocumentTotals(organization.id, data);
 
   // RPT-B.2 — create the credit note and post its OPEN JE in one
   // transaction so the books-side post can't drift from the domain row.

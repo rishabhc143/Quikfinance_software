@@ -6,7 +6,7 @@ import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
 import { writeAuditLog } from "@/lib/audit";
 import { getNextDocumentNumber } from "@/lib/sales/numbering";
-import { computeDocument } from "@/lib/sales/totals";
+import { computeDocumentTotals } from "@/lib/sales/document-totals";
 import {
   vendorCreditSchema,
   applyVendorCreditToBillSchema,
@@ -38,35 +38,6 @@ export type {
  * Totals math via the shared computeDocument primitive.
  */
 
-async function totalsFor(orgId: string, input: VendorCreditInput) {
-  const taxes = await db.tax.findMany({
-    where: { organizationId: orgId, isActive: true },
-    select: { id: true, rate: true },
-  });
-  const taxRate = (id?: string | null) =>
-    (id ? taxes.find((t) => t.id === id)?.rate : null) ?? 0;
-  const docTaxRate = input.documentTax
-    ? Number(taxRate(input.documentTax.taxId))
-    : 0;
-  return computeDocument({
-    lines: input.lines.map((l) => ({
-      quantity: l.quantity ?? 0,
-      rate: l.rate ?? 0,
-      taxRate: Number(taxRate(l.taxId)),
-    })),
-    documentDiscount: input.documentDiscount
-      ? {
-          value: input.documentDiscount.value ?? 0,
-          type: input.documentDiscount.type ?? "percentage",
-        }
-      : undefined,
-    documentTax: input.documentTax
-      ? { rate: docTaxRate, type: input.documentTax.type }
-      : undefined,
-    adjustment: 0,
-  });
-}
-
 // ───── Create / Update ────────────────────────────────────────────
 
 export async function createVendorCreditAction(
@@ -79,7 +50,7 @@ export async function createVendorCreditAction(
     organization.id,
     "VENDOR_CREDIT"
   );
-  const totals = await totalsFor(organization.id, data);
+  const totals = await computeDocumentTotals(organization.id, data);
   const status = opts?.open ? "OPEN" : data.status;
 
   // RPT-B.2 — wrap the create + (optional OPEN-state JE post) so either
@@ -167,7 +138,7 @@ export async function updateVendorCreditAction(
       "Cannot edit a vendor credit that has applications or refunds. Reverse them first."
     );
   }
-  const totals = await totalsFor(organization.id, data);
+  const totals = await computeDocumentTotals(organization.id, data);
   const nextStatus =
     opts?.open && before.status === "DRAFT" ? "OPEN" : before.status;
 

@@ -6,7 +6,7 @@ import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
 import { writeAuditLog } from "@/lib/audit";
 import { getNextDocumentNumber } from "@/lib/sales/numbering";
-import { computeDocument } from "@/lib/sales/totals";
+import { computeDocumentTotals } from "@/lib/sales/document-totals";
 import { enqueueEmail } from "@/lib/sales/email-sender";
 import {
   purchaseOrderSchema,
@@ -30,37 +30,6 @@ import {
  * from P3-A.
  */
 
-async function totalsFor(orgId: string, input: PurchaseOrderInput) {
-  const taxes = await db.tax.findMany({
-    where: { organizationId: orgId, isActive: true },
-    select: { id: true, rate: true },
-  });
-  const taxRate = (id?: string | null) =>
-    (id ? taxes.find((t) => t.id === id)?.rate : null) ?? 0;
-  const docTaxRate = input.documentTax
-    ? Number(taxRate(input.documentTax.taxId))
-    : 0;
-  return computeDocument({
-    lines: input.lines.map((l) => ({
-      quantity: l.quantity ?? 0,
-      rate: l.rate ?? 0,
-      discount: l.discount ?? 0,
-      discountType: l.discountType ?? "percentage",
-      taxRate: Number(taxRate(l.taxId)),
-    })),
-    documentDiscount: input.documentDiscount
-      ? {
-          value: input.documentDiscount.value ?? 0,
-          type: input.documentDiscount.type ?? "percentage",
-        }
-      : undefined,
-    documentTax: input.documentTax
-      ? { rate: docTaxRate, type: input.documentTax.type }
-      : undefined,
-    adjustment: input.adjustmentValue ?? 0,
-  });
-}
-
 export async function createPurchaseOrderAction(
   input: PurchaseOrderInput,
   opts?: { send?: boolean }
@@ -68,7 +37,7 @@ export async function createPurchaseOrderAction(
   const { user, organization } = await requireOrganization();
   const data = purchaseOrderSchema.parse(input);
   const number = await getNextDocumentNumber(organization.id, "PURCHASE_ORDER");
-  const totals = await totalsFor(organization.id, data);
+  const totals = await computeDocumentTotals(organization.id, data);
 
   // ISSUED on Save-and-Send; otherwise honor the caller's status
   // (Draft on Save-as-Draft).
@@ -166,7 +135,7 @@ export async function updatePurchaseOrderAction(
   if (before.status === "CLOSED" || before.status === "CANCELLED") {
     throw new Error("Closed or cancelled purchase orders cannot be edited");
   }
-  const totals = await totalsFor(organization.id, data);
+  const totals = await computeDocumentTotals(organization.id, data);
 
   // On Save-and-Send from edit: bump Draft → Issued. Otherwise keep
   // the existing status (don't accidentally regress a PARTIALLY_BILLED
