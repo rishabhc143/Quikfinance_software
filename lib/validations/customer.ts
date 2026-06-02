@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { contactPersonSchema } from "./contact-shared";
+import { addressSchema, contactPersonSchema } from "./contact-shared";
 
 /**
  * Sales module — Customer (Contact with type=CUSTOMER) zod schemas.
@@ -9,28 +9,15 @@ import { contactPersonSchema } from "./contact-shared";
  * and uniqueness of displayName per organization (the action layer
  * dedupes; this schema only validates shape).
  *
- * CRIT-2 audit: `contactPersonSchema` is now re-exported from
- * `./contact-shared` so it stays in sync with the Vendor form.
+ * CRIT-2 audit: `contactPersonSchema` + `addressSchema` are now
+ * re-exported from `./contact-shared` so they stay in sync with the
+ * Vendor form.
  */
 
-export { contactPersonSchema } from "./contact-shared";
+export { contactPersonSchema, addressSchema } from "./contact-shared";
 
 export const PAN_REGEX = /^[A-Z]{5}[0-9]{4}[A-Z]$/;
 export const GSTIN_REGEX = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/;
-
-export const addressSchema = z.object({
-  kind: z.enum(["billing", "shipping", "other"]).default("billing"),
-  attention: z.string().max(200).optional().nullable(),
-  country: z.string().min(1).max(80).default("India"),
-  addressLine1: z.string().max(200).optional().nullable(),
-  addressLine2: z.string().max(200).optional().nullable(),
-  city: z.string().max(80).optional().nullable(),
-  state: z.string().max(80).optional().nullable(),
-  zipCode: z.string().max(20).optional().nullable(),
-  phone: z.string().max(40).optional().nullable(),
-  fax: z.string().max(40).optional().nullable(),
-  isDefault: z.boolean().optional().default(false),
-});
 
 export const customerSchema = z.object({
   customerType: z.enum(["BUSINESS", "INDIVIDUAL"]).default("BUSINESS"),

@@ -21,28 +21,17 @@ import { z } from "zod";
 export const PAN_REGEX = /^[A-Z]{5}[0-9]{4}[A-Z]$/;
 export const IFSC_REGEX = /^[A-Z]{4}0[A-Z0-9]{6}$/;
 
-export const ADDRESS_KINDS = ["billing", "shipping", "other"] as const;
-
-export const vendorAddressSchema = z.object({
-  kind: z.enum(ADDRESS_KINDS).default("billing"),
-  attention: z.string().nullable().optional(),
-  country: z.string().nullable().optional(),
-  addressLine1: z.string().nullable().optional(),
-  addressLine2: z.string().nullable().optional(),
-  city: z.string().nullable().optional(),
-  state: z.string().nullable().optional(),
-  zipCode: z.string().nullable().optional(),
-  phone: z.string().nullable().optional(),
-  fax: z.string().nullable().optional(),
-  isDefault: z.boolean().optional().default(false),
-});
-
-// CRIT-2 audit: shared with customer.ts via lib/validations/contact-shared.
-// The vendor form previously had a looser version (no max-lengths) — we've
-// adopted the stricter Customer-style bounds since Postgres already enforces
-// them at the DB layer.
-import { contactPersonSchema as vendorContactPersonSchema } from "./contact-shared";
-export { vendorContactPersonSchema };
+// CRIT-2 audit (phase 2): both vendorAddressSchema + vendorContactPersonSchema
+// are now shared with customer.ts via lib/validations/contact-shared. The
+// vendor form previously had looser versions (no max-lengths) — we've adopted
+// the stricter Customer-style bounds since Postgres already enforces them at
+// the DB layer. Existing data is safe.
+import {
+  ADDRESS_KINDS,
+  addressSchema as vendorAddressSchema,
+  contactPersonSchema as vendorContactPersonSchema,
+} from "./contact-shared";
+export { ADDRESS_KINDS, vendorAddressSchema, vendorContactPersonSchema };
 
 export const vendorBankAccountSchema = z
   .object({
