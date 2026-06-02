@@ -81,7 +81,8 @@ tests/unit/            Vitest unit tests, mirrors lib/ structure
 - **D4.1 (PR #237)** — Password-protected PDFs: user provides password in drawer, retry decrypts in-memory, clears `needsPassword` flag.
 - **D4.2 (PR #238)** — Inline edit of parsed rows + confidence badge (low/medium/high based on row count, balance reconciliation, bank/period/account-number presence) + auto bank-account match on Import dialog (matches last 4 digits).
 - **D4.3 (PR #239)** — Auto-link bank credits/debits to outstanding Invoices/Bills. `suggestMatchesForBankRows()` in `lib/documents/match-bank-transactions.ts`. Tolerance ±₹1 OR ±2%; date window 60 days before row. UI: `SuggestedMatchesPanel` above the Transactions panel.
-- **D4.4 (in flight)** — Claude API fallback for unknown / unparseable layouts. Lib + tests written and pushed; wiring into actions + drawer is REMAINING work (see plan file).
+- **D4.4 (PR shipped earlier this session)** — Claude API fallback for unknown / unparseable layouts. `lib/documents/parsers/llm-fallback.ts` (`parseBankStatementWithLLM`, `isLlmFallbackEnabled`).
+- **CRIT-4 Site 3 (PR #322)** — When parser fallback chain fails, store sentinel `{bank:"UNKNOWN", rows:[], _meta:{parseError}}` so drawer shows amber "Smart Capture couldn't parse this" banner instead of empty table. Helper: `lib/documents/parse-error.ts`.
 
 ## Key file paths to know (Documents module)
 
@@ -92,12 +93,13 @@ tests/unit/            Vitest unit tests, mirrors lib/ structure
 - `lib/documents/document-classifier.ts` — `classifyDocument(text)`
 - `lib/documents/bank-statement-confidence.ts` — `computeBankStatementConfidence()` (D4.2)
 - `lib/documents/match-bank-transactions.ts` — `suggestMatchesForBankRows()` (D4.3)
-- `app/(dashboard)/documents/actions.ts` — ALL server actions. Major ones:
-  - `uploadDocumentsAction` (~line 556) — main upload, runs Smart Capture pipeline
-  - `uploadBankStatementsAction` (~line 1224) — direct drop to Bank Statements inbox; forces `inbox=BANK_STATEMENTS` + `documentType=BANK_STATEMENT`
-  - `retryExtractWithPasswordAction` (~line 1468) — re-runs extract with user-supplied password
-  - `updateParsedBankStatementAction` (~line 1576) — D4.2 inline-edit persistence
-  - `getBankRowMatchesAction` (~line 1691) — D4.3 AR/AP suggested matches
+- `app/(dashboard)/documents/actions-*.ts` — server actions split into 6 subfiles in PR #319 (the old `actions.ts` god-file was 1850 LOC). Callers import directly from the right subfile:
+  - `actions-upload.ts` — `uploadDocumentAction`, `uploadDocumentsAction`, `uploadBankStatementsAction`, legacy `createDocumentAction`
+  - `actions-parse.ts` — `retryExtractWithPasswordAction`, `retryParseWithLLMAction`, `isLlmFallbackEnabledAction`
+  - `actions-edit-parsed.ts` — `updateParsedBankStatementAction`, `getBankRowMatchesAction`
+  - `actions-folders.ts` — `createFolderAction`, `renameFolderAction`, `moveFolderAction`, `softDeleteFolderAction`
+  - `actions-delete.ts` — `deleteDocumentAction`, `restoreDocumentAction`, `purgeDocumentAction`
+  - `actions-ar-ap.ts` — `listBankAccountsForImportAction`, `importStatementToBankAction`, `searchVendorsForDocAction`, `createBillFromDocumentAction`, `createExpenseFromDocumentAction`
 - `app/(dashboard)/documents/document-preview-drawer.tsx` — drawer with all panels (Password / Transactions+Confidence / SuggestedMatches / Bill / Receipt / SmartCapture text)
 
 ## Env vars (Vercel)
@@ -115,11 +117,38 @@ Optional (gates specific features):
 - `RESEND_API_KEY` + `EMAIL_FROM` — enables transactional email
 - `RAZORPAY_KEY_ID` + `RAZORPAY_KEY_SECRET` + `RAZORPAY_WEBHOOK_SECRET` — enables customer portal payments
 
-## Recent prod state (snapshot at handoff)
+## Recent prod state (snapshot after audit r1 + r2 sweep — 11 PRs)
 
-- `main` HEAD: `d70adf2` (PR #239 — D4.3 AR/AP suggested matches merged)
-- Prod deploy live: `quikfinance-software-ik8jri9xg-…` — ● Ready
-- Pending PR: `feat/documents-d4-4-llm-fallback` (commit `37b36aa`, pushed but NOT yet opened as PR — see `docs/NEXT_SESSION_PROMPT.md`)
+- `main` HEAD: `3865e4a` (PR #328 — parseListSearchParams helper)
+- 11 PRs shipped in the audit sweep (rounds 1 + 2): #318-#328
+- Quantified outcome: ~935 LOC inline duplication eliminated, 1359 unit tests (1337 baseline + 22 new), HIGH-severity Razorpay silent-data-loss bug fixed, 3 cron scale ceilings prevented
+- The full audit plan + remaining defer-correct items live in `C:\Users\user\.claude\plans\transient-wibbling-parnas.md`
+
+### Shared helpers introduced this sweep (worth knowing)
+
+- `lib/list-params.ts` — `parseListSearchParams(searchParams, {defaultSort, defaultDir?, defaultPageSize?})` used by 12 list pages
+- `lib/concurrency.ts` — `mapPool(items, concurrency, fn)` used by 3 recurring crons (8-concurrency fan-out replacing sequential for-await)
+- `lib/sales/document-totals.ts` — `computeDocumentTotals(orgId, input)` used by 10 transaction actions (was local `totalsFor` copy-pasted in each)
+- `lib/validations/contact-shared.ts` — shared `addressSchema` + `contactPersonSchema` between Customer + Vendor forms
+- `lib/validations/shared-fields.ts` — `attachmentsField(max)` + `customFieldValuesField` used by 7 transaction validation schemas
+- `lib/documents/parse-error.ts` — `buildBankStatementParseError(reason)` sentinel for the drawer's "couldn't parse" hint banner
+- `lib/constants/status.ts` — typed status enums (`INVOICE_STATUS_VARIANT` etc.) shared across 11 list pages
+- `components/shared/contact-persons-table.tsx` + `components/shared/address-fieldset.tsx` — extracted from Customer + Vendor forms (CRIT-2). Only used by those two forms; Quote/SO/PO reference contacts by `contactId` FK and don't capture inline addresses.
+
+### Scale-prep wins (Strategy B)
+
+- Status crons (`invoice-statuses`, `bill-statuses`) now use `$executeRaw UPDATE` instead of findMany+loop+update — 10k rows: ~500s → <100ms
+- Email retry has exponential backoff in `processEmailJob` (`lib/sales/email-sender.ts`): `[1m, 5m, 30m, 6h]` then mark FAILED
+- Recurring crons fan-out 8-concurrent via `mapPool` — 200 profiles: ~20s → ~2.5s
+
+### Razorpay webhook return-code policy (post-CRIT-4)
+
+`app/api/webhooks/razorpay/route.ts` returns:
+- **200** — handler completed (or idempotent skip)
+- **400** — missing signature / malformed JSON
+- **401** — signature mismatch
+- **500** — critical-path failure (DB transaction) — Razorpay retries with exponential backoff
+- Side-effects (audit log, email) wrapped in inner try/catch with `[razorpay] audit failed` / `[razorpay] email failed` log prefixes so they're greppable
 
 ## Local dev performance (not a bug)
 
