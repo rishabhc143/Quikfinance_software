@@ -7,6 +7,8 @@ import { Eye, EyeOff, Loader2, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { HistoryInput } from "@/components/ui/history-input";
+import { PincodeInput } from "@/components/ui/pincode-input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
@@ -267,16 +269,18 @@ export function VendorForm({
                 />
               )}
             />
-            <Input
+            <HistoryInput
+              autofillKey="contact.firstName"
               placeholder="First name"
               autoFocus
               {...form.register("firstName")}
             />
-            <Input placeholder="Last name" {...form.register("lastName")} />
+            <HistoryInput autofillKey="contact.lastName" placeholder="Last name" {...form.register("lastName")} />
           </div>
 
           <Label className="pt-2">Company name</Label>
-          <Input
+          <HistoryInput
+            autofillKey="contact.companyName"
             {...form.register("companyName")}
             placeholder="Company name"
           />
@@ -441,7 +445,8 @@ export function VendorForm({
             </div>
 
             <Label className="pt-2">Currency</Label>
-            <Input
+            <HistoryInput
+              autofillKey="contact.currency"
               {...form.register("currency")}
               placeholder="INR"
               className="uppercase"
@@ -600,7 +605,8 @@ export function VendorForm({
               />
 
               <Label className="pt-2">Place of supply</Label>
-              <Input
+              <HistoryInput
+                autofillKey="address.state"
                 {...form.register("placeOfSupply")}
                 placeholder="State name"
               />
@@ -656,7 +662,8 @@ export function VendorForm({
                     placeholder="Attention"
                     {...form.register(`addresses.${idx}.attention`)}
                   />
-                  <Input
+                  <HistoryInput
+                    autofillKey="address.country"
                     placeholder="Country / Region"
                     {...form.register(`addresses.${idx}.country`)}
                   />
@@ -671,17 +678,25 @@ export function VendorForm({
                     {...form.register(`addresses.${idx}.addressLine2`)}
                   />
                   <div className="grid gap-2 md:grid-cols-3">
-                    <Input
+                    <HistoryInput
+                      autofillKey="address.city"
                       placeholder="City"
                       {...form.register(`addresses.${idx}.city`)}
                     />
-                    <Input
+                    <HistoryInput
+                      autofillKey="address.state"
                       placeholder="State"
                       {...form.register(`addresses.${idx}.state`)}
                     />
-                    <Input
+                    <PincodeInput
+                      autofillKey="address.zipCode"
                       placeholder="Pin code"
                       {...form.register(`addresses.${idx}.zipCode`)}
+                      onResolved={(r) => {
+                        form.setValue(`addresses.${idx}.city`, r.city);
+                        form.setValue(`addresses.${idx}.state`, r.state);
+                        form.setValue(`addresses.${idx}.country`, r.country);
+                      }}
                     />
                   </div>
                   <div className="grid gap-2 md:grid-cols-2">

@@ -7,6 +7,8 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { Plus, Trash2, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { HistoryInput } from "@/components/ui/history-input";
+import { PincodeInput } from "@/components/ui/pincode-input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
@@ -232,8 +234,8 @@ export function CustomerForm({
                 />
               )}
             />
-            <Input placeholder="First name" autoFocus {...form.register("firstName")} />
-            <Input placeholder="Last name" {...form.register("lastName")} />
+            <HistoryInput autofillKey="contact.firstName" placeholder="First name" autoFocus {...form.register("firstName")} />
+            <HistoryInput autofillKey="contact.lastName" placeholder="Last name" {...form.register("lastName")} />
           </div>
 
           {customerType === "BUSINESS" ? (
@@ -335,7 +337,7 @@ export function CustomerForm({
             />
 
             <Label className="pt-2">Currency</Label>
-            <Input {...form.register("currency")} placeholder="INR" />
+            <HistoryInput autofillKey="contact.currency" {...form.register("currency")} placeholder="INR" />
 
             <Label className="pt-2">Opening Balance</Label>
             <Controller
@@ -460,7 +462,7 @@ export function CustomerForm({
             />
 
             <Label className="pt-2">Place of Supply</Label>
-            <Input {...form.register("placeOfSupply")} placeholder="State name" />
+            <HistoryInput autofillKey="address.state" {...form.register("placeOfSupply")} placeholder="State name" />
 
             <Label className="pt-2">Website</Label>
             <Input {...form.register("websiteUrl")} placeholder="https://" />
@@ -532,7 +534,8 @@ export function CustomerForm({
                     placeholder="Attention"
                     {...form.register(`addresses.${idx}.attention`)}
                   />
-                  <Input
+                  <HistoryInput
+                    autofillKey="address.country"
                     placeholder="Country"
                     {...form.register(`addresses.${idx}.country`)}
                   />
@@ -545,17 +548,25 @@ export function CustomerForm({
                     {...form.register(`addresses.${idx}.addressLine2`)}
                   />
                   <div className="grid gap-2 md:grid-cols-3">
-                    <Input
+                    <HistoryInput
+                      autofillKey="address.city"
                       placeholder="City"
                       {...form.register(`addresses.${idx}.city`)}
                     />
-                    <Input
+                    <HistoryInput
+                      autofillKey="address.state"
                       placeholder="State"
                       {...form.register(`addresses.${idx}.state`)}
                     />
-                    <Input
+                    <PincodeInput
+                      autofillKey="address.zipCode"
                       placeholder="ZIP"
                       {...form.register(`addresses.${idx}.zipCode`)}
+                      onResolved={(r) => {
+                        form.setValue(`addresses.${idx}.city`, r.city);
+                        form.setValue(`addresses.${idx}.state`, r.state);
+                        form.setValue(`addresses.${idx}.country`, r.country);
+                      }}
                     />
                   </div>
                   <div className="grid gap-2 md:grid-cols-2">

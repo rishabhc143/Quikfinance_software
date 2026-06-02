@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Loader2, Plus, Trash2, Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { HistoryInput } from "@/components/ui/history-input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent } from "@/components/ui/card";
@@ -305,7 +306,8 @@ export function ManualJournalForm({
           <div className="grid gap-3 md:grid-cols-2">
             <div>
               <Label>Reference#</Label>
-              <Input
+              <HistoryInput
+                autofillKey="journal.referenceNumber"
                 value={referenceNumber}
                 onChange={(e) => setReferenceNumber(e.target.value)}
                 maxLength={120}
@@ -366,7 +368,8 @@ export function ManualJournalForm({
             </div>
             <div>
               <Label>Currency</Label>
-              <Input
+              <HistoryInput
+                autofillKey="contact.currency"
                 value={currency}
                 onChange={(e) =>
                   setCurrency(e.target.value.toUpperCase().slice(0, 3))
@@ -423,7 +426,8 @@ export function ManualJournalForm({
                     </select>
                   </td>
                   <td className="p-2">
-                    <Input
+                    <HistoryInput
+                      autofillKey="journal.lineDescription"
                       value={l.description}
                       onChange={(e) =>
                         setLine(i, { description: e.target.value })

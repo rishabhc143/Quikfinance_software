@@ -3,6 +3,7 @@
 import * as React from "react";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+import { HistoryInput } from "@/components/ui/history-input";
 import { Textarea } from "@/components/ui/textarea";
 
 /**
@@ -65,19 +66,20 @@ export function AccountTypeToggle({ defaultCurrency }: Props) {
         <Label htmlFor="name">
           Account Name <span className="text-destructive">*</span>
         </Label>
-        <Input id="name" name="name" required maxLength={120} autoFocus />
+        <HistoryInput autofillKey="account.name" id="name" name="name" required maxLength={120} autoFocus />
       </div>
 
       <div>
         <Label htmlFor="accountCode">Account Code</Label>
-        <Input id="accountCode" name="accountCode" maxLength={40} />
+        <HistoryInput autofillKey="account.accountCode" id="accountCode" name="accountCode" maxLength={40} />
       </div>
 
       <div>
         <Label htmlFor="currency">
           Currency <span className="text-destructive">*</span>
         </Label>
-        <Input
+        <HistoryInput
+          autofillKey="contact.currency"
           id="currency"
           name="currency"
           defaultValue={defaultCurrency}
@@ -96,14 +98,14 @@ export function AccountTypeToggle({ defaultCurrency }: Props) {
 
       <div>
         <Label htmlFor="bankName">Bank Name</Label>
-        <Input id="bankName" name="bankName" maxLength={120} />
+        <HistoryInput autofillKey="account.bankName" id="bankName" name="bankName" maxLength={120} />
       </div>
 
       {/* Bank-only: IFSC */}
       {isBank ? (
         <div>
           <Label htmlFor="ifsc">IFSC</Label>
-          <Input id="ifsc" name="ifsc" maxLength={20} />
+          <HistoryInput autofillKey="account.ifsc" id="ifsc" name="ifsc" maxLength={20} />
         </div>
       ) : null}
 

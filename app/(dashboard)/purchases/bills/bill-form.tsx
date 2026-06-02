@@ -15,6 +15,7 @@ import { format } from "date-fns";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { HistoryInput } from "@/components/ui/history-input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Combobox, type ComboboxOption } from "@/components/ui/combobox";
@@ -392,7 +393,8 @@ export function BillForm({
           </MetaField>
 
           <MetaField label="Order Number">
-            <Input
+            <HistoryInput
+              autofillKey="bill.referenceNumber"
               value={referenceNumber ?? ""}
               onChange={(e) => setReferenceNumber(e.target.value)}
             />
@@ -446,7 +448,8 @@ export function BillForm({
           label="Subject"
           tooltip="A short title for this bill, visible in lists and search."
         >
-          <Input
+          <HistoryInput
+            autofillKey="bill.subject"
             value={subject ?? ""}
             onChange={(e) => setSubject(e.target.value.slice(0, 250))}
             maxLength={250}
@@ -604,7 +607,8 @@ export function BillForm({
             ) : null}
           </div>
           <div className="flex items-center justify-between gap-2">
-            <Input
+            <HistoryInput
+              autofillKey="transaction.adjustmentLabel"
               value={adjustmentLabel ?? ""}
               onChange={(e) => setAdjustmentLabel(e.target.value)}
               className="max-w-[10rem] text-sm"
