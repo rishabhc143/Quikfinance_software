@@ -37,17 +37,12 @@ export const vendorAddressSchema = z.object({
   isDefault: z.boolean().optional().default(false),
 });
 
-export const vendorContactPersonSchema = z.object({
-  salutation: z.string().nullable().optional(),
-  firstName: z.string().nullable().optional(),
-  lastName: z.string().nullable().optional(),
-  email: z.string().email().nullable().optional().or(z.literal("")),
-  workPhone: z.string().nullable().optional(),
-  mobile: z.string().nullable().optional(),
-  designation: z.string().nullable().optional(),
-  department: z.string().nullable().optional(),
-  isPrimary: z.boolean().optional().default(false),
-});
+// CRIT-2 audit: shared with customer.ts via lib/validations/contact-shared.
+// The vendor form previously had a looser version (no max-lengths) — we've
+// adopted the stricter Customer-style bounds since Postgres already enforces
+// them at the DB layer.
+import { contactPersonSchema as vendorContactPersonSchema } from "./contact-shared";
+export { vendorContactPersonSchema };
 
 export const vendorBankAccountSchema = z
   .object({
