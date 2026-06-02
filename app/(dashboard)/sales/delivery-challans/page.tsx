@@ -3,7 +3,8 @@ import { PackageCheck } from "lucide-react";
 import { SalesEmptyState } from "@/components/shared/sales-empty-state";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
-import { StatusPill, type StatusVariant } from "@/components/ui/status-pill";
+import { StatusPill } from "@/components/ui/status-pill";
+import { DELIVERY_CHALLAN_STATUS_VARIANT as STATUS_VARIANT } from "@/lib/constants/status";
 import { TransactionListPage } from "@/components/shared/transaction-list-page";
 import { BulkAwareDataTable } from "@/components/shared/bulk-aware-data-table";
 import { SalesExportDialog } from "@/components/shared/sales-export-dialog";
@@ -14,17 +15,6 @@ import {
 } from "./actions";
 
 export const metadata = { title: "Delivery Challans" };
-
-// Map challan lifecycle to semantic StatusPill variants — DRAFT neutral,
-// OPEN info (in flight), DELIVERED / INVOICED success (terminal good),
-// RETURNED warning (something to follow up on).
-const STATUS_VARIANT: Record<string, StatusVariant> = {
-  DRAFT: "neutral",
-  OPEN: "info",
-  DELIVERED: "success",
-  INVOICED: "success",
-  RETURNED: "warning",
-};
 
 export default async function DeliveryChallansListPage({
   searchParams,

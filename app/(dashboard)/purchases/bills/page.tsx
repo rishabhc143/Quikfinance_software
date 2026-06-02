@@ -2,7 +2,8 @@ import { format } from "date-fns";
 import { Receipt } from "lucide-react";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
-import { StatusPill, type StatusVariant } from "@/components/ui/status-pill";
+import { StatusPill } from "@/components/ui/status-pill";
+import { BILL_STATUS_VARIANT as STATUS_VARIANT } from "@/lib/constants/status";
 import { TransactionListPage } from "@/components/shared/transaction-list-page";
 import { BulkAwareDataTable } from "@/components/shared/bulk-aware-data-table";
 import { SavedViewBuilderDialog } from "@/components/shared/saved-view-builder-dialog";
@@ -22,19 +23,6 @@ import {
 export const metadata = { title: "Bills" };
 
 const PAGE_SIZE_DEFAULT = 25;
-
-// Bill lifecycle status → semantic StatusPill variant. Matches the
-// invoices mapping in sales/invoices/page.tsx for visual consistency:
-// PAID is success-green, OVERDUE is destructive-red, PARTIAL is warning.
-const STATUS_VARIANT: Record<string, StatusVariant> = {
-  DRAFT: "neutral",
-  OPEN: "info",
-  PARTIALLY_PAID: "warning",
-  PAID: "success",
-  OVERDUE: "danger",
-  VOID: "danger",
-  WRITTEN_OFF: "neutral",
-};
 
 type SearchParams = {
   q?: string;

@@ -3,7 +3,8 @@ import { Repeat } from "lucide-react";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
 import { Badge } from "@/components/ui/badge";
-import { StatusPill, type StatusVariant } from "@/components/ui/status-pill";
+import { StatusPill } from "@/components/ui/status-pill";
+import { RECURRING_STATUS_VARIANT as STATUS_VARIANT } from "@/lib/constants/status";
 import { TransactionListPage } from "@/components/shared/transaction-list-page";
 import { BulkAwareDataTable } from "@/components/shared/bulk-aware-data-table";
 import { SavedViewBuilderDialog } from "@/components/shared/saved-view-builder-dialog";
@@ -23,15 +24,6 @@ import {
 export const metadata = { title: "Recurring Bills" };
 
 const PAGE_SIZE_DEFAULT = 25;
-
-// Map recurring-bill lifecycle to semantic StatusPill variants — matches
-// the sales/recurring-invoices convention.
-const STATUS_VARIANT: Record<string, StatusVariant> = {
-  ACTIVE: "success",
-  PAUSED: "warning",
-  EXPIRED: "neutral",
-  STOPPED: "neutral",
-};
 
 type SearchParams = {
   q?: string;

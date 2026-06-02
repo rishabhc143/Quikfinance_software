@@ -10,19 +10,12 @@ import {
   EmptyState,
   type ColumnDef,
 } from "@/components/shared/data-table";
-import { StatusPill, type StatusVariant } from "@/components/ui/status-pill";
+import { StatusPill } from "@/components/ui/status-pill";
+import { MANUAL_JOURNAL_STATUS_VARIANT as STATUS_VARIANT } from "@/lib/constants/status";
 import { Button } from "@/components/ui/button";
 import { formatMoney } from "@/lib/money";
 
 export const metadata = { title: "Manual Journals" };
-
-// Map manual-journal status to semantic StatusPill variants — DRAFT
-// neutral (editable, not in the ledger yet), PUBLISHED success (locked
-// into the canonical ledger).
-const STATUS_VARIANT: Record<string, StatusVariant> = {
-  DRAFT: "neutral",
-  PUBLISHED: "success",
-};
 
 const COLUMNS: ColumnDef[] = [
   { key: "number", header: "Number", sortable: true },

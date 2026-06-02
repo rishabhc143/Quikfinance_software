@@ -3,7 +3,8 @@ import { format } from "date-fns";
 import { ShoppingBag } from "lucide-react";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
-import { StatusPill, type StatusVariant } from "@/components/ui/status-pill";
+import { StatusPill } from "@/components/ui/status-pill";
+import { PURCHASE_ORDER_STATUS_VARIANT as STATUS_VARIANT } from "@/lib/constants/status";
 import { TransactionListPage } from "@/components/shared/transaction-list-page";
 import { BulkAwareDataTable } from "@/components/shared/bulk-aware-data-table";
 import { SavedViewBuilderDialog } from "@/components/shared/saved-view-builder-dialog";
@@ -23,18 +24,6 @@ import {
 export const metadata = { title: "Purchase Orders" };
 
 const PAGE_SIZE_DEFAULT = 25;
-
-// Map PO lifecycle to semantic StatusPill variants — DRAFT neutral,
-// ISSUED info (in flight to vendor), PARTIALLY_BILLED warning (needs
-// follow-up), BILLED / CLOSED success, CANCELLED danger.
-const STATUS_VARIANT: Record<string, StatusVariant> = {
-  DRAFT: "neutral",
-  ISSUED: "info",
-  PARTIALLY_BILLED: "warning",
-  BILLED: "success",
-  CLOSED: "success",
-  CANCELLED: "danger",
-};
 
 type SearchParams = {
   q?: string;

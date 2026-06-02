@@ -3,7 +3,8 @@ import { Receipt } from "lucide-react";
 import { SalesEmptyState } from "@/components/shared/sales-empty-state";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
-import { StatusPill, type StatusVariant } from "@/components/ui/status-pill";
+import { StatusPill } from "@/components/ui/status-pill";
+import { INVOICE_STATUS_VARIANT as STATUS_VARIANT } from "@/lib/constants/status";
 import { TransactionListPage } from "@/components/shared/transaction-list-page";
 import { BulkAwareDataTable } from "@/components/shared/bulk-aware-data-table";
 import { SalesExportDialog } from "@/components/shared/sales-export-dialog";
@@ -22,21 +23,6 @@ import {
 } from "./actions";
 
 export const metadata = { title: "Invoices" };
-
-// Maps invoice lifecycle status → semantic StatusPill variant. PAID is
-// success green, OVERDUE is destructive red, DRAFT/SENT are neutral/info.
-// Replaces the old shadcn Badge variant mapping (which had no semantic
-// distinction between "Paid" and "Sent" — both rendered as the same grey
-// secondary chip).
-const STATUS_VARIANT: Record<string, StatusVariant> = {
-  DRAFT: "neutral",
-  SENT: "info",
-  PARTIALLY_PAID: "warning",
-  PAID: "success",
-  OVERDUE: "danger",
-  VOID: "neutral",
-  WRITTEN_OFF: "neutral",
-};
 
 export default async function InvoicesListPage({
   searchParams,

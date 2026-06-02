@@ -3,7 +3,8 @@ import { Repeat } from "lucide-react";
 import { SalesEmptyState } from "@/components/shared/sales-empty-state";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
-import { StatusPill, type StatusVariant } from "@/components/ui/status-pill";
+import { StatusPill } from "@/components/ui/status-pill";
+import { RECURRING_STATUS_VARIANT as STATUS_VARIANT } from "@/lib/constants/status";
 import { TransactionListPage } from "@/components/shared/transaction-list-page";
 import { BulkAwareDataTable } from "@/components/shared/bulk-aware-data-table";
 import { SalesExportDialog } from "@/components/shared/sales-export-dialog";
@@ -16,16 +17,6 @@ import {
 } from "./actions";
 
 export const metadata = { title: "Recurring Invoices" };
-
-// Map recurring-profile lifecycle to semantic StatusPill variants —
-// ACTIVE success (running), PAUSED warning (user can resume), STOPPED /
-// EXPIRED neutral (terminal, low-emphasis).
-const STATUS_VARIANT: Record<string, StatusVariant> = {
-  ACTIVE: "success",
-  PAUSED: "warning",
-  STOPPED: "neutral",
-  EXPIRED: "neutral",
-};
 
 export default async function RecurringInvoicesListPage({
   searchParams,
