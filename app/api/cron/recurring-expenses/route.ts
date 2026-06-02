@@ -5,6 +5,7 @@ import {
   generateExpenseFromProfile,
   advanceRecurringExpenseCursor,
 } from "@/lib/purchases/recurring";
+import { mapPool } from "@/lib/concurrency";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -21,6 +22,9 @@ export const dynamic = "force-dynamic";
  *
  * Idempotency: hasExpenseForProfileToday blocks duplicates within
  * a calendar day.
+ *
+ * Audit r2 B.3: replaced the sequential `for ... await` loop with
+ * `mapPool(due, 8, ...)` so up to 8 profiles process concurrently.
  */
 export async function GET(req: NextRequest) {
   const denied = assertCronAuthorized(req);
@@ -40,29 +44,28 @@ export async function GET(req: NextRequest) {
     take: 200,
   });
 
-  const results = [];
-  for (const r of due) {
+  const results = await mapPool(due, 8, async (r) => {
     try {
       const gen = await generateExpenseFromProfile(r.id, today);
       await advanceRecurringExpenseCursor(r.id, today);
-      results.push({
+      return {
         id: r.id,
         expenseId: gen.expenseId,
         skipped: gen.skipped,
         reason: gen.reason ?? null,
-      });
+      };
     } catch (err) {
-      results.push({
+      return {
         id: r.id,
-        expenseId: null,
+        expenseId: null as string | null,
         skipped: true,
         reason:
           err instanceof Error
             ? `error: ${err.message}`
             : "error: unknown",
-      });
+      };
     }
-  }
+  });
 
   return NextResponse.json({
     ok: true,
