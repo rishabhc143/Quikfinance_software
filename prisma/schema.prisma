@@ -1167,6 +1167,10 @@ model Bill {
   // restatements. The non-unique index keeps the warning query fast.
   @@index([organizationId, contactId, number])
   @@index([organizationId, status, deletedAt])
+  // Audit-followup batch 1 (MED-1): supports cron + report queries that
+  // filter open bills by due date (e.g. bill-statuses cron marking OVERDUE,
+  // AP aging report). At 10k+ bills/org this avoids a sequential scan.
+  @@index([organizationId, status, dueDate])
 }
 
 enum BillStatus {
@@ -1361,6 +1365,10 @@ model PaymentMade {
 
   @@unique([organizationId, number])
   @@index([organizationId, paymentType, status])
+  // Audit-followup batch 1 (MED-1): supports time-range queries from
+  // reports + dashboard (e.g. 6-month cashflow chart). Postgres uses
+  // ascending B-tree indexes for both ASC + DESC scans.
+  @@index([organizationId, paymentDate])
 }
 
 enum PaymentMadeType {

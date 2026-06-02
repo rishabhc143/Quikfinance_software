@@ -2,7 +2,8 @@ import { format } from "date-fns";
 import { FileMinus } from "lucide-react";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
-import { StatusPill, type StatusVariant } from "@/components/ui/status-pill";
+import { StatusPill } from "@/components/ui/status-pill";
+import { VENDOR_CREDIT_STATUS_VARIANT as STATUS_VARIANT } from "@/lib/constants/status";
 import { TransactionListPage } from "@/components/shared/transaction-list-page";
 import { BulkAwareDataTable } from "@/components/shared/bulk-aware-data-table";
 import { SavedViewBuilderDialog } from "@/components/shared/saved-view-builder-dialog";
@@ -18,15 +19,6 @@ import { bulkDeleteVendorCreditsAction } from "./actions";
 export const metadata = { title: "Vendor Credits" };
 
 const PAGE_SIZE_DEFAULT = 25;
-
-// Map vendor-credit lifecycle to semantic StatusPill variants — OPEN info
-// (credit still has balance), CLOSED success (fully applied/refunded),
-// VOID danger.
-const STATUS_VARIANT: Record<string, StatusVariant> = {
-  OPEN: "info",
-  CLOSED: "success",
-  VOID: "danger",
-};
 
 type SearchParams = {
   q?: string;

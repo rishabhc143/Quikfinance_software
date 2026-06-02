@@ -3,7 +3,8 @@ import { FileCheck } from "lucide-react";
 import { SalesEmptyState } from "@/components/shared/sales-empty-state";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
-import { StatusPill, type StatusVariant } from "@/components/ui/status-pill";
+import { StatusPill } from "@/components/ui/status-pill";
+import { QUOTE_STATUS_VARIANT as STATUS_VARIANT } from "@/lib/constants/status";
 import { TransactionListPage } from "@/components/shared/transaction-list-page";
 import { BulkAwareDataTable } from "@/components/shared/bulk-aware-data-table";
 import { SalesExportDialog } from "@/components/shared/sales-export-dialog";
@@ -22,17 +23,6 @@ import {
 } from "./actions";
 
 export const metadata = { title: "Quotes" };
-
-// Quote lifecycle status → semantic StatusPill variant. Matches the
-// invoices/bills mapping for visual consistency.
-const STATUS_VARIANT: Record<string, StatusVariant> = {
-  DRAFT: "neutral",
-  SENT: "info",
-  ACCEPTED: "success",
-  DECLINED: "danger",
-  EXPIRED: "danger",
-  INVOICED: "success",
-};
 
 export default async function QuotesListPage({
   searchParams,

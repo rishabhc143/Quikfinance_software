@@ -2,7 +2,8 @@ import { format } from "date-fns";
 import { FileMinus } from "lucide-react";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
-import { StatusPill, type StatusVariant } from "@/components/ui/status-pill";
+import { StatusPill } from "@/components/ui/status-pill";
+import { DEBIT_NOTE_STATUS_VARIANT as STATUS_VARIANT } from "@/lib/constants/status";
 import { SalesEmptyState } from "@/components/shared/sales-empty-state";
 import { TransactionListPage } from "@/components/shared/transaction-list-page";
 import { BulkAwareDataTable } from "@/components/shared/bulk-aware-data-table";
@@ -13,13 +14,6 @@ import {
 import { formatMoney } from "@/lib/money";
 
 export const metadata = { title: "Debit Notes" };
-
-// Map debit-note lifecycle to semantic StatusPill variants.
-const STATUS_VARIANT: Record<string, StatusVariant> = {
-  DRAFT: "neutral",
-  OPEN: "info",
-  VOID: "danger",
-};
 
 /**
  * M17f: minimal Debit Notes list. Schema is in (M17a); the spec
