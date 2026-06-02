@@ -18,7 +18,7 @@ import {
 import {
   createBillFromDocumentAction,
   searchVendorsForDocAction,
-} from "./actions";
+} from "./actions-ar-ap";
 import type { ParsedBill } from "@/lib/documents/parsers";
 
 /**

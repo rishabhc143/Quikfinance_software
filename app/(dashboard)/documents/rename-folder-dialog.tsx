@@ -15,7 +15,7 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { renameFolderAction } from "./actions";
+import { renameFolderAction } from "./actions-folders";
 
 /**
  * DOC-D1.2: Rename modal for a single folder. Pre-fills with current

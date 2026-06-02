@@ -12,7 +12,7 @@ import {
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { uploadDocumentsAction, type UploadDocumentItemResult } from "./actions";
+import { uploadDocumentsAction, type UploadDocumentItemResult } from "./actions-upload";
 
 /**
  * DOC-D1.3: Files inbox surface — matches the user-shared Zoho

@@ -17,7 +17,7 @@ import { cn } from "@/lib/utils";
 import {
   uploadBankStatementsAction,
   type UploadDocumentItemResult,
-} from "./actions";
+} from "./actions-upload";
 import {
   DocumentsTable,
   type DocumentTableRow,

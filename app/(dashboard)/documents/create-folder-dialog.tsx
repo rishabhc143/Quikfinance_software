@@ -15,7 +15,7 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { createFolderAction } from "./actions";
+import { createFolderAction } from "./actions-folders";
 
 /**
  * DOC-D1.2: "Create New Folder" modal triggered from the FOLDERS

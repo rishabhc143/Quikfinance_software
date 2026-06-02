@@ -18,7 +18,7 @@ import {
 import {
   createExpenseFromDocumentAction,
   searchVendorsForDocAction,
-} from "./actions";
+} from "./actions-ar-ap";
 import type { ParsedReceipt } from "@/lib/documents/parsers";
 
 /**
