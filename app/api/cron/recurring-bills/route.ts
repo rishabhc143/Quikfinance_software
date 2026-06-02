@@ -5,6 +5,7 @@ import {
   generateBillFromProfile,
   advanceRecurringBillCursor,
 } from "@/lib/purchases/recurring";
+import { mapPool } from "@/lib/concurrency";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -24,6 +25,9 @@ export const dynamic = "force-dynamic";
  * The (vendor, billNumber) constraint was relaxed to a soft warning
  * in PR #101, so even cross-run number collisions just warn, never
  * block.
+ *
+ * Audit r2 B.3: replaced the sequential `for ... await` loop with
+ * `mapPool(due, 8, ...)` so up to 8 profiles process concurrently.
  */
 export async function GET(req: NextRequest) {
   const denied = assertCronAuthorized(req);
@@ -47,30 +51,29 @@ export async function GET(req: NextRequest) {
     take: 200,
   });
 
-  const results = [];
-  for (const r of due) {
+  const results = await mapPool(due, 8, async (r) => {
     try {
       const gen = await generateBillFromProfile(r.id, today);
       await advanceRecurringBillCursor(r.id, today);
-      results.push({
+      return {
         id: r.id,
         billId: gen.billId,
         skipped: gen.skipped,
         reason: gen.reason ?? null,
-      });
+      };
     } catch (err) {
       // Don't let one bad profile abort the whole run. Log + continue.
-      results.push({
+      return {
         id: r.id,
-        billId: null,
+        billId: null as string | null,
         skipped: true,
         reason:
           err instanceof Error
             ? `error: ${err.message}`
             : "error: unknown",
-      });
+      };
     }
-  }
+  });
 
   return NextResponse.json({
     ok: true,
