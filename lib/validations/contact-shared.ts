@@ -37,3 +37,29 @@ export const contactPersonSchema = z.object({
 
 export type ContactPersonInput = z.input<typeof contactPersonSchema>;
 export type ContactPersonData = z.infer<typeof contactPersonSchema>;
+
+/**
+ * Shared Address schema. Customer used `min(1)/max(*)` bounds; Vendor
+ * was loose. We standardise on the strict version (Postgres VARCHAR
+ * columns already enforce these lengths). The `country` field defaults
+ * to "India" — both forms used this default before; preserved here so
+ * the shared component doesn't drift.
+ */
+export const ADDRESS_KINDS = ["billing", "shipping", "other"] as const;
+
+export const addressSchema = z.object({
+  kind: z.enum(ADDRESS_KINDS).default("billing"),
+  attention: z.string().max(200).optional().nullable(),
+  country: z.string().min(1).max(80).default("India"),
+  addressLine1: z.string().max(200).optional().nullable(),
+  addressLine2: z.string().max(200).optional().nullable(),
+  city: z.string().max(80).optional().nullable(),
+  state: z.string().max(80).optional().nullable(),
+  zipCode: z.string().max(20).optional().nullable(),
+  phone: z.string().max(40).optional().nullable(),
+  fax: z.string().max(40).optional().nullable(),
+  isDefault: z.boolean().optional().default(false),
+});
+
+export type AddressInput = z.input<typeof addressSchema>;
+export type AddressData = z.infer<typeof addressSchema>;

@@ -8,7 +8,6 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { HistoryInput } from "@/components/ui/history-input";
-import { PincodeInput } from "@/components/ui/pincode-input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
@@ -17,6 +16,7 @@ import { Combobox, type ComboboxOption } from "@/components/ui/combobox";
 import { MoneyInput } from "@/components/shared/money-input";
 import { PartnerBankPromo } from "@/components/shared/partner-bank-promo";
 import { ContactPersonsTable } from "@/components/shared/contact-persons-table";
+import { AddressFieldset } from "@/components/shared/address-fieldset";
 import { gstinErrors } from "@/lib/validators/gstin";
 import type { VendorInput } from "./actions";
 
@@ -626,77 +626,25 @@ export function VendorForm({
               const idx = addresses.fields.findIndex((a) => a.kind === kind);
               if (idx === -1) return null;
               return (
-                <div
+                <AddressFieldset
                   key={kind}
-                  className="rounded-md border p-4 space-y-2"
-                >
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-sm font-semibold capitalize">
-                      {kind} address
-                    </h3>
-                    {kind === "shipping" ? (
-                      <Button
-                        type="button"
-                        variant="link"
-                        size="sm"
-                        onClick={copyBillingToShipping}
-                      >
-                        ↓ Copy billing address
-                      </Button>
-                    ) : null}
-                  </div>
-                  <Input
-                    placeholder="Attention"
-                    {...form.register(`addresses.${idx}.attention`)}
-                  />
-                  <HistoryInput
-                    autofillKey="address.country"
-                    placeholder="Country / Region"
-                    {...form.register(`addresses.${idx}.country`)}
-                  />
-                  <Textarea
-                    placeholder="Street 1"
-                    rows={2}
-                    {...form.register(`addresses.${idx}.addressLine1`)}
-                  />
-                  <Textarea
-                    placeholder="Street 2"
-                    rows={2}
-                    {...form.register(`addresses.${idx}.addressLine2`)}
-                  />
-                  <div className="grid gap-2 md:grid-cols-3">
-                    <HistoryInput
-                      autofillKey="address.city"
-                      placeholder="City"
-                      {...form.register(`addresses.${idx}.city`)}
-                    />
-                    <HistoryInput
-                      autofillKey="address.state"
-                      placeholder="State"
-                      {...form.register(`addresses.${idx}.state`)}
-                    />
-                    <PincodeInput
-                      autofillKey="address.zipCode"
-                      placeholder="Pin code"
-                      {...form.register(`addresses.${idx}.zipCode`)}
-                      onResolved={(r) => {
-                        form.setValue(`addresses.${idx}.city`, r.city);
-                        form.setValue(`addresses.${idx}.state`, r.state);
-                        form.setValue(`addresses.${idx}.country`, r.country);
-                      }}
-                    />
-                  </div>
-                  <div className="grid gap-2 md:grid-cols-2">
-                    <Input
-                      placeholder="Phone"
-                      {...form.register(`addresses.${idx}.phone`)}
-                    />
-                    <Input
-                      placeholder="Fax"
-                      {...form.register(`addresses.${idx}.fax`)}
-                    />
-                  </div>
-                </div>
+                  form={form}
+                  index={idx}
+                  heading={`${kind} address`}
+                  copyButton={
+                    kind === "shipping"
+                      ? {
+                          label: "↓ Copy billing address",
+                          onClick: copyBillingToShipping,
+                        }
+                      : undefined
+                  }
+                  variant="textarea"
+                  countryPlaceholder="Country / Region"
+                  street1Placeholder="Street 1"
+                  street2Placeholder="Street 2"
+                  zipPlaceholder="Pin code"
+                />
               );
             })}
           </div>
