@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { attachmentsField } from "./shared-fields";
 
 /**
  * Payments Made — zod schemas. Two distinct shapes per the
@@ -69,18 +70,7 @@ export const billPaymentSchema = z.object({
    * comes from new cash or draws down an existing advance.
    */
   allocations: z.array(paymentAllocationSchema).min(1, "Allocate to at least one bill"),
-  attachments: z
-    .array(
-      z.object({
-        fileName: z.string().min(1).max(200),
-        fileUrl: z.string().min(1),
-        fileSize: z.coerce.number().int().nonnegative(),
-        mimeType: z.string().min(1).max(120),
-      })
-    )
-    .max(5)
-    .optional()
-    .default([]),
+  attachments: attachmentsField(5),
   status: z.enum(["DRAFT", "PAID"]).default("PAID"),
 });
 export type BillPaymentInput = z.input<typeof billPaymentSchema>;
@@ -106,18 +96,7 @@ export const vendorAdvanceSchema = z.object({
   tdsAmount: z.coerce.number().nonnegative().nullable().optional(),
   reference: z.string().max(120).nullable().optional(),
   notes: z.string().max(2000).nullable().optional(),
-  attachments: z
-    .array(
-      z.object({
-        fileName: z.string().min(1).max(200),
-        fileUrl: z.string().min(1),
-        fileSize: z.coerce.number().int().nonnegative(),
-        mimeType: z.string().min(1).max(120),
-      })
-    )
-    .max(5)
-    .optional()
-    .default([]),
+  attachments: attachmentsField(5),
   status: z.enum(["DRAFT", "PAID"]).default("PAID"),
 });
 export type VendorAdvanceInput = z.input<typeof vendorAdvanceSchema>;

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { lineItemSchema } from "./quote";
+import { customFieldValuesField } from "./shared-fields";
 
 /**
  * M23: Debit Note validation. The DebitNote model was scaffolded in
@@ -19,15 +20,7 @@ export const debitNoteSchema = z.object({
   termsAndConditions: z.string().max(4000).nullable().optional(),
   pdfTemplateId: z.string().nullable().optional(),
   // M25: optional custom field values keyed by CustomFieldDefinition.id
-  customFieldValues: z
-    .array(
-      z.object({
-        fieldDefinitionId: z.string().min(1),
-        value: z.unknown(),
-      })
-    )
-    .optional()
-    .default([]),
+  customFieldValues: customFieldValuesField,
   lines: z.array(lineItemSchema).min(1),
 });
 export type DebitNoteInput = z.input<typeof debitNoteSchema>;

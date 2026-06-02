@@ -21,7 +21,10 @@ import {
 } from "@/components/shared/transaction-line-items-table";
 import { AttachFilesField, type AttachedFile } from "@/components/shared/attach-files-field";
 import { PdfTemplatePicker } from "@/components/shared/pdf-template-picker";
-import { CustomFieldsSection } from "@/components/shared/custom-fields-section";
+import {
+  CustomFieldsSection,
+  type CustomFieldDefForRender,
+} from "@/components/shared/custom-fields-section";
 import {
   BillableExpensesPanel,
   type BillableExpenseAdd,
@@ -53,21 +56,7 @@ export type InvoiceFormProps = {
   // M17c: optional Custom Fields wiring. Page server component fetches
   // active definitions for entityType=INVOICE; on edit it also passes
   // saved values keyed by fieldDefinitionId.
-  customFieldDefinitions?: {
-    id: string;
-    fieldKey: string;
-    label: string;
-    dataType:
-      | "text"
-      | "number"
-      | "date"
-      | "dropdown"
-      | "checkbox"
-      | "email"
-      | "url";
-    options: { label: string; value: string }[] | null;
-    isRequired: boolean;
-  }[];
+  customFieldDefinitions?: CustomFieldDefForRender[];
   customFieldInitialValues?: Record<string, unknown>;
   /**
    * M17e: when editing a saved invoice, pass its id so the bottom bar
