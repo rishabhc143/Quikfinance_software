@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { contactPersonSchema } from "./contact-shared";
 
 /**
  * Sales module — Customer (Contact with type=CUSTOMER) zod schemas.
@@ -7,7 +8,12 @@ import { z } from "zod";
  * server action. The schema enforces the spec's GSTIN regex, PAN format,
  * and uniqueness of displayName per organization (the action layer
  * dedupes; this schema only validates shape).
+ *
+ * CRIT-2 audit: `contactPersonSchema` is now re-exported from
+ * `./contact-shared` so it stays in sync with the Vendor form.
  */
+
+export { contactPersonSchema } from "./contact-shared";
 
 export const PAN_REGEX = /^[A-Z]{5}[0-9]{4}[A-Z]$/;
 export const GSTIN_REGEX = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/;
@@ -24,18 +30,6 @@ export const addressSchema = z.object({
   phone: z.string().max(40).optional().nullable(),
   fax: z.string().max(40).optional().nullable(),
   isDefault: z.boolean().optional().default(false),
-});
-
-export const contactPersonSchema = z.object({
-  salutation: z.string().max(20).optional().nullable(),
-  firstName: z.string().max(120).optional().nullable(),
-  lastName: z.string().max(120).optional().nullable(),
-  email: z.string().email().max(200).optional().or(z.literal("")).nullable(),
-  workPhone: z.string().max(40).optional().nullable(),
-  mobile: z.string().max(40).optional().nullable(),
-  designation: z.string().max(120).optional().nullable(),
-  department: z.string().max(120).optional().nullable(),
-  isPrimary: z.boolean().optional().default(false),
 });
 
 export const customerSchema = z.object({

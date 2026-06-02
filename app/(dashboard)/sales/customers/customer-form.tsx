@@ -4,7 +4,7 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import { useForm, useFieldArray, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Plus, Trash2, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { HistoryInput } from "@/components/ui/history-input";
@@ -16,6 +16,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Combobox, type ComboboxOption } from "@/components/ui/combobox";
 import { MoneyInput } from "@/components/shared/money-input";
 import { DatePicker } from "@/components/shared/date-picker";
+import { ContactPersonsTable } from "@/components/shared/contact-persons-table";
 import { customerSchema, type CustomerInput } from "@/lib/validations/customer";
 import { GstinPrefillDialog } from "./gstin-prefill-dialog";
 import { gstinErrors } from "@/lib/validators/gstin";
@@ -83,17 +84,6 @@ const blankAddress = {
   isDefault: false,
 };
 
-const blankContactPerson = {
-  salutation: "",
-  firstName: "",
-  lastName: "",
-  email: "",
-  workPhone: "",
-  mobile: "",
-  designation: "",
-  department: "",
-  isPrimary: false,
-};
 
 export function CustomerForm({
   initial,
@@ -166,7 +156,8 @@ export function CustomerForm({
   }, [firstName, lastName, salutation, companyName]);
 
   const addresses = useFieldArray({ control: form.control, name: "addresses" });
-  const persons = useFieldArray({ control: form.control, name: "contactPersons" });
+  // CRIT-2 audit: `persons` field array lives inside `<ContactPersonsTable>`
+  // now — caller only needs to ensure `contactPersons: []` is in defaults.
 
   React.useEffect(() => {
     if (addresses.fields.length === 0) {
@@ -586,115 +577,7 @@ export function CustomerForm({
         </TabsContent>
 
         <TabsContent value="persons" className="space-y-3">
-          <div className="rounded-md border bg-background overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-muted/40 text-xs uppercase tracking-wider text-muted-foreground">
-                <tr>
-                  <th className="p-2 text-left">Salutation</th>
-                  <th className="p-2 text-left">First name</th>
-                  <th className="p-2 text-left">Last name</th>
-                  <th className="p-2 text-left">Email</th>
-                  <th className="p-2 text-left">Work phone</th>
-                  <th className="p-2 text-left">Mobile</th>
-                  <th className="p-2 text-left">Primary</th>
-                  <th className="w-8 p-2"></th>
-                </tr>
-              </thead>
-              <tbody className="divide-y">
-                {persons.fields.map((f, i) => (
-                  <tr key={f.id}>
-                    <td className="p-2">
-                      <Input
-                        className="h-8"
-                        {...form.register(`contactPersons.${i}.salutation`)}
-                      />
-                    </td>
-                    <td className="p-2">
-                      <Input
-                        className="h-8"
-                        {...form.register(`contactPersons.${i}.firstName`)}
-                      />
-                    </td>
-                    <td className="p-2">
-                      <Input
-                        className="h-8"
-                        {...form.register(`contactPersons.${i}.lastName`)}
-                      />
-                    </td>
-                    <td className="p-2">
-                      <Input
-                        className="h-8"
-                        type="email"
-                        {...form.register(`contactPersons.${i}.email`)}
-                      />
-                    </td>
-                    <td className="p-2">
-                      <Input
-                        className="h-8"
-                        {...form.register(`contactPersons.${i}.workPhone`)}
-                      />
-                    </td>
-                    <td className="p-2">
-                      <Input
-                        className="h-8"
-                        {...form.register(`contactPersons.${i}.mobile`)}
-                      />
-                    </td>
-                    <td className="p-2">
-                      <Controller
-                        name={`contactPersons.${i}.isPrimary`}
-                        control={form.control}
-                        render={({ field }) => (
-                          <input
-                            type="radio"
-                            name="primaryContactPerson"
-                            checked={!!field.value}
-                            onChange={() => {
-                              persons.fields.forEach((_p, j) =>
-                                form.setValue(
-                                  `contactPersons.${j}.isPrimary`,
-                                  j === i
-                                )
-                              );
-                            }}
-                          />
-                        )}
-                      />
-                    </td>
-                    <td className="p-2">
-                      <button
-                        type="button"
-                        onClick={() => persons.remove(i)}
-                        aria-label="Remove contact person"
-                        className="text-muted-foreground hover:text-destructive"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-                {persons.fields.length === 0 ? (
-                  <tr>
-                    <td
-                      colSpan={8}
-                      className="p-3 text-center text-sm text-muted-foreground"
-                    >
-                      No contact persons yet.
-                    </td>
-                  </tr>
-                ) : null}
-              </tbody>
-            </table>
-          </div>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="gap-1"
-            onClick={() => persons.append({ ...blankContactPerson })}
-          >
-            <Plus className="h-4 w-4" /> Add Contact Person
-          </Button>
+          <ContactPersonsTable form={form} addButtonLabel="Add Contact Person" />
         </TabsContent>
 
         <TabsContent value="custom">
