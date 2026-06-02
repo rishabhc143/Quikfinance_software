@@ -13,6 +13,19 @@ import { Button } from "@/components/ui/button";
  * inline copy that drifted independently (one used "Add Contact
  * Person" capital P, the other lowercase — that was the visible tell).
  *
+ * CURRENT CALLERS (audit r2 verified, do NOT remove):
+ *   - app/(dashboard)/sales/customers/customer-form.tsx
+ *   - app/(dashboard)/purchases/vendors/vendor-form.tsx
+ *
+ * If you add a third caller, verify the form's zod schema has
+ * `contactPersons: ContactPersonRow[]` (the shape in
+ * `lib/validations/contact-shared.ts`). The component's `form` prop
+ * is typed `any` because react-hook-form's UseFormReturn<T> is
+ * invariant in T — TS can't catch a missing `contactPersons` field
+ * at the call site, only at the `useFieldArray` here. Quote /
+ * SalesOrder / PurchaseOrder forms intentionally don't use this:
+ * they reference contacts by `contactId` FK, not inline.
+ *
  * The component owns its own `useFieldArray` so the parent only needs
  * to make sure `form.contactPersons` is defined in the form's default
  * values. The "Primary" radio enforces single-selection across rows

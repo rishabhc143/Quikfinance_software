@@ -17,7 +17,10 @@ import {
 } from "@/components/shared/transaction-line-items-table";
 import { AttachFilesField, type AttachedFile } from "@/components/shared/attach-files-field";
 import { PdfTemplatePicker } from "@/components/shared/pdf-template-picker";
-import { CustomFieldsSection } from "@/components/shared/custom-fields-section";
+import {
+  CustomFieldsSection,
+  type CustomFieldDefForRender,
+} from "@/components/shared/custom-fields-section";
 import { createCustomerInlineAction } from "@/app/(dashboard)/sales/_inline-create/actions";
 import type { DeliveryChallanInput } from "@/lib/validations/delivery-challan";
 import { format } from "date-fns";
@@ -45,21 +48,7 @@ export function ChallanForm({
   taxOptions: TaxOption[];
   pdfTemplateOptions?: ComboboxOption[];
   // M25: optional Custom Fields wiring (entityType=DELIVERY_CHALLAN)
-  customFieldDefinitions?: {
-    id: string;
-    fieldKey: string;
-    label: string;
-    dataType:
-      | "text"
-      | "number"
-      | "date"
-      | "dropdown"
-      | "checkbox"
-      | "email"
-      | "url";
-    options: { label: string; value: string }[] | null;
-    isRequired: boolean;
-  }[];
+  customFieldDefinitions?: CustomFieldDefForRender[];
   customFieldInitialValues?: Record<string, unknown>;
   onSubmitAction: (values: DeliveryChallanInput) => Promise<unknown>;
   cancelHref?: string;

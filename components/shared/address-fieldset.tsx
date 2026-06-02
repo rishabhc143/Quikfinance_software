@@ -10,9 +10,19 @@ import { PincodeInput } from "@/components/ui/pincode-input";
 /**
  * CRIT-2 audit follow-up (phase 2): shared Address card used by both
  * the Customer form and the Vendor form. Previously each form had its
- * own ~70-LOC inline copy. Real divergences between the two are
- * exposed as props rather than internal `if (kind === "vendor")`
- * branches:
+ * own ~70-LOC inline copy.
+ *
+ * CURRENT CALLERS (audit r2 verified, do NOT remove):
+ *   - app/(dashboard)/sales/customers/customer-form.tsx
+ *   - app/(dashboard)/purchases/vendors/vendor-form.tsx
+ *
+ * Quote / SalesOrder / PurchaseOrder forms intentionally don't use
+ * this: they reference customers/vendors by `contactId` FK rather
+ * than capturing inline `addresses[]`. The audit Plan agent C
+ * verified this — don't manufacture refactor opportunities here.
+ *
+ * Real divergences between the two callers are exposed as props
+ * rather than internal `if (kind === "vendor")` branches:
  *
  *   - heading           — H3 text ("Billing Address" capital A vs
  *                          "Billing address" lowercase a)

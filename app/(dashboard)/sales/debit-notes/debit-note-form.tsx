@@ -15,7 +15,10 @@ import {
   type ItemOption,
   type TaxOption,
 } from "@/components/shared/transaction-line-items-table";
-import { CustomFieldsSection } from "@/components/shared/custom-fields-section";
+import {
+  CustomFieldsSection,
+  type CustomFieldDefForRender,
+} from "@/components/shared/custom-fields-section";
 import { createCustomerInlineAction } from "@/app/(dashboard)/sales/_inline-create/actions";
 import type { DebitNoteInput } from "@/lib/validations/debit-note";
 import { format } from "date-fns";
@@ -55,21 +58,7 @@ export function DebitNoteForm({
   taxOptions: TaxOption[];
   defaultCurrency: string;
   // M25: optional Custom Fields wiring (entityType=DEBIT_NOTE)
-  customFieldDefinitions?: {
-    id: string;
-    fieldKey: string;
-    label: string;
-    dataType:
-      | "text"
-      | "number"
-      | "date"
-      | "dropdown"
-      | "checkbox"
-      | "email"
-      | "url";
-    options: { label: string; value: string }[] | null;
-    isRequired: boolean;
-  }[];
+  customFieldDefinitions?: CustomFieldDefForRender[];
   customFieldInitialValues?: Record<string, unknown>;
   onSubmitAction: (values: DebitNoteInput) => Promise<unknown>;
   submitLabel?: string;

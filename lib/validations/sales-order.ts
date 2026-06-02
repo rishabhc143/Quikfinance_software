@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { lineItemSchema } from "./quote";
+import { attachmentsField, customFieldValuesField } from "./shared-fields";
 
 export const salesOrderSchema = z.object({
   contactId: z.string().min(1, "Customer required"),
@@ -26,28 +27,9 @@ export const salesOrderSchema = z.object({
   customerNotes: z.string().max(2000).nullable().optional(),
   termsAndConditions: z.string().max(4000).nullable().optional(),
   pdfTemplateId: z.string().nullable().optional(),
-  attachments: z
-    .array(
-      z.object({
-        fileName: z.string().min(1).max(200),
-        fileUrl: z.string().min(1),
-        fileSize: z.coerce.number().int().nonnegative(),
-        mimeType: z.string().min(1).max(120),
-      })
-    )
-    .max(10)
-    .optional()
-    .default([]),
+  attachments: attachmentsField(10),
   // M21: optional custom field values keyed by CustomFieldDefinition.id.
-  customFieldValues: z
-    .array(
-      z.object({
-        fieldDefinitionId: z.string().min(1),
-        value: z.unknown(),
-      })
-    )
-    .optional()
-    .default([]),
+  customFieldValues: customFieldValuesField,
   lines: z.array(lineItemSchema).min(1, "At least one line item required"),
 });
 export type SalesOrderInput = z.input<typeof salesOrderSchema>;
