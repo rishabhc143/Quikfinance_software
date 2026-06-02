@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { HistoryInput } from "@/components/ui/history-input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Combobox, type ComboboxOption } from "@/components/ui/combobox";
@@ -60,7 +61,7 @@ export function ExpenseForm({
           <Label>Vendor</Label>
           <Combobox options={vendorOptions} value={contactId} onChange={setContactId} placeholder="Optional" />
         </div>
-        <div className="md:col-span-2"><Label>Reference</Label><Input name="reference" defaultValue={initial.reference ?? ""} placeholder="Receipt #, PO, etc." /></div>
+        <div className="md:col-span-2"><Label>Reference</Label><HistoryInput autofillKey="expense.reference" name="reference" defaultValue={initial.reference ?? ""} placeholder="Receipt #, PO, etc." /></div>
         <div className="md:col-span-2"><Label>Notes</Label><Textarea name="notes" rows={2} defaultValue={initial.notes ?? ""} /></div>
       </div>
       <div className="flex items-center justify-end gap-2 pt-2 border-t">

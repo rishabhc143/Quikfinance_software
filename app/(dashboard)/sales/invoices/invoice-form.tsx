@@ -7,6 +7,7 @@ import { Loader2, Repeat } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { HistoryInput } from "@/components/ui/history-input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Combobox, type ComboboxOption } from "@/components/ui/combobox";
@@ -353,7 +354,8 @@ export function InvoiceForm({
         )}
 
         <Label className="pt-2">Order Number</Label>
-        <Input
+        <HistoryInput
+          autofillKey="invoice.referenceNumber"
           value={referenceNumber ?? ""}
           onChange={(e) => setReferenceNumber(e.target.value)}
           placeholder="Optional"
@@ -546,7 +548,8 @@ export function InvoiceForm({
             ) : null}
           </div>
           <div className="flex items-center justify-between gap-2">
-            <Input
+            <HistoryInput
+              autofillKey="transaction.adjustmentLabel"
               value={adjustmentLabel ?? ""}
               onChange={(e) => setAdjustmentLabel(e.target.value)}
               className="max-w-[10rem]"

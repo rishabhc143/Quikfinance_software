@@ -7,6 +7,7 @@ import { useDropzone } from "react-dropzone";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { HistoryInput } from "@/components/ui/history-input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Combobox, type ComboboxOption } from "@/components/ui/combobox";
@@ -205,7 +206,8 @@ export function ItemForm({
         <div className="md:col-span-2 space-y-4">
           <div>
             <Label htmlFor="name">Name <span className="text-destructive">*</span></Label>
-            <Input
+            <HistoryInput
+              autofillKey="item.name"
               id="name"
               value={values.name}
               onChange={(e) => set("name", e.target.value)}
