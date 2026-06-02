@@ -1,6 +1,6 @@
 import { format } from "date-fns";
 import { Repeat } from "lucide-react";
-import { SalesEmptyState } from "@/components/shared/sales-empty-state";
+import { RichEmptyState } from "@/components/shared/rich-empty-state";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
 import { StatusPill } from "@/components/ui/status-pill";
@@ -80,7 +80,7 @@ export default async function RecurringInvoicesListPage({
   }));
 
   const empty = (
-    <SalesEmptyState
+    <RichEmptyState
       icon={Repeat}
       title="Set it once, bill on autopilot"
       description="Recurring profiles generate invoices automatically on the schedule you choose."

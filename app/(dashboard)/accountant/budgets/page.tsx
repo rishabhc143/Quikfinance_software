@@ -6,7 +6,7 @@ import { requireOrganization } from "@/lib/auth-helpers";
 import {
   DataTable,
   PageHeader,
-  EmptyState,
+  SimpleEmptyState,
   type ColumnDef,
 } from "@/components/shared/data-table";
 import { Badge } from "@/components/ui/badge";
@@ -127,7 +127,7 @@ export default async function BudgetsPage({
         ctaLabel="+ New Budget"
       />
       {total === 0 && !q ? (
-        <EmptyState
+        <SimpleEmptyState
           icon={Target}
           title="Plan vs reality"
           description="Set annual P&L targets per account, then track how the ledger is performing against them. Budget vs Actuals appears on the detail page."

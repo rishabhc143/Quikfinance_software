@@ -150,7 +150,7 @@ calls the provider's revoke endpoint
 5. `app/(dashboard)/sales/customers/import-from-google/page.tsx` —
    preview UI (server component)
 6. `import-from-google/actions.ts` — commit server action
-7. Re-enable the Google icon in `sales-empty-state.tsx` (single-line
+7. Re-enable the Google icon in `rich-empty-state.tsx` (single-line
    change)
 8. Repeat 2–7 for Microsoft
 
@@ -166,7 +166,7 @@ schema is documented; mapper is a pure function).
 
 ## What's stubbed in the codebase right now
 
-- `components/shared/sales-empty-state.tsx` — the three icons render
+- `components/shared/rich-empty-state.tsx` — the three icons render
   as disabled `<span>` with a tooltip:
   > "Cloud import coming soon — use Import File above for CSVs today"
 - The `importUsingHref` prop is still threaded through (used as a

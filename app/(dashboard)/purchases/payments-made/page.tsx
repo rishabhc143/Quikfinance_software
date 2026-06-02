@@ -6,7 +6,7 @@ import { StatusPill } from "@/components/ui/status-pill";
 import { TransactionListPage } from "@/components/shared/transaction-list-page";
 import { BulkAwareDataTable } from "@/components/shared/bulk-aware-data-table";
 import { SavedViewBuilderDialog } from "@/components/shared/saved-view-builder-dialog";
-import { SalesEmptyState } from "@/components/shared/sales-empty-state";
+import { RichEmptyState } from "@/components/shared/rich-empty-state";
 import { formatMoney } from "@/lib/money";
 import {
   getSavedViews,
@@ -133,7 +133,7 @@ export default async function PaymentsMadeListPage({
   });
 
   const empty = (
-    <SalesEmptyState
+    <RichEmptyState
       icon={Wallet}
       title="Record money paid to vendors"
       description="Allocate payments against open bills, or record vendor advances that you'll draw against later."

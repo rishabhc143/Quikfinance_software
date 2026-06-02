@@ -1,6 +1,6 @@
 import { format } from "date-fns";
 import { ReceiptText } from "lucide-react";
-import { SalesEmptyState } from "@/components/shared/sales-empty-state";
+import { RichEmptyState } from "@/components/shared/rich-empty-state";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
 import { StatusPill } from "@/components/ui/status-pill";
@@ -83,7 +83,7 @@ export default async function CreditNotesListPage({
   });
 
   const empty = (
-    <SalesEmptyState
+    <RichEmptyState
       icon={ReceiptText}
       title="Issue credits with confidence"
       description="Apply credit notes to invoices or refund customers when there's a price adjustment."

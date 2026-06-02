@@ -7,7 +7,7 @@ import { BILL_STATUS_VARIANT as STATUS_VARIANT } from "@/lib/constants/status";
 import { TransactionListPage } from "@/components/shared/transaction-list-page";
 import { BulkAwareDataTable } from "@/components/shared/bulk-aware-data-table";
 import { SavedViewBuilderDialog } from "@/components/shared/saved-view-builder-dialog";
-import { SalesEmptyState } from "@/components/shared/sales-empty-state";
+import { RichEmptyState } from "@/components/shared/rich-empty-state";
 import { formatMoney } from "@/lib/money";
 import {
   getSavedViews,
@@ -146,7 +146,7 @@ export default async function BillsListPage({
   });
 
   const empty = (
-    <SalesEmptyState
+    <RichEmptyState
       icon={Receipt}
       title="Start tracking what you owe"
       description="Bills are vendor invoices you've received. Track due dates, record payments, and never miss a payable."

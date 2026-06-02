@@ -1,6 +1,6 @@
 import { format } from "date-fns";
 import { FileCheck } from "lucide-react";
-import { SalesEmptyState } from "@/components/shared/sales-empty-state";
+import { RichEmptyState } from "@/components/shared/rich-empty-state";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
 import { StatusPill } from "@/components/ui/status-pill";
@@ -105,7 +105,7 @@ export default async function QuotesListPage({
   }));
 
   const empty = (
-    <SalesEmptyState
+    <RichEmptyState
       icon={FileCheck}
       title="Seal the deal"
       description="Create professional quotes that turn prospects into customers."

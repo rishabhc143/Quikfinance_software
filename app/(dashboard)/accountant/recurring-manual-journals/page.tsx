@@ -7,7 +7,7 @@ import { requireOrganization } from "@/lib/auth-helpers";
 import {
   DataTable,
   PageHeader,
-  EmptyState,
+  SimpleEmptyState,
   type ColumnDef,
 } from "@/components/shared/data-table";
 import { Badge } from "@/components/ui/badge";
@@ -124,7 +124,7 @@ export default async function RecurringManualJournalsPage({
         ctaLabel="+ New Recurring Profile"
       />
       {total === 0 && !q ? (
-        <EmptyState
+        <SimpleEmptyState
           icon={CalendarClock}
           title="Automate periodic journals"
           description="Set up a template for recurring entries like monthly depreciation or quarterly accruals. Each occurrence is generated as a DRAFT so you can review before publishing."

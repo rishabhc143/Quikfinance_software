@@ -8,7 +8,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { TransactionListPage } from "@/components/shared/transaction-list-page";
 import { BulkAwareDataTable } from "@/components/shared/bulk-aware-data-table";
 import { SavedViewBuilderDialog } from "@/components/shared/saved-view-builder-dialog";
-import { SalesEmptyState } from "@/components/shared/sales-empty-state";
+import { RichEmptyState } from "@/components/shared/rich-empty-state";
 import { formatMoney } from "@/lib/money";
 import {
   getSavedViews,
@@ -154,7 +154,7 @@ export default async function VendorsListPage({
   });
 
   const empty = (
-    <SalesEmptyState
+    <RichEmptyState
       icon={Users}
       title="Manage every supplier in one place"
       description="Track vendors, their bills, payments, and credits — all linked to your books."

@@ -1,6 +1,6 @@
 import { format } from "date-fns";
 import { Wallet } from "lucide-react";
-import { SalesEmptyState } from "@/components/shared/sales-empty-state";
+import { RichEmptyState } from "@/components/shared/rich-empty-state";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
 import { TransactionListPage } from "@/components/shared/transaction-list-page";
@@ -74,7 +74,7 @@ export default async function PaymentsReceivedListPage({
   });
 
   const empty = (
-    <SalesEmptyState
+    <RichEmptyState
       icon={Wallet}
       title="Track every rupee that comes in"
       description="Record customer payments and reconcile your receivables."

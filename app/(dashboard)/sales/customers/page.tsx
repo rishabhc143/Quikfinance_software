@@ -1,5 +1,5 @@
 import { UserCircle2 } from "lucide-react";
-import { SalesEmptyState } from "@/components/shared/sales-empty-state";
+import { RichEmptyState } from "@/components/shared/rich-empty-state";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
 import { Badge } from "@/components/ui/badge";
@@ -119,7 +119,7 @@ export default async function CustomersListPage({
   });
 
   const empty = (
-    <SalesEmptyState
+    <RichEmptyState
       icon={UserCircle2}
       title="Every sale starts with a customer"
       description="Create and manage your customers and their contact persons, all in one place."

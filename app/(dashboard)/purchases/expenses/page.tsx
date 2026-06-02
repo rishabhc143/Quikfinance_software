@@ -6,7 +6,7 @@ import { StatusPill } from "@/components/ui/status-pill";
 import { TransactionListPage } from "@/components/shared/transaction-list-page";
 import { BulkAwareDataTable } from "@/components/shared/bulk-aware-data-table";
 import { SavedViewBuilderDialog } from "@/components/shared/saved-view-builder-dialog";
-import { SalesEmptyState } from "@/components/shared/sales-empty-state";
+import { RichEmptyState } from "@/components/shared/rich-empty-state";
 import { formatMoney } from "@/lib/money";
 import {
   getSavedViews,
@@ -108,7 +108,7 @@ export default async function ExpensesListPage({
   }));
 
   const empty = (
-    <SalesEmptyState
+    <RichEmptyState
       icon={ReceiptText}
       title="Track every business expense"
       description="Office supplies, subscriptions, travel — record once and they roll up across reports."

@@ -1,6 +1,6 @@
 import { format } from "date-fns";
 import { ShoppingBag } from "lucide-react";
-import { SalesEmptyState } from "@/components/shared/sales-empty-state";
+import { RichEmptyState } from "@/components/shared/rich-empty-state";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
 import { StatusPill } from "@/components/ui/status-pill";
@@ -100,7 +100,7 @@ export default async function SalesOrdersListPage({
   }));
 
   const empty = (
-    <SalesEmptyState
+    <RichEmptyState
       icon={ShoppingBag}
       title="Start managing your sales activities"
       description="Create, customize and send professional sales orders."

@@ -1,6 +1,6 @@
 import { format } from "date-fns";
 import { Receipt } from "lucide-react";
-import { SalesEmptyState } from "@/components/shared/sales-empty-state";
+import { RichEmptyState } from "@/components/shared/rich-empty-state";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
 import { StatusPill } from "@/components/ui/status-pill";
@@ -112,7 +112,7 @@ export default async function InvoicesListPage({
   });
 
   const empty = (
-    <SalesEmptyState
+    <RichEmptyState
       icon={Receipt}
       title="Bring your business to life with invoices"
       description="Send professional invoices, get paid faster, track every rupee."
