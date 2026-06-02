@@ -26,7 +26,7 @@ import {
   type FolderRow,
   type FolderTreeNode,
 } from "@/lib/documents/folder-tree";
-import { softDeleteFolderAction } from "./actions";
+import { softDeleteFolderAction } from "./actions-folders";
 import { CreateFolderDialog } from "./create-folder-dialog";
 import { RenameFolderDialog } from "./rename-folder-dialog";
 

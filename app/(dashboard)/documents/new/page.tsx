@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
-import { createDocumentAction } from "../actions";
+import { createDocumentAction } from "../actions-upload";
 import { UploadForm } from "./upload-form";
 
 export const metadata = { title: "Add Document" };

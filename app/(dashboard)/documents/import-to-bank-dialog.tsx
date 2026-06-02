@@ -14,7 +14,7 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { importStatementToBankAction } from "./actions";
+import { importStatementToBankAction } from "./actions-ar-ap";
 
 /**
  * DOC-D2.2: "Import to Bank" modal triggered from the preview drawer

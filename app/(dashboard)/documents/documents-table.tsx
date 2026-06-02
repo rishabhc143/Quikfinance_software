@@ -41,7 +41,7 @@ import {
   deleteDocumentAction,
   restoreDocumentAction,
   purgeDocumentAction,
-} from "./actions";
+} from "./actions-delete";
 
 /**
  * DOC-D1 / D1.4: The 5-column documents table inside the main pane.
