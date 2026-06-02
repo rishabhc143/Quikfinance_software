@@ -23,8 +23,15 @@ export const dynamic = "force-dynamic";
  * - On payment.captured: idempotent on razorpayPaymentId. Inside a
  *   single transaction creates PaymentReceived + PaymentReceivedAllocation,
  *   updates invoice balance/status, writes AuditLog, enqueues a receipt
- *   email. On payment.failed: marks the attempt FAILED. Returns 200
- *   either way to avoid Razorpay retry storms — ours errors are logged.
+ *   email. On payment.failed: marks the attempt FAILED.
+ * - Return-code policy (CRIT-4 audit fix):
+ *     200 — handler completed (or no-oped on idempotent retry / unknown event)
+ *     400 — missing signature header / malformed JSON
+ *     401 — signature didn't match any org's webhook secret
+ *     500 — critical-path failure (DB transaction, attempt-status update)
+ *           so Razorpay retries on transient errors (DB blip, network, etc).
+ *           Side-effects (audit, email) are wrapped in inner try/catch
+ *           so they can't trigger retries on already-recorded payments.
  */
 
 type RazorpayEvent = {
@@ -117,10 +124,17 @@ export async function POST(req: NextRequest) {
       console.log("[razorpay] ignoring event", event.event);
     }
   } catch (err) {
+    // CRIT-4: critical-path failure inside a handler (DB transaction,
+    // attempt-status update). Return 500 so Razorpay retries — its
+    // backoff is capped (~24h max per docs), better than silent
+    // payment/refund loss. Side-effects (audit/email) are wrapped in
+    // inner try/catch inside each handler so they can't reach here.
     // eslint-disable-next-line no-console
-    console.error("[razorpay] handler error", err);
-    // Still return 200 — surface internally via logs but keep Razorpay
-    // from retrying forever.
+    console.error("[razorpay] critical-path handler error", err);
+    return NextResponse.json(
+      { ok: false, error: "Handler failure — retry expected" },
+      { status: 500 }
+    );
   }
 
   return NextResponse.json({ ok: true });
@@ -222,33 +236,52 @@ async function handlePaymentCaptured(orgId: string, event: RazorpayEvent) {
     });
   });
 
-  await writeAuditLog({
-    organizationId: orgId,
-    userId: null,
-    action: "CREATE",
-    entityType: "PaymentReceived",
-    entityId: inv.id,
-    after: {
-      source: "razorpay-webhook",
-      orderId: p.order_id,
+  // Side-effects: payment is recorded above. Audit + email are
+  // best-effort — log on failure but don't propagate (would cause
+  // Razorpay to retry the entire idempotent payment).
+  try {
+    await writeAuditLog({
+      organizationId: orgId,
+      userId: null,
+      action: "CREATE",
+      entityType: "PaymentReceived",
+      entityId: inv.id,
+      after: {
+        source: "razorpay-webhook",
+        orderId: p.order_id,
+        paymentId: p.id,
+        amount: amountReceived,
+        currency: ccy,
+      },
+    });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error("[razorpay] audit failed (payment.captured)", {
       paymentId: p.id,
-      amount: amountReceived,
-      currency: ccy,
-    },
-  });
+      err,
+    });
+  }
 
   if (inv.contact.email) {
-    await enqueueEmail({
-      organizationId: orgId,
-      toEmail: inv.contact.email,
-      subject: `Payment received — Invoice ${inv.number}`,
-      bodyHtml: `<p>Hello ${inv.contact.displayName},</p>
+    try {
+      await enqueueEmail({
+        organizationId: orgId,
+        toEmail: inv.contact.email,
+        subject: `Payment received — Invoice ${inv.number}`,
+        bodyHtml: `<p>Hello ${inv.contact.displayName},</p>
 <p>We've received your payment of <strong>${amountReceived.toFixed(2)} ${ccy}</strong> against invoice <strong>${inv.number}</strong> via Razorpay.</p>
 <p>Reference: ${p.id}</p>
 <p>Thank you,<br/>${inv.organization.name}</p>`,
-      documentType: "PAYMENT_RECEIVED",
-      documentId: inv.id,
-    });
+        documentType: "PAYMENT_RECEIVED",
+        documentId: inv.id,
+      });
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error("[razorpay] email failed (payment.captured)", {
+        paymentId: p.id,
+        err,
+      });
+    }
   }
 }
 
@@ -269,18 +302,28 @@ async function handlePaymentFailed(orgId: string, event: RazorpayEvent) {
       signatureVerified: true,
     },
   });
-  await writeAuditLog({
-    organizationId: orgId,
-    userId: null,
-    action: "UPDATE",
-    entityType: "RazorpayPaymentAttempt",
-    entityId: attempt.id,
-    after: {
-      source: "razorpay-webhook",
-      status: "FAILED",
-      reason: p.error_description ?? p.error_code,
-    },
-  });
+  // Side-effect: attempt is already marked FAILED above. Audit is
+  // best-effort.
+  try {
+    await writeAuditLog({
+      organizationId: orgId,
+      userId: null,
+      action: "UPDATE",
+      entityType: "RazorpayPaymentAttempt",
+      entityId: attempt.id,
+      after: {
+        source: "razorpay-webhook",
+        status: "FAILED",
+        reason: p.error_description ?? p.error_code,
+      },
+    });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error("[razorpay] audit failed (payment.failed)", {
+      paymentId: p.id,
+      err,
+    });
+  }
 }
 
 /**
@@ -341,20 +384,29 @@ async function handleRefundProcessed(orgId: string, event: RazorpayEvent) {
         signatureVerified: true,
       },
     });
-    await writeAuditLog({
-      organizationId: orgId,
-      userId: null,
-      action: "UPDATE",
-      entityType: "RazorpayPaymentAttempt",
-      entityId: attempt.id,
-      after: {
-        source: "razorpay-webhook",
-        status: "REFUNDED",
-        amount: refundAmount,
+    // Side-effect: attempt status updated above. Audit best-effort.
+    try {
+      await writeAuditLog({
+        organizationId: orgId,
+        userId: null,
+        action: "UPDATE",
+        entityType: "RazorpayPaymentAttempt",
+        entityId: attempt.id,
+        after: {
+          source: "razorpay-webhook",
+          status: "REFUNDED",
+          amount: refundAmount,
+          refundId: r.id,
+          note: "no PaymentReceived linked — refund recorded on attempt only",
+        },
+      });
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error("[razorpay] audit failed (refund.processed edge)", {
         refundId: r.id,
-        note: "no PaymentReceived linked — refund recorded on attempt only",
-      },
-    });
+        err,
+      });
+    }
     return;
   }
 
@@ -432,33 +484,51 @@ async function handleRefundProcessed(orgId: string, event: RazorpayEvent) {
     });
   });
 
-  await writeAuditLog({
-    organizationId: orgId,
-    userId: null,
-    action: "UPDATE",
-    entityType: "PaymentReceived",
-    entityId: pr.id,
-    after: {
-      source: "razorpay-webhook",
-      event: "refund.processed",
+  // Side-effects: refund reversal transaction committed above. Audit
+  // + email are best-effort — log on failure but don't propagate.
+  try {
+    await writeAuditLog({
+      organizationId: orgId,
+      userId: null,
+      action: "UPDATE",
+      entityType: "PaymentReceived",
+      entityId: pr.id,
+      after: {
+        source: "razorpay-webhook",
+        event: "refund.processed",
+        refundId: r.id,
+        paymentId: r.payment_id,
+        amount: refundAmount,
+        currency: ccy,
+      },
+    });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error("[razorpay] audit failed (refund.processed)", {
       refundId: r.id,
-      paymentId: r.payment_id,
-      amount: refundAmount,
-      currency: ccy,
-    },
-  });
+      err,
+    });
+  }
 
   if (pr.contact.email) {
-    await enqueueEmail({
-      organizationId: orgId,
-      toEmail: pr.contact.email,
-      subject: `Refund processed for payment ${pr.number}`,
-      bodyHtml: `<p>Hello ${pr.contact.displayName},</p>
+    try {
+      await enqueueEmail({
+        organizationId: orgId,
+        toEmail: pr.contact.email,
+        subject: `Refund processed for payment ${pr.number}`,
+        bodyHtml: `<p>Hello ${pr.contact.displayName},</p>
 <p>Your refund of <strong>${refundAmount.toFixed(2)} ${ccy}</strong> for payment <strong>${pr.number}</strong> has been processed by Razorpay.</p>
 <p>Reference: ${r.id}</p>
 <p>Thank you,<br/>${pr.organization.name}</p>`,
-      documentType: "PAYMENT_REFUND",
-      documentId: pr.id,
-    });
+        documentType: "PAYMENT_REFUND",
+        documentId: pr.id,
+      });
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error("[razorpay] email failed (refund.processed)", {
+        refundId: r.id,
+        err,
+      });
+    }
   }
 }
