@@ -8,7 +8,7 @@ import { RECURRING_STATUS_VARIANT as STATUS_VARIANT } from "@/lib/constants/stat
 import { TransactionListPage } from "@/components/shared/transaction-list-page";
 import { BulkAwareDataTable } from "@/components/shared/bulk-aware-data-table";
 import { SavedViewBuilderDialog } from "@/components/shared/saved-view-builder-dialog";
-import { SalesEmptyState } from "@/components/shared/sales-empty-state";
+import { RichEmptyState } from "@/components/shared/rich-empty-state";
 import { formatMoney } from "@/lib/money";
 import {
   getSavedViews,
@@ -98,7 +98,7 @@ export default async function RecurringExpensesListPage({
   }));
 
   const empty = (
-    <SalesEmptyState
+    <RichEmptyState
       icon={Repeat}
       title="Set up recurring expense profiles"
       description="Out-of-pocket expenses that repeat — software subs, parking, regular travel. Quikfinance generates the Expense row on schedule."

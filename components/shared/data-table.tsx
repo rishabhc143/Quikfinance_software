@@ -178,8 +178,8 @@ export function PageHeader({
 }
 
 /**
- * Generic empty state for tables — the simpler sibling of
- * `SalesEmptyState` (which adds an icon-with-plus-badge, an Import row,
+ * Generic simple empty state for tables — the lighter sibling of
+ * `RichEmptyState` (which adds an icon-with-plus-badge, an Import row,
  * and a Key Benefits card). Use this for accountant / items / reports
  * tables where the richer treatment is overkill.
  *
@@ -187,7 +187,7 @@ export function PageHeader({
  * raises the empty state from "blank rectangle" to "intentional moment"
  * without any per-page work.
  */
-export function EmptyState({
+export function SimpleEmptyState({
   icon: Icon,
   title,
   description,

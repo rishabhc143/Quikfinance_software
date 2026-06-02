@@ -6,7 +6,7 @@ import { requireOrganization } from "@/lib/auth-helpers";
 import {
   DataTable,
   PageHeader,
-  EmptyState,
+  SimpleEmptyState,
   type ColumnDef,
 } from "@/components/shared/data-table";
 import { Badge } from "@/components/ui/badge";
@@ -180,7 +180,7 @@ export default async function JournalEntriesPage({
       </div>
 
       {total === 0 ? (
-        <EmptyState
+        <SimpleEmptyState
           icon={BookOpen}
           title={
             source === "auto"

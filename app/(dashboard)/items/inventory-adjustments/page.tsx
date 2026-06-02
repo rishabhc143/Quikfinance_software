@@ -5,7 +5,7 @@ import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { DataTable, PageHeader, EmptyState, type ColumnDef } from "@/components/shared/data-table";
+import { DataTable, PageHeader, SimpleEmptyState, type ColumnDef } from "@/components/shared/data-table";
 
 export const metadata = { title: "Inventory Adjustments" };
 
@@ -56,7 +56,7 @@ export default async function InventoryAdjustmentsPage({ searchParams }: { searc
         <PageHeader title="Inventory Adjustments" ctaHref="/items/inventory-adjustments/new" ctaLabel="+ New Adjustment" />
       </div>
       {total === 0 ? (
-        <EmptyState
+        <SimpleEmptyState
           icon={Boxes}
           title="Adjust inventory levels"
           description="Record stock corrections, breakage, internal use, or count discrepancies. Each adjustment shifts an item's running quantity up or down."

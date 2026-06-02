@@ -7,7 +7,7 @@ import { requireOrganization } from "@/lib/auth-helpers";
 import {
   DataTable,
   PageHeader,
-  EmptyState,
+  SimpleEmptyState,
   type ColumnDef,
 } from "@/components/shared/data-table";
 import { StatusPill } from "@/components/ui/status-pill";
@@ -203,7 +203,7 @@ export default async function ManualJournalsPage({
         </Button>
       </PageHeader>
       {total === 0 && !q ? (
-        <EmptyState
+        <SimpleEmptyState
           icon={BookOpen}
           title="Adjustments and reclassifications"
           description="Manual journals let accountants post one-off balanced debit / credit corrections that aren't tied to invoices or bills."

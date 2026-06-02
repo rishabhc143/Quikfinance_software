@@ -2,7 +2,7 @@ import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
 import { Badge } from "@/components/ui/badge";
-import { DataTable, PageHeader, EmptyState, type ColumnDef } from "@/components/shared/data-table";
+import { DataTable, PageHeader, SimpleEmptyState, type ColumnDef } from "@/components/shared/data-table";
 
 export const metadata = { title: "Contacts" };
 
@@ -55,7 +55,7 @@ export default async function ContactsPage({ searchParams }: { searchParams: Rec
     <div className="p-6 max-w-7xl mx-auto space-y-4">
       <PageHeader title="Contacts" ctaHref="/contacts/new" ctaLabel="+ New Contact" />
       {total === 0 && !q ? (
-        <EmptyState
+        <SimpleEmptyState
           title="Customers and vendors live here."
           description="Track who you sell to and who you buy from. Used by every invoice, bill, and payment in Quikfinance."
           ctaHref="/contacts/new" ctaLabel="+ Add your first contact"

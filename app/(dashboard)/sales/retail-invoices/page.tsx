@@ -3,7 +3,7 @@ import { ShoppingCart } from "lucide-react";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
 import { Badge } from "@/components/ui/badge";
-import { DataTable, PageHeader, EmptyState, type ColumnDef } from "@/components/shared/data-table";
+import { DataTable, PageHeader, SimpleEmptyState, type ColumnDef } from "@/components/shared/data-table";
 import { formatMoney } from "@/lib/money";
 
 export const metadata = { title: "Retail Invoices" };
@@ -48,7 +48,7 @@ export default async function RetailInvoicesPage({ searchParams }: { searchParam
     <div className="p-6 max-w-7xl mx-auto space-y-4">
       <PageHeader title="Retail Invoices" ctaHref="/sales/retail-invoices/new" ctaLabel="+ New Retail Invoice" />
       {total === 0 ? (
-        <EmptyState
+        <SimpleEmptyState
           icon={ShoppingCart}
           title="Cash sales at the counter"
           description="Walk-in retail sales — no contact needed, paid on the spot. Quikfinance creates a paid invoice tagged as retail."

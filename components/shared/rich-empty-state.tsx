@@ -4,21 +4,24 @@ import { Plus, Download, Check, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 /**
- * Shared empty-state primitive for Sales list pages.
+ * Shared rich empty-state primitive — used by Sales + Purchases list
+ * pages (Customers/Vendors/Invoices/Quotes/Bills/POs/etc).
  *
  * Layout matches the user-supplied mockup: an avatar-style icon with
  * a "+" badge overlay, a centered heading + subtitle, two CTAs, an
  * optional "Import using" social row, and a Key Benefits card with
  * a 2-column grid of green check marks.
  *
- * Each Sales sub-module passes its own icon, copy, and CTAs.
+ * Each module passes its own icon, copy, and CTAs. The simpler
+ * `SimpleEmptyState` (in `data-table.tsx`) is the lighter sibling
+ * for tables where the rich treatment is overkill.
  */
 export type EmptyAction = {
   label: string;
   href: string;
 };
 
-export function SalesEmptyState({
+export function RichEmptyState({
   icon,
   title,
   description,

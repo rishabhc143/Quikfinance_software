@@ -8,7 +8,7 @@ import { PURCHASE_ORDER_STATUS_VARIANT as STATUS_VARIANT } from "@/lib/constants
 import { TransactionListPage } from "@/components/shared/transaction-list-page";
 import { BulkAwareDataTable } from "@/components/shared/bulk-aware-data-table";
 import { SavedViewBuilderDialog } from "@/components/shared/saved-view-builder-dialog";
-import { SalesEmptyState } from "@/components/shared/sales-empty-state";
+import { RichEmptyState } from "@/components/shared/rich-empty-state";
 import { formatMoney } from "@/lib/money";
 import {
   getSavedViews,
@@ -128,7 +128,7 @@ export default async function PurchaseOrdersListPage({
   }));
 
   const empty = (
-    <SalesEmptyState
+    <RichEmptyState
       icon={ShoppingBag}
       title="Start managing your purchase activities"
       description="Pre-commit purchases to vendors. Track expected deliveries, then convert to Bills when goods arrive."

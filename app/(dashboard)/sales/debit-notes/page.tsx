@@ -4,7 +4,7 @@ import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
 import { StatusPill } from "@/components/ui/status-pill";
 import { DEBIT_NOTE_STATUS_VARIANT as STATUS_VARIANT } from "@/lib/constants/status";
-import { SalesEmptyState } from "@/components/shared/sales-empty-state";
+import { RichEmptyState } from "@/components/shared/rich-empty-state";
 import { TransactionListPage } from "@/components/shared/transaction-list-page";
 import { BulkAwareDataTable } from "@/components/shared/bulk-aware-data-table";
 import {
@@ -79,7 +79,7 @@ export default async function DebitNotesListPage({
   }));
 
   const empty = (
-    <SalesEmptyState
+    <RichEmptyState
       icon={FileMinus}
       title="Track customer adjustments"
       description="Issue a debit note when you need to increase what a customer owes — late fees, price corrections, or extra services on a closed invoice."

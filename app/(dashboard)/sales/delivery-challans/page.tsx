@@ -1,6 +1,6 @@
 import { format } from "date-fns";
 import { PackageCheck } from "lucide-react";
-import { SalesEmptyState } from "@/components/shared/sales-empty-state";
+import { RichEmptyState } from "@/components/shared/rich-empty-state";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
 import { StatusPill } from "@/components/ui/status-pill";
@@ -73,7 +73,7 @@ export default async function DeliveryChallansListPage({
   }));
 
   const empty = (
-    <SalesEmptyState
+    <RichEmptyState
       icon={PackageCheck}
       title="Track every shipment"
       description="Issue delivery challans for goods sent to customers before the invoice settles."
