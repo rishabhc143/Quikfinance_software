@@ -58,8 +58,18 @@ export type ParsedBankStatement = {
   rows: BankTransactionRow[];
   /** DOC-D4.4: Tracks which parser produced this result. Stored inside
    *  the JSONB so no migration is needed. Absent on pre-D4.4 rows —
-   *  treat absence as "heuristic". */
-  _meta?: { parserSource: "heuristic" | "llm" | "manual" };
+   *  treat absence as "heuristic".
+   *
+   *  CRIT-4 audit follow-up: `parseError` is set when neither the
+   *  heuristic parsers nor (if enabled) the LLM fallback could extract
+   *  rows from the document. The drawer surfaces it as a hint so the
+   *  user can tell "we couldn't parse" apart from "we didn't try" or
+   *  "no transactions in this period." When set, `rows` is empty and
+   *  `bank` is typically "UNKNOWN". */
+  _meta?: {
+    parserSource: "heuristic" | "llm" | "manual";
+    parseError?: string;
+  };
 };
 
 /**
