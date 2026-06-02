@@ -6,7 +6,7 @@ import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
 import { writeAuditLog } from "@/lib/audit";
 import { getNextDocumentNumber } from "@/lib/sales/numbering";
-import { computeDocument } from "@/lib/sales/totals";
+import { computeDocumentTotals } from "@/lib/sales/document-totals";
 import { enqueueEmail } from "@/lib/sales/email-sender";
 import { renderSalesDocumentHtml } from "@/lib/sales/pdf-renderer";
 import { loadVisibleCustomFields } from "@/lib/sales/custom-fields-loader";
@@ -15,35 +15,6 @@ import { reserveStock, releaseStock } from "@/lib/inventory/reservations";
 import { applyInvoiceStockDecrement } from "@/lib/inventory/stock-mutations";
 import { format } from "date-fns";
 
-async function totalsFor(orgId: string, input: SalesOrderInput) {
-  const taxes = await db.tax.findMany({
-    where: { organizationId: orgId, isActive: true },
-    select: { id: true, rate: true },
-  });
-  const taxRate = (id?: string | null) =>
-    (id ? taxes.find((t) => t.id === id)?.rate : null) ?? 0;
-  const docTaxRate = input.documentTax ? Number(taxRate(input.documentTax.taxId)) : 0;
-  return computeDocument({
-    lines: input.lines.map((l) => ({
-      quantity: l.quantity ?? 0,
-      rate: l.rate ?? 0,
-      discount: l.discount ?? 0,
-      discountType: l.discountType ?? "percentage",
-      taxRate: Number(taxRate(l.taxId)),
-    })),
-    documentDiscount: input.documentDiscount
-      ? {
-          value: input.documentDiscount.value ?? 0,
-          type: input.documentDiscount.type ?? "percentage",
-        }
-      : undefined,
-    documentTax: input.documentTax
-      ? { rate: docTaxRate, type: input.documentTax.type }
-      : undefined,
-    adjustment: input.adjustmentValue ?? 0,
-  });
-}
-
 export async function createSalesOrderAction(
   input: SalesOrderInput,
   opts?: { send?: boolean }
@@ -51,7 +22,7 @@ export async function createSalesOrderAction(
   const { user, organization } = await requireOrganization();
   const data = salesOrderSchema.parse(input);
   const number = await getNextDocumentNumber(organization.id, "SALES_ORDER");
-  const totals = await totalsFor(organization.id, data);
+  const totals = await computeDocumentTotals(organization.id, data);
 
   const created = await db.salesOrder.create({
     data: {
@@ -147,7 +118,7 @@ export async function updateSalesOrderAction(id: string, input: SalesOrderInput)
   if (before.status === "CLOSED" || before.status === "VOID") {
     throw new Error("Closed or void sales orders cannot be edited");
   }
-  const totals = await totalsFor(organization.id, data);
+  const totals = await computeDocumentTotals(organization.id, data);
 
   await db.$transaction(async (tx) => {
     await tx.salesOrderLineItem.deleteMany({ where: { salesOrderId: id } });

@@ -6,7 +6,7 @@ import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
 import { writeAuditLog } from "@/lib/audit";
 import { getNextDocumentNumber } from "@/lib/sales/numbering";
-import { computeDocument } from "@/lib/sales/totals";
+import { computeDocumentTotals } from "@/lib/sales/document-totals";
 import {
   debitNoteSchema,
   type DebitNoteInput,
@@ -22,29 +22,11 @@ import {
  * receivable rather than reduces it).
  */
 
-async function totalsFor(orgId: string, input: DebitNoteInput) {
-  const taxes = await db.tax.findMany({
-    where: { organizationId: orgId, isActive: true },
-    select: { id: true, rate: true },
-  });
-  const taxRate = (id?: string | null) =>
-    (id ? taxes.find((t) => t.id === id)?.rate : null) ?? 0;
-  return computeDocument({
-    lines: input.lines.map((l) => ({
-      quantity: l.quantity ?? 0,
-      rate: l.rate ?? 0,
-      discount: l.discount ?? 0,
-      discountType: l.discountType ?? "percentage",
-      taxRate: Number(taxRate(l.taxId)),
-    })),
-  });
-}
-
 export async function createDebitNoteAction(input: DebitNoteInput) {
   const { user, organization } = await requireOrganization();
   const data = debitNoteSchema.parse(input);
   const number = await getNextDocumentNumber(organization.id, "DEBIT_NOTE");
-  const totals = await totalsFor(organization.id, data);
+  const totals = await computeDocumentTotals(organization.id, data);
 
   const created = await db.debitNote.create({
     data: {
@@ -121,7 +103,7 @@ export async function updateDebitNoteAction(id: string, input: DebitNoteInput) {
   if (Number(before.amountApplied) > 0) {
     throw new Error("Debit notes with applications cannot be edited");
   }
-  const totals = await totalsFor(organization.id, data);
+  const totals = await computeDocumentTotals(organization.id, data);
 
   await db.$transaction(async (tx) => {
     await tx.debitNoteLineItem.deleteMany({ where: { debitNoteId: id } });
