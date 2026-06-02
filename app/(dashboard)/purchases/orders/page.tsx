@@ -3,6 +3,7 @@ import { format } from "date-fns";
 import { ShoppingBag } from "lucide-react";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
+import { parseListSearchParams } from "@/lib/list-params";
 import { StatusPill } from "@/components/ui/status-pill";
 import { PURCHASE_ORDER_STATUS_VARIANT as STATUS_VARIANT } from "@/lib/constants/status";
 import { TransactionListPage } from "@/components/shared/transaction-list-page";
@@ -23,8 +24,6 @@ import {
 
 export const metadata = { title: "Purchase Orders" };
 
-const PAGE_SIZE_DEFAULT = 25;
-
 type SearchParams = {
   q?: string;
   page?: string;
@@ -40,11 +39,9 @@ export default async function PurchaseOrdersListPage({
   searchParams: SearchParams;
 }) {
   const { organization } = await requireOrganization();
-  const q = searchParams.q?.trim() ?? "";
-  const page = Math.max(1, Number(searchParams.page ?? "1"));
-  const pageSize = Number(searchParams.pageSize ?? PAGE_SIZE_DEFAULT);
-  const sort = searchParams.sort ?? "orderDate";
-  const dir: "asc" | "desc" = searchParams.dir === "asc" ? "asc" : "desc";
+  const { q, page, pageSize, sort, dir } = parseListSearchParams(searchParams, {
+    defaultSort: "orderDate",
+  });
 
   const savedViews = await getSavedViews(organization.id, "purchase_orders");
   const activeView = resolveActiveView(savedViews, searchParams.view);

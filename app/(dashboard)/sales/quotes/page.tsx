@@ -3,6 +3,7 @@ import { FileCheck } from "lucide-react";
 import { RichEmptyState } from "@/components/shared/rich-empty-state";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
+import { parseListSearchParams } from "@/lib/list-params";
 import { StatusPill } from "@/components/ui/status-pill";
 import { QUOTE_STATUS_VARIANT as STATUS_VARIANT } from "@/lib/constants/status";
 import { TransactionListPage } from "@/components/shared/transaction-list-page";
@@ -30,11 +31,9 @@ export default async function QuotesListPage({
   searchParams: { q?: string; page?: string; pageSize?: string; sort?: string; dir?: string; view?: string };
 }) {
   const { organization } = await requireOrganization();
-  const q = searchParams.q?.trim() ?? "";
-  const page = Math.max(1, Number(searchParams.page ?? "1"));
-  const pageSize = Number(searchParams.pageSize ?? 25);
-  const sort = searchParams.sort ?? "issueDate";
-  const dir: "asc" | "desc" = searchParams.dir === "asc" ? "asc" : "desc";
+  const { q, page, pageSize, sort, dir } = parseListSearchParams(searchParams, {
+    defaultSort: "issueDate",
+  });
   // M17d: Saved Views chevron-dropdown is DB-backed.
   const savedViews = await getSavedViews(organization.id, "quotes");
   const activeView = resolveActiveView(savedViews, searchParams.view);
