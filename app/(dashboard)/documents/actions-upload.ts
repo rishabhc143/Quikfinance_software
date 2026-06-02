@@ -21,6 +21,10 @@ import {
   parseBankStatementWithLLM,
   isLlmFallbackEnabled,
 } from "@/lib/documents/parsers/llm-fallback";
+import {
+  buildBankStatementParseError,
+  defaultParseErrorReason,
+} from "@/lib/documents/parse-error";
 
 const legacySchema = z.object({
   name: z.string().min(1).max(200),
@@ -311,14 +315,33 @@ export async function uploadDocumentsAction(
           const heuristicEmptyA =
             !extractedFields ||
             ("rows" in extractedFields && extractedFields.rows.length === 0);
-          if (isBankStmtA && heuristicEmptyA && isLlmFallbackEnabled()) {
-            const llm = await parseBankStatementWithLLM(extractedText);
-            if (llm && llm.rows.length > 0) {
-              extractedFields = llm;
-              parserSource = "llm";
+          const llmEnabledA = isLlmFallbackEnabled();
+          if (isBankStmtA && heuristicEmptyA && llmEnabledA) {
+            try {
+              const llm = await parseBankStatementWithLLM(extractedText);
+              if (llm && llm.rows.length > 0) {
+                extractedFields = llm;
+                parserSource = "llm";
+              }
+            } catch (err) {
+              console.warn(
+                "[documents/upload] LLM bank-statement fallback failed",
+                err
+              );
             }
           }
-          if (extractedFields && "rows" in extractedFields) {
+          // CRIT-4 Site 3: if BANK_STATEMENT and STILL empty after
+          // heuristic+LLM, set a parseError sentinel so the drawer
+          // can tell the user "we tried and couldn't" instead of
+          // showing an empty table.
+          const finalEmptyA =
+            !extractedFields ||
+            ("rows" in extractedFields && extractedFields.rows.length === 0);
+          if (isBankStmtA && finalEmptyA) {
+            extractedFields = buildBankStatementParseError(
+              defaultParseErrorReason(llmEnabledA)
+            );
+          } else if (extractedFields && "rows" in extractedFields) {
             extractedFields = {
               ...extractedFields,
               _meta: { parserSource },
@@ -485,14 +508,30 @@ export async function uploadBankStatementsAction(
           const heuristicEmptyB =
             !parsedB ||
             ("rows" in parsedB && parsedB.rows.length === 0);
-          if (heuristicEmptyB && isLlmFallbackEnabled()) {
-            const llm = await parseBankStatementWithLLM(extractedText);
-            if (llm && llm.rows.length > 0) {
-              parsedB = llm;
-              parserSourceB = "llm";
+          const llmEnabledB = isLlmFallbackEnabled();
+          if (heuristicEmptyB && llmEnabledB) {
+            try {
+              const llm = await parseBankStatementWithLLM(extractedText);
+              if (llm && llm.rows.length > 0) {
+                parsedB = llm;
+                parserSourceB = "llm";
+              }
+            } catch (err) {
+              console.warn(
+                "[bank-statements/upload] LLM fallback failed",
+                err
+              );
             }
           }
-          if (parsedB && "rows" in parsedB) {
+          // CRIT-4 Site 3: error sentinel when both passes fail.
+          const finalEmptyB =
+            !parsedB ||
+            ("rows" in parsedB && parsedB.rows.length === 0);
+          if (finalEmptyB) {
+            extractedFields = buildBankStatementParseError(
+              defaultParseErrorReason(llmEnabledB)
+            );
+          } else if (parsedB && "rows" in parsedB) {
             extractedFields = {
               ...parsedB,
               _meta: { parserSource: parserSourceB },

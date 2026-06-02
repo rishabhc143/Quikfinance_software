@@ -15,6 +15,10 @@ import {
   parseBankStatementWithLLM,
   isLlmFallbackEnabled,
 } from "@/lib/documents/parsers/llm-fallback";
+import {
+  buildBankStatementParseError,
+  defaultParseErrorReason,
+} from "@/lib/documents/parse-error";
 
 // ───────────────────── DOC-D4.1: Password-protected PDF retry ─────────────────────
 
@@ -78,14 +82,27 @@ export async function retryExtractWithPasswordAction(input: {
   const heuristicEmptyC =
     !extractedFields ||
     ("rows" in extractedFields && extractedFields.rows.length === 0);
-  if (isBankStmtC && heuristicEmptyC && isLlmFallbackEnabled()) {
-    const llm = await parseBankStatementWithLLM(result.text);
-    if (llm && llm.rows.length > 0) {
-      extractedFields = llm;
-      parserSourceC = "llm";
+  const llmEnabledC = isLlmFallbackEnabled();
+  if (isBankStmtC && heuristicEmptyC && llmEnabledC) {
+    try {
+      const llm = await parseBankStatementWithLLM(result.text);
+      if (llm && llm.rows.length > 0) {
+        extractedFields = llm;
+        parserSourceC = "llm";
+      }
+    } catch (err) {
+      console.warn("[documents/retry-password] LLM fallback failed", err);
     }
   }
-  if (extractedFields && "rows" in extractedFields) {
+  // CRIT-4 Site 3: error sentinel when both passes fail.
+  const finalEmptyC =
+    !extractedFields ||
+    ("rows" in extractedFields && extractedFields.rows.length === 0);
+  if (isBankStmtC && finalEmptyC) {
+    extractedFields = buildBankStatementParseError(
+      defaultParseErrorReason(llmEnabledC)
+    );
+  } else if (extractedFields && "rows" in extractedFields) {
     extractedFields = {
       ...extractedFields,
       _meta: { parserSource: parserSourceC },
@@ -164,9 +181,31 @@ export async function retryParseWithLLMAction(input: {
     return { ok: false, error: "No extracted text available to send to AI." };
   }
 
-  const llm = await parseBankStatementWithLLM(doc.extractedText);
+  let llm: ParsedBankStatement | null = null;
+  try {
+    llm = await parseBankStatementWithLLM(doc.extractedText);
+  } catch (err) {
+    console.warn("[documents/retry-llm] LLM fallback threw", err);
+  }
   if (!llm || llm.rows.length === 0) {
-    return { ok: false, error: "AI couldn't extract rows from this document. The layout may be too unusual." };
+    // CRIT-4 Site 3: record the failure on the document so the drawer
+    // can show the user we tried (rather than the table just staying
+    // empty silently).
+    const sentinel = buildBankStatementParseError(
+      defaultParseErrorReason(true)
+    );
+    await db.document.update({
+      where: { id: doc.id },
+      data: {
+        extractedFields: sentinel as unknown as Prisma.InputJsonValue,
+      },
+    });
+    revalidatePath("/documents");
+    return {
+      ok: false,
+      error:
+        "AI couldn't extract rows from this document. The layout may be too unusual. Try uploading a CSV export instead.",
+    };
   }
 
   const withMeta: ParsedBankStatement = {

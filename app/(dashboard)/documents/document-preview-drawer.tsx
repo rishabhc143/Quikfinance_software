@@ -275,8 +275,12 @@ function PreviewBody({
       {/* DOC-D4.3: Suggested AR/AP matches panel — finds outstanding
           Invoices (for credits) + Bills (for debits) that match the
           parsed rows. Shown above the transactions table so users
-          notice opportunities to close out invoices/bills. */}
-      {isParsedBankStatement(doc.extractedFields) ? (
+          notice opportunities to close out invoices/bills.
+          CRIT-4 Site 3: skip when the parser fallback chain failed
+          — there are no rows to match. */}
+      {isParsedBankStatement(doc.extractedFields) &&
+      !(doc.extractedFields as unknown as ParsedBankStatement)._meta
+        ?.parseError ? (
         <SuggestedMatchesPanel documentId={doc.id} />
       ) : null}
 
@@ -586,6 +590,19 @@ function BankStatementTransactionsPanel({
             {parsed.closingBalance != null
               ? ` · Closing ${inr(parsed.closingBalance)}`
               : ""}
+          </div>
+        ) : null}
+        {/* CRIT-4 Site 3: surface parser-failure reason so the empty
+            table reads as "we tried and couldn't" rather than "no
+            transactions in this period." When llmEnabled, the
+            "Re-run parse with AI" button in the header above is the
+            primary recovery action. */}
+        {parsed._meta?.parseError ? (
+          <div className="m-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+            <div className="font-semibold mb-0.5">
+              Smart Capture couldn&apos;t parse this statement
+            </div>
+            <div>{parsed._meta.parseError}</div>
           </div>
         ) : null}
         <table className="w-full text-xs">
