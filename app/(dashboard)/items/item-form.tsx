@@ -18,6 +18,11 @@ import { toast } from "sonner";
 type Options = {
   salesAccounts: ComboboxOption[];
   purchaseAccounts: ComboboxOption[];
+  /** PR #335: was previously omitted from the Options type, so the
+   *  Inventory Account dropdown rendered with `options={[]}` and was
+   *  effectively dead UI. Now populated from the route with Asset-type
+   *  accounts grouped by subType. */
+  inventoryAccounts: ComboboxOption[];
   vendors: ComboboxOption[];
   inventoryEnabled: boolean;
   currency: string;
@@ -420,7 +425,7 @@ export function ItemForm({
               <div>
                 <Label>Inventory Account</Label>
                 <Combobox
-                  options={[]}
+                  options={opts?.inventoryAccounts ?? []}
                   value={values.inventoryAccountId}
                   onChange={(v) => set("inventoryAccountId", v)}
                   placeholder="Select inventory account"
