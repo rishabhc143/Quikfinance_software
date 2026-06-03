@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { DirtyFormProvider, DirtyLink } from "@/components/shared/dirty-form-nav";
 import { ArrowLeft, X } from "lucide-react";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
@@ -79,20 +79,21 @@ export default async function NewSalesOrderPage() {
   }
 
   return (
+    <DirtyFormProvider>
     <div className="p-6 max-w-6xl mx-auto space-y-4">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Button asChild variant="ghost" size="icon" aria-label="Back">
-            <Link href="/sales/orders">
+            <DirtyLink href="/sales/orders">
               <ArrowLeft className="h-4 w-4" />
-            </Link>
+            </DirtyLink>
           </Button>
           <h1 className="text-xl font-semibold">New Sales Order</h1>
         </div>
         <Button asChild variant="ghost" size="icon" aria-label="Close">
-          <Link href="/sales/orders">
+          <DirtyLink href="/sales/orders">
             <X className="h-4 w-4" />
-          </Link>
+          </DirtyLink>
         </Button>
       </div>
       <SalesOrderForm
@@ -156,5 +157,6 @@ export default async function NewSalesOrderPage() {
         submitLabel="Save as Draft"
       />
     </div>
+    </DirtyFormProvider>
   );
 }

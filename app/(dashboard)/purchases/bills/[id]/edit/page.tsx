@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { DirtyFormProvider, DirtyLink } from "@/components/shared/dirty-form-nav";
 import { notFound } from "next/navigation";
 import { ArrowLeft, Receipt } from "lucide-react";
 import { db } from "@/lib/db";
@@ -157,6 +158,7 @@ export default async function EditBillPage({
   const action = updateBillAction.bind(null, b.id);
 
   return (
+    <DirtyFormProvider>
     <div className="p-6 max-w-6xl mx-auto space-y-4">
       <nav aria-label="Breadcrumb" className="text-xs text-muted-foreground">
         <Link href="/purchases/bills" className="hover:underline">
@@ -171,9 +173,9 @@ export default async function EditBillPage({
       </nav>
       <div className="flex items-center gap-2">
         <Button asChild variant="ghost" size="icon" aria-label="Back">
-          <Link href={`/purchases/bills/${b.id}`}>
+          <DirtyLink href={`/purchases/bills/${b.id}`}>
             <ArrowLeft className="h-4 w-4" />
-          </Link>
+          </DirtyLink>
         </Button>
         <Receipt className="h-5 w-5 text-muted-foreground" />
         <h1 className="text-2xl font-semibold tracking-tight">Edit bill</h1>
@@ -226,5 +228,6 @@ export default async function EditBillPage({
         submitLabel="Update bill"
       />
     </div>
+    </DirtyFormProvider>
   );
 }
