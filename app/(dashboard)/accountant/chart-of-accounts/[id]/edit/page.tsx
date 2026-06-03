@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
+import { DirtyFormProvider, DirtyLink } from "@/components/shared/dirty-form-nav";
 import { ArrowLeft, Lock, Book } from "lucide-react";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
@@ -65,12 +66,13 @@ export default async function EditChartOfAccountPage({
   const onSubmit = updateAccountAction.bind(null, account.id);
 
   return (
+    <DirtyFormProvider>
     <div className="p-6 max-w-2xl mx-auto space-y-4">
       <div className="flex items-center gap-2">
         <Button asChild variant="ghost" size="icon">
-          <Link href="/accountant/chart-of-accounts">
+          <DirtyLink href="/accountant/chart-of-accounts">
             <ArrowLeft className="h-4 w-4" />
-          </Link>
+          </DirtyLink>
         </Button>
         <Book className="h-5 w-5 text-muted-foreground" />
         <h1 className="text-xl font-semibold">Edit Account</h1>
@@ -211,5 +213,6 @@ export default async function EditChartOfAccountPage({
         </CardContent>
       </Card>
     </div>
+    </DirtyFormProvider>
   );
 }

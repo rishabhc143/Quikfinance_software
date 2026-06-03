@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { DirtyFormProvider, DirtyLink } from "@/components/shared/dirty-form-nav";
 import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,12 +21,13 @@ export const metadata = { title: "Add Document" };
  */
 export default function NewDocumentPage() {
   return (
+    <DirtyFormProvider>
     <div className="p-6 max-w-2xl mx-auto space-y-4">
       <div className="flex items-center gap-2">
         <Button asChild variant="ghost" size="icon">
-          <Link href="/documents">
+          <DirtyLink href="/documents">
             <ArrowLeft className="h-4 w-4" />
-          </Link>
+          </DirtyLink>
         </Button>
         <h1 className="text-xl font-semibold">Add Document</h1>
       </div>
@@ -90,5 +92,6 @@ export default function NewDocumentPage() {
         </CardContent>
       </Card>
     </div>
+    </DirtyFormProvider>
   );
 }

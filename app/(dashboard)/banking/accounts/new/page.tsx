@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { DirtyFormProvider, DirtyLink } from "@/components/shared/dirty-form-nav";
 import { ArrowLeft } from "lucide-react";
 import { requireOrganization } from "@/lib/auth-helpers";
 import { Button } from "@/components/ui/button";
@@ -24,12 +25,13 @@ export const metadata = { title: "Add Bank or Credit Card" };
 export default async function NewBankAccountPage() {
   const { organization } = await requireOrganization();
   return (
+    <DirtyFormProvider>
     <div className="p-6 max-w-2xl mx-auto space-y-4">
       <div className="flex items-center gap-2">
         <Button asChild variant="ghost" size="icon">
-          <Link href="/banking">
+          <DirtyLink href="/banking">
             <ArrowLeft className="h-4 w-4" />
-          </Link>
+          </DirtyLink>
         </Button>
         <h1 className="text-xl font-semibold">Add Bank or Credit Card</h1>
       </div>
@@ -47,5 +49,6 @@ export default async function NewBankAccountPage() {
         </CardContent>
       </Card>
     </div>
+    </DirtyFormProvider>
   );
 }

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { DirtyFormProvider, DirtyLink } from "@/components/shared/dirty-form-nav";
 import { ArrowLeft } from "lucide-react";
 import { format } from "date-fns";
 import { requireOrganization } from "@/lib/auth-helpers";
@@ -15,9 +16,10 @@ export const metadata = { title: "New Retail Invoice" };
 export default async function NewRetailInvoicePage() {
   const { organization } = await requireOrganization();
   return (
+    <DirtyFormProvider>
     <div className="p-6 max-w-xl mx-auto space-y-4">
       <div className="flex items-center gap-2">
-        <Button asChild variant="ghost" size="icon"><Link href="/sales/retail-invoices"><ArrowLeft className="h-4 w-4" /></Link></Button>
+        <Button asChild variant="ghost" size="icon"><DirtyLink href="/sales/retail-invoices"><ArrowLeft className="h-4 w-4" /></DirtyLink></Button>
         <h1 className="text-xl font-semibold">New Retail Invoice</h1>
       </div>
       <Card>
@@ -44,5 +46,6 @@ export default async function NewRetailInvoicePage() {
         </CardContent>
       </Card>
     </div>
+    </DirtyFormProvider>
   );
 }

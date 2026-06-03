@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { DirtyFormProvider, DirtyLink } from "@/components/shared/dirty-form-nav";
 import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { db } from "@/lib/db";
@@ -18,9 +19,10 @@ export default async function NewTaskPage({ params }: { params: { id: string } }
   const project = await db.project.findFirst({ where: { id: params.id, organizationId: organization.id } });
   if (!project) notFound();
   return (
+    <DirtyFormProvider>
     <div className="p-6 max-w-2xl mx-auto space-y-4">
       <div className="flex items-center gap-2">
-        <Button asChild variant="ghost" size="icon"><Link href={`/time/projects/${project.id}`}><ArrowLeft className="h-4 w-4" /></Link></Button>
+        <Button asChild variant="ghost" size="icon"><DirtyLink href={`/time/projects/${project.id}`}><ArrowLeft className="h-4 w-4" /></DirtyLink></Button>
         <h1 className="text-xl font-semibold">New Task — {project.name}</h1>
       </div>
       <Card>
@@ -52,5 +54,6 @@ export default async function NewTaskPage({ params }: { params: { id: string } }
         </CardContent>
       </Card>
     </div>
+    </DirtyFormProvider>
   );
 }
