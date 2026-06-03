@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { DirtyFormProvider, DirtyLink } from "@/components/shared/dirty-form-nav";
 import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { db } from "@/lib/db";
@@ -130,6 +131,7 @@ export default async function EditVendorPage({
   const action = updateVendorAction.bind(null, v.id);
 
   return (
+    <DirtyFormProvider>
     <div className="p-6 max-w-5xl mx-auto space-y-4">
       <nav aria-label="Breadcrumb" className="text-xs text-muted-foreground">
         <Link href="/purchases/vendors" className="hover:underline">
@@ -147,9 +149,9 @@ export default async function EditVendorPage({
       </nav>
       <div className="flex items-center gap-2">
         <Button asChild variant="ghost" size="icon" aria-label="Back">
-          <Link href={`/purchases/vendors/${v.id}`}>
+          <DirtyLink href={`/purchases/vendors/${v.id}`}>
             <ArrowLeft className="h-4 w-4" />
-          </Link>
+          </DirtyLink>
         </Button>
         <h1 className="text-2xl font-semibold tracking-tight">
           Edit vendor
@@ -173,5 +175,6 @@ export default async function EditVendorPage({
         }))}
       />
     </div>
+    </DirtyFormProvider>
   );
 }
