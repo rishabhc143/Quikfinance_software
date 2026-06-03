@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Check, ChevronsUpDown, Plus, Search } from "lucide-react";
+import { Check, ChevronDown, Plus, Search } from "lucide-react";
 import { Command } from "cmdk";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
@@ -135,7 +135,14 @@ export function Combobox({
           className={cn("w-full justify-between font-normal", !selected && "text-muted-foreground", className)}
         >
           <span className="truncate">{selected?.label ?? placeholder}</span>
-          <ChevronsUpDown className="ml-2 h-4 w-4 opacity-50 shrink-0" />
+          <ChevronDown
+            className={cn(
+              "ml-2 h-4 w-4 shrink-0 transition-transform",
+              // Zoho convention: chevron rotates 180° + tints primary
+              // when the popover is open; sits muted-grey when closed.
+              open ? "rotate-180 text-primary" : "opacity-50"
+            )}
+          />
         </Button>
       </PopoverTrigger>
       <PopoverContent className="p-0 w-[--radix-popover-trigger-width]" align="start">
@@ -207,13 +214,22 @@ export function Combobox({
                       </>
                     ) : (
                       <>
-                        <Check className={cn("h-4 w-4", value === o.value ? "opacity-100" : "opacity-0")} />
                         <span className="flex-1 truncate">{o.label}</span>
                         {o.hint && (
                           <span className="text-xs text-muted-foreground group-aria-selected:text-primary-foreground/80">
                             {o.hint}
                           </span>
                         )}
+                        {/* Zoho convention: selected indicator sits on the
+                            RIGHT of the row (matches Account dropdown
+                            screenshots). Still uses opacity-0/100 so layout
+                            is stable whether or not anything is selected. */}
+                        <Check
+                          className={cn(
+                            "h-4 w-4 shrink-0",
+                            value === o.value ? "opacity-100" : "opacity-0"
+                          )}
+                        />
                       </>
                     )}
                   </Command.Item>
