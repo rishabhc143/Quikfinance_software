@@ -61,6 +61,24 @@ export type ItemOption = ComboboxOption & {
   description?: string;
   hsnSacCode?: string;
   unit?: string;
+  /**
+   * PR #339 — Sales Information item fields (added in PR #338) plumbed
+   * through so item selection auto-populates the line's tax + handles
+   * inclusive-of-tax conversion:
+   *
+   *   * `salesTaxId` — when set, the selected line's `taxId` defaults
+   *     to this. User can still override per line.
+   *   * `sellingPriceInclusiveOfTax` — when true (AND `salesTaxRate`
+   *     is known), the displayed `rate` is treated as tax-inclusive:
+   *     the handler converts it to the exclusive rate at selection
+   *     time via `rate / (1 + salesTaxRate/100)` so downstream math
+   *     (which assumes exclusive) stays correct.
+   *   * `salesTaxRate` — the rate of the linked sales tax (e.g. 18 for
+   *     18% GST). Required for the inclusive→exclusive conversion.
+   */
+  salesTaxId?: string | null;
+  sellingPriceInclusiveOfTax?: boolean;
+  salesTaxRate?: number | null;
 };
 
 export type TaxOption = ComboboxOption & {
@@ -248,13 +266,37 @@ export function TransactionLineItemsTable(props: TransactionLineItemsTableProps)
                             patch(l.id, { itemId: value });
                             return;
                           }
+                          // PR #339 — when item has sellingPriceInclusiveOfTax + a
+                          // known salesTaxRate, convert the inclusive rate to the
+                          // exclusive rate the rest of the math assumes. Falls back
+                          // to the raw rate when either flag is off / rate unknown.
+                          const rawRate = option.rate ?? l.rate;
+                          const effectiveRate = (() => {
+                            if (
+                              !option.sellingPriceInclusiveOfTax ||
+                              !option.salesTaxRate ||
+                              !rawRate
+                            ) {
+                              return rawRate;
+                            }
+                            const n = Number(rawRate);
+                            if (!Number.isFinite(n)) return rawRate;
+                            const exclusive = n / (1 + option.salesTaxRate / 100);
+                            // 2 dp matches the MoneyInput grid; tweak if a
+                            // finer currency precision is ever required.
+                            return exclusive.toFixed(2);
+                          })();
                           patch(l.id, {
                             itemId: option.value,
                             name: option.label,
                             description: option.description ?? l.description,
                             hsnSacCode: option.hsnSacCode ?? l.hsnSacCode,
                             unit: option.unit ?? l.unit,
-                            rate: option.rate ?? l.rate,
+                            rate: effectiveRate,
+                            // PR #339 — auto-populate tax from the item's default
+                            // (item.salesTaxId). Only overrides when the user
+                            // hasn't manually picked a tax for this line yet.
+                            taxId: l.taxId ?? option.salesTaxId ?? null,
                           });
                         }}
                         placeholder="Type or click to select an item."
