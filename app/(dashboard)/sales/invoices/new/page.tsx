@@ -28,7 +28,20 @@ export default async function NewInvoicePage() {
     db.item.findMany({
       where: { organizationId: organization.id, deletedAt: null, isActive: true },
       orderBy: { name: "asc" },
-      select: { id: true, name: true, sellingPrice: true, salesDescription: true, unit: true },
+      select: {
+        id: true,
+        name: true,
+        sellingPrice: true,
+        salesDescription: true,
+        unit: true,
+        // PR #339 — plumb Item Sales Information fields through to the
+        // line-items table so item pick auto-populates tax and handles
+        // inclusive-of-tax conversion. See ItemOption in
+        // components/shared/transaction-line-items-table.tsx.
+        salesTaxId: true,
+        sellingPriceInclusiveOfTax: true,
+        salesTax: { select: { rate: true } },
+      },
     }),
     db.tax.findMany({
       where: { organizationId: organization.id, isActive: true },
@@ -98,6 +111,9 @@ export default async function NewInvoicePage() {
           rate: i.sellingPrice ? String(i.sellingPrice) : "0",
           description: i.salesDescription ?? undefined,
           unit: i.unit ?? undefined,
+          salesTaxId: i.salesTaxId,
+          sellingPriceInclusiveOfTax: i.sellingPriceInclusiveOfTax,
+          salesTaxRate: i.salesTax?.rate ? Number(i.salesTax.rate) : null,
         }))}
         taxOptions={taxes.map((t) => ({
           value: t.id,
