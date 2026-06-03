@@ -24,6 +24,9 @@ type Options = {
    *  accounts grouped by subType. */
   inventoryAccounts: ComboboxOption[];
   vendors: ComboboxOption[];
+  /** PR #338: Zoho-parity Sales Information Tax dropdown — active
+   *  taxes only, label formatted "Name (rate%)" by the API. */
+  taxes: ComboboxOption[];
   inventoryEnabled: boolean;
   currency: string;
 };
@@ -37,6 +40,9 @@ export type ItemFormValues = {
   sellingPrice: number | null;
   salesAccountId: string | null;
   salesDescription: string | null;
+  // PR #338: Zoho-parity Sales Information fields.
+  salesTaxId: string | null;
+  sellingPriceInclusiveOfTax: boolean;
   costPrice: number | null;
   purchaseAccountId: string | null;
   purchaseDescription: string | null;
@@ -57,6 +63,8 @@ const blank: ItemFormValues = {
   sellingPrice: null,
   salesAccountId: null,
   salesDescription: null,
+  salesTaxId: null,
+  sellingPriceInclusiveOfTax: false,
   costPrice: null,
   purchaseAccountId: null,
   purchaseDescription: null,
@@ -321,6 +329,20 @@ export function ItemForm({
                   aria-invalid={!!errors.sellingPrice}
                 />
               </div>
+              {/* PR #338: Zoho-parity "Selling Price (incl. tax)" toggle.
+                  When ON, the price entered above is treated as
+                  tax-inclusive at invoice time (the tax portion gets
+                  backed out). Persisted on the item; consumed by the
+                  invoice line-item logic when this item is added. */}
+              <label className="mt-2 flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={values.sellingPriceInclusiveOfTax}
+                  onChange={(e) => set("sellingPriceInclusiveOfTax", e.target.checked)}
+                  className="h-3.5 w-3.5"
+                />
+                Selling Price is inclusive of tax
+              </label>
               {errors.sellingPrice && <p className="text-xs text-destructive mt-1">{errors.sellingPrice}</p>}
             </div>
             <div>
@@ -332,6 +354,18 @@ export function ItemForm({
                 placeholder="Select sales account"
               />
               {errors.salesAccountId && <p className="text-xs text-destructive mt-1">{errors.salesAccountId}</p>}
+            </div>
+            <div>
+              {/* PR #338: Default Tax for this item. Auto-picked on the
+                  invoice line when this item is selected. Optional —
+                  user can override per-invoice. */}
+              <Label>Tax</Label>
+              <Combobox
+                options={opts?.taxes ?? []}
+                value={values.salesTaxId}
+                onChange={(v) => set("salesTaxId", v)}
+                placeholder="Select default tax"
+              />
             </div>
             <div className="md:col-span-2">
               <Label htmlFor="salesDescription">Description</Label>

@@ -23,6 +23,8 @@ export async function createItemAction(formData: FormData) {
       sellingPrice: data.sellingPrice ?? null,
       salesAccountId: data.salesAccountId ?? null,
       salesDescription: data.salesDescription ?? null,
+      salesTaxId: data.salesTaxId ?? null,
+      sellingPriceInclusiveOfTax: data.sellingPriceInclusiveOfTax,
       costPrice: data.costPrice ?? null,
       purchaseAccountId: data.purchaseAccountId ?? null,
       purchaseDescription: data.purchaseDescription ?? null,
@@ -66,6 +68,8 @@ export async function updateItemAction(id: string, formData: FormData) {
       sellingPrice: data.sellingPrice ?? null,
       salesAccountId: data.salesAccountId ?? null,
       salesDescription: data.salesDescription ?? null,
+      salesTaxId: data.salesTaxId ?? null,
+      sellingPriceInclusiveOfTax: data.sellingPriceInclusiveOfTax,
       costPrice: data.costPrice ?? null,
       purchaseAccountId: data.purchaseAccountId ?? null,
       purchaseDescription: data.purchaseDescription ?? null,
@@ -215,6 +219,11 @@ function parseForm(formData: FormData) {
     images,
     imageUrl: primary,
     trackInventory: raw.trackInventory === "on" || raw.trackInventory === "true",
+    // Sales Information (PR #338): coerce the same way as trackInventory
+    // since the form ships the toggle as a checkbox.
+    sellingPriceInclusiveOfTax:
+      raw.sellingPriceInclusiveOfTax === "on" ||
+      raw.sellingPriceInclusiveOfTax === "true",
     sellingPrice: raw.sellingPrice === "" ? null : raw.sellingPrice,
     costPrice: raw.costPrice === "" ? null : raw.costPrice,
     openingStock: raw.openingStock === "" ? null : raw.openingStock,

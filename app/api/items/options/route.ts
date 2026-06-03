@@ -29,7 +29,7 @@ function accountGroup(row: {
 export async function GET() {
   const { organization } = await requireOrganization();
 
-  const [salesAccounts, purchaseAccounts, inventoryAccounts, vendors, prefs] = await Promise.all([
+  const [salesAccounts, purchaseAccounts, inventoryAccounts, vendors, taxes, prefs] = await Promise.all([
     // Per Zoho-parity user ask (PR #334): the Account dropdown in the
     // item form now shows ALL active accounts grouped by subType
     // (Income / Other Current Liability / Fixed Asset / etc.), not
@@ -60,6 +60,14 @@ export async function GET() {
       select: { id: true, displayName: true, email: true },
       orderBy: { displayName: "asc" },
     }),
+    // PR #338: tax options for the new Sales Information Tax dropdown.
+    // Active only, sorted by rate so the dropdown reads as a tax-ladder
+    // (0%, 5%, 12%, 18%, 28% for the typical Indian GST setup).
+    db.tax.findMany({
+      where: { organizationId: organization.id, isActive: true },
+      select: { id: true, name: true, rate: true },
+      orderBy: [{ rate: "asc" }, { name: "asc" }],
+    }),
     db.organizationPreference.findUnique({ where: { organizationId: organization.id } }),
   ]);
 
@@ -83,6 +91,13 @@ export async function GET() {
       group: accountGroup(a),
     })),
     vendors: vendors.map((v) => ({ value: v.id, label: v.displayName, hint: v.email ?? undefined })),
+    // PR #338: each tax option labels as "Name (rate%)" so the user can
+    // see which rate they're picking without expanding a hint column.
+    taxes: taxes.map((t) => ({
+      value: t.id,
+      label: `${t.name} (${Number(t.rate).toFixed(2)}%)`,
+      hint: `${Number(t.rate).toFixed(2)}%`,
+    })),
     inventoryEnabled: prefs?.inventoryEnabled ?? false,
     currency: organization.currency,
   });
