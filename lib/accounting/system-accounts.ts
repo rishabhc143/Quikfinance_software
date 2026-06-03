@@ -58,10 +58,16 @@ const SPEC: Record<SystemAccountKind, Spec> = {
   },
   SALES_REVENUE: {
     code: "SYS-REV",
-    name: "Sales Revenue",
+    // PR #336: renamed from "Sales Revenue" to match the Zoho-style
+    // default that the user's reference dropdown shows. Lookup remains
+    // by `code: "SYS-REV"` so the rename doesn't break any caller and
+    // existing rows in production with the old name are preserved
+    // (lookup-by-code finds them; the user can rename via the CoA UI
+    // if they want the new display).
+    name: "Sales",
     type: "INCOME",
     description:
-      "System account: default income account for invoices (CR side).",
+      "Default income account for invoices (CR side). Pre-seeded by `seedMissingDefaultCoa` so it appears in the item Account dropdown immediately, before any invoice has been sent.",
   },
   BILL_EXPENSE: {
     code: "SYS-EXP",
