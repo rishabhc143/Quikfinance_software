@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
+import { BackLink } from "@/components/shared/dirty-form-nav";
 import { format } from "date-fns";
 import {
   ArrowLeft,
@@ -86,9 +87,7 @@ export default async function AccountDetailPage({
     <div className="p-6 max-w-5xl mx-auto space-y-4">
       <div className="flex items-center gap-2">
         <Button asChild variant="ghost" size="icon">
-          <Link href="/accountant/chart-of-accounts">
-            <ArrowLeft className="h-4 w-4" />
-          </Link>
+          <BackLink href="/accountant/chart-of-accounts"><ArrowLeft className="h-4 w-4" /></BackLink>
         </Button>
         <BookOpen className="h-5 w-5 text-muted-foreground" />
         <h1 className="text-xl font-semibold">{account.name}</h1>

@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { BackLink } from "@/components/shared/dirty-form-nav";
 import { ArrowLeft, Download } from "lucide-react";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
@@ -48,7 +48,7 @@ export default async function ArAgingPage() {
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-4">
       <div className="flex items-center gap-2">
-        <Button asChild variant="ghost" size="icon"><Link href="/reports"><ArrowLeft className="h-4 w-4" /></Link></Button>
+        <Button asChild variant="ghost" size="icon"><BackLink href="/reports"><ArrowLeft className="h-4 w-4" /></BackLink></Button>
         <h1 className="text-xl font-semibold">Receivables Aging</h1>
         <div className="ml-auto">
           <Button asChild variant="outline" size="sm" className="gap-1">

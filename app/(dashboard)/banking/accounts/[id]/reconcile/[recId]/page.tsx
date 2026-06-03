@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import Link from "next/link";
+import { BackLink } from "@/components/shared/dirty-form-nav";
 import { ArrowLeft, CheckCircle2 } from "lucide-react";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
@@ -79,9 +79,7 @@ export default async function ReconciliationDetailPage({
     <div className="p-6 max-w-7xl mx-auto space-y-4">
       <div className="flex items-center gap-2">
         <Button asChild variant="ghost" size="icon" aria-label="Back">
-          <Link href={`/banking/accounts/${account.id}/reconcile`}>
-            <ArrowLeft className="h-4 w-4" />
-          </Link>
+          <BackLink href={`/banking/accounts/${account.id}/reconcile`}><ArrowLeft className="h-4 w-4" /></BackLink>
         </Button>
         <CheckCircle2 className="h-5 w-5 text-muted-foreground" />
         <h1 className="text-2xl font-semibold tracking-tight">

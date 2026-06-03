@@ -151,7 +151,22 @@ export function useDirtyNavigate() {
  * Outside a `DirtyFormProvider` `dirty` is always false (no-op
  * context); the back-navigation behavior still applies.
  */
-export function DirtyLink({
+/**
+ * Semantic alias of `<DirtyLink>` for pages that are NOT forms but
+ * still want the "go back where I came from" behavior on the Back
+ * arrow / X close. Detail pages, list pages, reports, settings —
+ * all clicking Back should land the user wherever they navigated
+ * from, not a hardcoded list URL.
+ *
+ * Identical to `<DirtyLink>` under the hood; outside a
+ * `DirtyFormProvider` the dirty-state confirm is a no-op (dirty is
+ * always false), so all that's left is the router.back()-or-href
+ * behavior.
+ */
+export const BackLink = DirtyLinkImpl;
+export const DirtyLink = DirtyLinkImpl;
+
+function DirtyLinkImpl({
   href,
   children,
   onClick,

@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { BackLink } from "@/components/shared/dirty-form-nav";
 import { notFound } from "next/navigation";
 import { format } from "date-fns";
 import { ArrowLeft } from "lucide-react";
@@ -23,7 +23,7 @@ export default async function PaymentMadeDetailPage({ params }: { params: { id: 
     <div className="p-6 max-w-4xl mx-auto space-y-4">
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          <Button asChild variant="ghost" size="icon"><Link href="/purchases/payments-made"><ArrowLeft className="h-4 w-4" /></Link></Button>
+          <Button asChild variant="ghost" size="icon"><BackLink href="/purchases/payments-made"><ArrowLeft className="h-4 w-4" /></BackLink></Button>
           <h1 className="text-xl font-semibold font-mono">{p.number}</h1>
           <Badge variant="success">Paid</Badge>
         </div>

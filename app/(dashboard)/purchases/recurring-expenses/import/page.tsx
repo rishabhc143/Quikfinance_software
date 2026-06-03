@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { BackLink } from "@/components/shared/dirty-form-nav";
 import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { requireOrganization } from "@/lib/auth-helpers";
@@ -21,9 +21,7 @@ export default async function ImportRecurringExpensesPage() {
     <div className="p-6 max-w-4xl mx-auto space-y-4">
       <div className="flex items-center gap-2">
         <Button asChild variant="ghost" size="icon" aria-label="Back">
-          <Link href="/purchases/recurring-expenses">
-            <ArrowLeft className="h-4 w-4" />
-          </Link>
+          <BackLink href="/purchases/recurring-expenses"><ArrowLeft className="h-4 w-4" /></BackLink>
         </Button>
         <h1 className="text-xl font-semibold">Import recurring expenses</h1>
       </div>
