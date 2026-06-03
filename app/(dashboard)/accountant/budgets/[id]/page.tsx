@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import Link from "next/link";
+import { BackLink } from "@/components/shared/dirty-form-nav";
 import { ArrowLeft, Target, Trash2 } from "lucide-react";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
@@ -167,9 +167,7 @@ export default async function BudgetDetailPage({
     <div className="p-6 max-w-7xl mx-auto space-y-4">
       <div className="flex items-center gap-2">
         <Button asChild variant="ghost" size="icon">
-          <Link href="/accountant/budgets">
-            <ArrowLeft className="h-4 w-4" />
-          </Link>
+          <BackLink href="/accountant/budgets"><ArrowLeft className="h-4 w-4" /></BackLink>
         </Button>
         <Target className="h-5 w-5 text-muted-foreground" />
         <h1 className="text-xl font-semibold">{budget.name}</h1>

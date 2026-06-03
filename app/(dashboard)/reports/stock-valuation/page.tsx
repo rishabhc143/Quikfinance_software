@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { BackLink } from "@/components/shared/dirty-form-nav";
 import {
   AlertTriangle,
   ArrowLeft,
@@ -22,9 +23,7 @@ export default async function StockValuationPage() {
     <div className="p-6 max-w-7xl mx-auto space-y-6">
       <div className="flex items-center gap-2">
         <Button asChild variant="ghost" size="icon">
-          <Link href="/reports">
-            <ArrowLeft className="h-4 w-4" />
-          </Link>
+          <BackLink href="/reports"><ArrowLeft className="h-4 w-4" /></BackLink>
         </Button>
         <div className="flex-1">
           <h1 className="text-2xl font-semibold tracking-tight">

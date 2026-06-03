@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { BackLink } from "@/components/shared/dirty-form-nav";
 import { notFound } from "next/navigation";
 import { ArrowLeft, Plus } from "lucide-react";
 import { format } from "date-fns";
@@ -27,7 +28,7 @@ export default async function ProjectDetailPage({ params }: { params: { id: stri
     <div className="p-6 max-w-5xl mx-auto space-y-4">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <Button asChild variant="ghost" size="icon"><Link href="/time/projects"><ArrowLeft className="h-4 w-4" /></Link></Button>
+          <Button asChild variant="ghost" size="icon"><BackLink href="/time/projects"><ArrowLeft className="h-4 w-4" /></BackLink></Button>
           <h1 className="text-xl font-semibold truncate">{project.name}</h1>
           <Badge variant={project.status === "active" ? "success" : "outline"}>{project.status.replace("_", " ")}</Badge>
         </div>

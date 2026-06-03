@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { BackLink } from "@/components/shared/dirty-form-nav";
 import { notFound } from "next/navigation";
 import { format } from "date-fns";
 import {
@@ -118,9 +119,7 @@ export default async function RecurringBillDetailPage({
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div className="flex items-center gap-2">
           <Button asChild variant="ghost" size="icon" aria-label="Back">
-            <Link href="/purchases/recurring-bills">
-              <ArrowLeft className="h-4 w-4" />
-            </Link>
+            <BackLink href="/purchases/recurring-bills"><ArrowLeft className="h-4 w-4" /></BackLink>
           </Button>
           <Repeat className="h-5 w-5 text-muted-foreground" />
           <h1 className="text-2xl font-semibold tracking-tight">

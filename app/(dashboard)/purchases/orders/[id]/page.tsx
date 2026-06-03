@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { BackLink } from "@/components/shared/dirty-form-nav";
 import { notFound } from "next/navigation";
 import { format } from "date-fns";
 import {
@@ -128,9 +129,7 @@ export default async function PurchaseOrderDetailPage({
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div className="flex items-center gap-2">
           <Button asChild variant="ghost" size="icon" aria-label="Back">
-            <Link href="/purchases/orders">
-              <ArrowLeft className="h-4 w-4" />
-            </Link>
+            <BackLink href="/purchases/orders"><ArrowLeft className="h-4 w-4" /></BackLink>
           </Button>
           <h1 className="text-2xl font-semibold tracking-tight font-mono">
             {po.number}

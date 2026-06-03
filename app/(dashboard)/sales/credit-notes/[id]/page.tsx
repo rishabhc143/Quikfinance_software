@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { BackLink } from "@/components/shared/dirty-form-nav";
 import { notFound } from "next/navigation";
 import { format } from "date-fns";
 import { ArrowLeft, MoreHorizontal } from "lucide-react";
@@ -73,9 +74,7 @@ export default async function CreditNoteDetailPage({
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Button asChild variant="ghost" size="icon" aria-label="Back">
-            <Link href="/sales/credit-notes">
-              <ArrowLeft className="h-4 w-4" />
-            </Link>
+            <BackLink href="/sales/credit-notes"><ArrowLeft className="h-4 w-4" /></BackLink>
           </Button>
           <h1 className="text-2xl font-semibold font-mono">{cn.number}</h1>
           <Badge variant="outline">{cn.status}</Badge>

@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import Link from "next/link";
+import { BackLink } from "@/components/shared/dirty-form-nav";
 import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SalesImportWizard } from "@/components/shared/sales-import-wizard";
@@ -29,9 +29,7 @@ export default function ImportInvoicesPage() {
     <div className="p-6 max-w-4xl mx-auto space-y-4">
       <div className="flex items-center gap-2">
         <Button asChild variant="ghost" size="icon" aria-label="Back">
-          <Link href="/sales/invoices">
-            <ArrowLeft className="h-4 w-4" />
-          </Link>
+          <BackLink href="/sales/invoices"><ArrowLeft className="h-4 w-4" /></BackLink>
         </Button>
         <h1 className="text-xl font-semibold">Import Invoices</h1>
       </div>

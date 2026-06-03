@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { BackLink } from "@/components/shared/dirty-form-nav";
 import { notFound } from "next/navigation";
 import { ArrowLeft, Edit2 } from "lucide-react";
 import { db } from "@/lib/db";
@@ -23,7 +24,7 @@ export default async function ContactDetailPage({ params }: { params: { id: stri
     <div className="p-6 max-w-5xl mx-auto space-y-4">
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
-          <Button asChild variant="ghost" size="icon"><Link href="/contacts"><ArrowLeft className="h-4 w-4" /></Link></Button>
+          <Button asChild variant="ghost" size="icon"><BackLink href="/contacts"><ArrowLeft className="h-4 w-4" /></BackLink></Button>
           <h1 className="text-xl font-semibold truncate">{c.displayName}</h1>
           <Badge>{c.type === "BOTH" ? "Customer + Vendor" : c.type.charAt(0) + c.type.slice(1).toLowerCase()}</Badge>
         </div>

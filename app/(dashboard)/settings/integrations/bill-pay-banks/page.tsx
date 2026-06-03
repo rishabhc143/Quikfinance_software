@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { BackLink } from "@/components/shared/dirty-form-nav";
 import { ArrowLeft, Building2, Sparkles } from "lucide-react";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
@@ -95,9 +96,7 @@ export default async function BillPayBanksPage() {
 
       <div className="flex items-center gap-2">
         <Button asChild variant="ghost" size="icon" aria-label="Back">
-          <Link href="/settings/integrations">
-            <ArrowLeft className="h-4 w-4" />
-          </Link>
+          <BackLink href="/settings/integrations"><ArrowLeft className="h-4 w-4" /></BackLink>
         </Button>
         <Building2 className="h-5 w-5 text-muted-foreground" />
         <h1 className="text-2xl font-semibold tracking-tight">
