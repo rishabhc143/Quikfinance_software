@@ -10,6 +10,9 @@ export const itemFormSchema = z.object({
   sellingPrice: z.coerce.number().nonnegative().optional().nullable(),
   salesAccountId: z.string().optional().nullable(),
   salesDescription: z.string().max(2000).optional().nullable(),
+  // Zoho-parity Sales Information fields (migration 20260603140000).
+  salesTaxId: z.string().optional().nullable(),
+  sellingPriceInclusiveOfTax: z.coerce.boolean().default(false),
 
   costPrice: z.coerce.number().nonnegative().optional().nullable(),
   purchaseAccountId: z.string().optional().nullable(),

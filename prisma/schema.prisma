@@ -539,6 +539,12 @@ model Item {
   sellingPrice          Decimal?                @db.Decimal(18, 4)
   salesAccountId        String?
   salesDescription      String?
+  // Zoho-parity Sales Information fields (migration 20260603140000):
+  // default sales tax + "Selling Price (incl. tax)" toggle. Both
+  // optional / default-false so existing rows pre-migration stay
+  // valid. Tax FK uses SET NULL on delete (see migration).
+  salesTaxId            String?
+  sellingPriceInclusiveOfTax Boolean             @default(false)
   costPrice             Decimal?                @db.Decimal(18, 4)
   purchaseAccountId     String?
   purchaseDescription   String?
@@ -562,10 +568,12 @@ model Item {
   inventoryReservations InventoryReservation[]
   PurchaseOrderLineItem PurchaseOrderLineItem[]
   VendorCreditLineItem  VendorCreditLineItem[]
+  salesTax              Tax?                    @relation(fields: [salesTaxId], references: [id], onDelete: SetNull)
 
   @@index([organizationId, deletedAt])
   @@index([organizationId, name])
   @@index([organizationId, isActive])
+  @@index([salesTaxId])
 }
 
 enum ItemType {
@@ -1989,6 +1997,9 @@ model Tax {
   isActive       Boolean      @default(true)
   isDefault      Boolean      @default(false)
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  // Back-relation for Item.salesTax (migration 20260603140000). Items
+  // referencing this tax fall back to NULL on delete (see SetNull above).
+  items          Item[]
 
   @@unique([organizationId, name])
 }
