@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { DirtyFormProvider, DirtyLink } from "@/components/shared/dirty-form-nav";
 import { ArrowLeft, X } from "lucide-react";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
@@ -66,20 +67,21 @@ export default async function NewBudgetPage() {
   });
 
   return (
+    <DirtyFormProvider>
     <div className="p-6 max-w-4xl mx-auto space-y-6">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Button asChild variant="ghost" size="icon" aria-label="Back">
-            <Link href="/accountant/budgets">
+            <DirtyLink href="/accountant/budgets">
               <ArrowLeft className="h-4 w-4" />
-            </Link>
+            </DirtyLink>
           </Button>
           <h1 className="text-xl font-semibold">New Budget</h1>
         </div>
         <Button asChild variant="ghost" size="icon" aria-label="Close">
-          <Link href="/accountant/budgets">
+          <DirtyLink href="/accountant/budgets">
             <X className="h-4 w-4" />
-          </Link>
+          </DirtyLink>
         </Button>
       </div>
       {accounts.length === 0 ? (
@@ -105,5 +107,6 @@ export default async function NewBudgetPage() {
         />
       )}
     </div>
+    </DirtyFormProvider>
   );
 }

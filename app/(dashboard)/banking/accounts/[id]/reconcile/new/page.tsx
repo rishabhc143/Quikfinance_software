@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import Link from "next/link";
+import { DirtyFormProvider, DirtyLink } from "@/components/shared/dirty-form-nav";
 import { format } from "date-fns";
 import { ArrowLeft, CheckCircle2 } from "lucide-react";
 import { db } from "@/lib/db";
@@ -53,12 +53,13 @@ export default async function NewReconciliationPage({
     : "Account opening balance";
 
   return (
+    <DirtyFormProvider>
     <div className="p-6 max-w-2xl mx-auto space-y-4">
       <div className="flex items-center gap-2">
         <Button asChild variant="ghost" size="icon" aria-label="Back">
-          <Link href={`/banking/accounts/${account.id}`}>
+          <DirtyLink href={`/banking/accounts/${account.id}`}>
             <ArrowLeft className="h-4 w-4" />
-          </Link>
+          </DirtyLink>
         </Button>
         <CheckCircle2 className="h-5 w-5 text-muted-foreground" />
         <h1 className="text-2xl font-semibold tracking-tight">
@@ -72,5 +73,6 @@ export default async function NewReconciliationPage({
         suggestedOpeningSource={suggestedOpeningSource}
       />
     </div>
+    </DirtyFormProvider>
   );
 }
