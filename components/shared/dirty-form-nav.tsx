@@ -129,10 +129,27 @@ export function useDirtyNavigate() {
 }
 
 /**
- * Drop-in replacement for `next/link`'s `<Link>` that intercepts
- * the click when the form is dirty and asks the user to confirm
- * before continuing. Outside a `DirtyFormProvider` it behaves
- * exactly like a plain `<Link>` (since `dirty` is always false).
+ * Drop-in replacement for `next/link`'s `<Link>` for exit-from-form
+ * navigation (Back arrow, Close X, Cancel). On left-click it:
+ *
+ *   1. If dirty, asks the user to confirm before continuing.
+ *   2. Prefers `router.back()` — sends the user back to wherever
+ *      they actually came from (dashboard, search result, list,
+ *      whatever). This was the user ask: "previous page where I
+ *      belong" rather than always landing on a hardcoded module
+ *      list page.
+ *   3. Falls back to navigating to `href` when there is NO browser
+ *      history to go back to — e.g. the user opened the form in
+ *      a new tab via a direct URL.
+ *
+ * The component still renders as a real `<a href>` underneath so
+ * middle-click / Cmd-click / right-click "Open in new tab" still
+ * works and goes to the `href` target (which is the safe canonical
+ * landing page for that form). Only the LEFT-click path uses
+ * `router.back()`.
+ *
+ * Outside a `DirtyFormProvider` `dirty` is always false (no-op
+ * context); the back-navigation behavior still applies.
  */
 export function DirtyLink({
   href,
@@ -146,13 +163,33 @@ export function DirtyLink({
   onClick?: React.MouseEventHandler<HTMLAnchorElement>;
 }) {
   const { dirty } = useDirtyForm();
+  const router = useRouter();
   return (
     <Link
       href={href}
       {...rest}
       onClick={(e) => {
+        // Let modifier-key clicks (Cmd/Ctrl/Shift/middle) keep their
+        // default open-in-new-tab behavior — the user is asking to
+        // open the canonical href, not to navigate the current tab.
+        if (e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1) {
+          onClick?.(e);
+          return;
+        }
         if (dirty && !window.confirm(CONFIRM_MESSAGE)) {
           e.preventDefault();
+          return;
+        }
+        // Prefer browser back when there's history to go back to;
+        // fall back to navigating to `href` otherwise (direct loads,
+        // new tabs). `window.history.length > 1` is the most reliable
+        // signal across Next.js' client-side router stack.
+        if (
+          typeof window !== "undefined" &&
+          window.history.length > 1
+        ) {
+          e.preventDefault();
+          router.back();
           return;
         }
         onClick?.(e);
