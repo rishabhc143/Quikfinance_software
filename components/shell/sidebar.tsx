@@ -34,8 +34,6 @@ const NAV: NavItem[] = [
     icon: Package,
     children: [
       { label: "All Items", href: "/items" },
-      { label: "Stock Levels", href: "/items/stock" },
-      { label: "Inventory Adjustments", href: "/items/inventory-adjustments" },
     ],
   },
   {
