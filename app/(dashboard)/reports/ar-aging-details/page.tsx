@@ -122,6 +122,11 @@ export default async function ArAgingDetailsPage({
   // (cheap on small SMB datasets, and the type narrowing is cleaner).
   const [invoices, creditNotes, allCustomers, activityRows, existingSchedule] =
     await Promise.all([
+      // Audit r3 R2-9 partial: safety cap at 10k rows to prevent OOM
+      // at very large scale (100k+ outstanding invoices/org). At 10k
+      // rows ≈ 5MB serialized response, well within Vercel limits;
+      // no UX change for any current SMB user. Full pagination is the
+      // proper long-term fix (deferred — UX decision).
       db.invoice.findMany({
         where: {
           organizationId: organization.id,
@@ -129,6 +134,7 @@ export default async function ArAgingDetailsPage({
           status: { in: ["SENT", "PARTIALLY_PAID", "OVERDUE"] },
         },
         include: { contact: { select: { displayName: true, type: true } } },
+        take: 10000,
       }),
       db.creditNote.findMany({
         where: {
@@ -137,6 +143,7 @@ export default async function ArAgingDetailsPage({
           status: "OPEN",
         },
         include: { contact: { select: { displayName: true } } },
+        take: 10000,
       }),
       db.contact.findMany({
         where: {
