@@ -1,3 +1,4 @@
+import { DirtyFormProvider } from "@/components/shared/dirty-form-nav";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
 import { Card, CardContent } from "@/components/ui/card";
@@ -15,7 +16,7 @@ export default async function CustomDomainPage() {
     update: {}, create: { organizationId: organization.id },
   });
   return (
-    <SettingsShell title="Custom Domain" description="Use your own domain for invoices and customer-facing pages.">
+    <DirtyFormProvider><SettingsShell title="Custom Domain" description="Use your own domain for invoices and customer-facing pages.">
       <Alert variant="info">
         <Info className="h-4 w-4" />
         <AlertDescription>
@@ -28,6 +29,6 @@ export default async function CustomDomainPage() {
           <CustomDomainForm initial={prefs.customDomain ?? ""} />
         </CardContent>
       </Card>
-    </SettingsShell>
+    </SettingsShell></DirtyFormProvider>
   );
 }

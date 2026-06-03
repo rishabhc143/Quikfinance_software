@@ -1,3 +1,4 @@
+import { DirtyFormProvider } from "@/components/shared/dirty-form-nav";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
 import { SettingsShell } from "@/components/shared/settings-shell";
@@ -16,7 +17,7 @@ export default async function CustomersPreferencesPage() {
     }),
   ]);
   return (
-    <SettingsShell
+    <DirtyFormProvider><SettingsShell
       title="Customers & Vendors Preferences"
       description="Defaults and field visibility for the Customers and Vendors modules."
     >
@@ -24,6 +25,6 @@ export default async function CustomersPreferencesPage() {
         initial={prefs.customers}
         paymentTerms={paymentTerms.map((p) => ({ value: p.id, label: p.name }))}
       />
-    </SettingsShell>
+    </SettingsShell></DirtyFormProvider>
   );
 }

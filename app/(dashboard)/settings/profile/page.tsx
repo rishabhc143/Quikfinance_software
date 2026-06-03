@@ -1,3 +1,4 @@
+import { DirtyFormProvider } from "@/components/shared/dirty-form-nav";
 import { Card, CardContent } from "@/components/ui/card";
 import { SettingsShell } from "@/components/shared/settings-shell";
 import { requireOrganization } from "@/lib/auth-helpers";
@@ -8,7 +9,7 @@ export const metadata = { title: "Organization Profile" };
 export default async function ProfilePage() {
   const { organization } = await requireOrganization();
   return (
-    <SettingsShell
+    <DirtyFormProvider><SettingsShell
       title="Organization Profile"
       description="Name, country, currency, fiscal year, and contact details. The contact block appears at the top of every invoice PDF."
     >
@@ -30,6 +31,6 @@ export default async function ProfilePage() {
           />
         </CardContent>
       </Card>
-    </SettingsShell>
+    </SettingsShell></DirtyFormProvider>
   );
 }

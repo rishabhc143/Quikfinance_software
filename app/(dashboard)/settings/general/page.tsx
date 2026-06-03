@@ -1,3 +1,4 @@
+import { DirtyFormProvider } from "@/components/shared/dirty-form-nav";
 import { Card, CardContent } from "@/components/ui/card";
 import { SettingsShell } from "@/components/shared/settings-shell";
 import { db } from "@/lib/db";
@@ -14,7 +15,7 @@ export default async function GeneralPage() {
     create: { organizationId: organization.id },
   });
   return (
-    <SettingsShell title="General" description="Locale, formats, language, and timezone.">
+    <DirtyFormProvider><SettingsShell title="General" description="Locale, formats, language, and timezone.">
       <Card>
         <CardContent className="pt-6">
           <GeneralForm
@@ -27,6 +28,6 @@ export default async function GeneralPage() {
           />
         </CardContent>
       </Card>
-    </SettingsShell>
+    </SettingsShell></DirtyFormProvider>
   );
 }
