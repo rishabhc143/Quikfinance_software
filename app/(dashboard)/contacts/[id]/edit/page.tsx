@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { DirtyFormProvider, DirtyLink } from "@/components/shared/dirty-form-nav";
 import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { db } from "@/lib/db";
@@ -31,12 +31,14 @@ export default async function EditContactPage({ params }: { params: { id: string
   }
 
   return (
+    <DirtyFormProvider>
     <div className="p-6 max-w-4xl mx-auto space-y-4">
       <div className="flex items-center gap-2">
-        <Button asChild variant="ghost" size="icon"><Link href={`/contacts/${c.id}`}><ArrowLeft className="h-4 w-4" /></Link></Button>
+        <Button asChild variant="ghost" size="icon"><DirtyLink href={`/contacts/${c.id}`}><ArrowLeft className="h-4 w-4" /></DirtyLink></Button>
         <h1 className="text-xl font-semibold">Edit Contact</h1>
       </div>
       <ContactForm initial={initial} onSubmit={update} submitLabel="Update" />
     </div>
+    </DirtyFormProvider>
   );
 }

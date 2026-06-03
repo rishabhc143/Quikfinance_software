@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { DirtyFormProvider, DirtyLink } from "@/components/shared/dirty-form-nav";
 import { format } from "date-fns";
 import { ArrowLeft } from "lucide-react";
 import { db } from "@/lib/db";
@@ -19,9 +20,10 @@ export default async function NewTimeEntryPage() {
     orderBy: { name: "asc" }, select: { id: true, name: true },
   });
   return (
+    <DirtyFormProvider>
     <div className="p-6 max-w-2xl mx-auto space-y-4">
       <div className="flex items-center gap-2">
-        <Button asChild variant="ghost" size="icon"><Link href="/time/entries"><ArrowLeft className="h-4 w-4" /></Link></Button>
+        <Button asChild variant="ghost" size="icon"><DirtyLink href="/time/entries"><ArrowLeft className="h-4 w-4" /></DirtyLink></Button>
         <h1 className="text-xl font-semibold">Log Time</h1>
       </div>
       <Card>
@@ -50,5 +52,6 @@ export default async function NewTimeEntryPage() {
         </CardContent>
       </Card>
     </div>
+    </DirtyFormProvider>
   );
 }

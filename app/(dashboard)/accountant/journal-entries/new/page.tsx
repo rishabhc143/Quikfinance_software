@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { DirtyFormProvider, DirtyLink } from "@/components/shared/dirty-form-nav";
 import { ArrowLeft } from "lucide-react";
 import { format } from "date-fns";
 import { db } from "@/lib/db";
@@ -23,9 +23,10 @@ export default async function NewJournalEntryPage() {
   }
 
   return (
+    <DirtyFormProvider>
     <div className="p-6 max-w-4xl mx-auto space-y-4">
       <div className="flex items-center gap-2">
-        <Button asChild variant="ghost" size="icon"><Link href="/accountant/journal-entries"><ArrowLeft className="h-4 w-4" /></Link></Button>
+        <Button asChild variant="ghost" size="icon"><DirtyLink href="/accountant/journal-entries"><ArrowLeft className="h-4 w-4" /></DirtyLink></Button>
         <h1 className="text-xl font-semibold">New Journal Entry</h1>
       </div>
       <JournalEntryForm
@@ -35,5 +36,6 @@ export default async function NewJournalEntryPage() {
         onSubmitAction={submit}
       />
     </div>
+    </DirtyFormProvider>
   );
 }
