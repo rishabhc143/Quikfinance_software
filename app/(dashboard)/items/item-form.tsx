@@ -426,16 +426,14 @@ export function ItemForm({
                 rows={3}
               />
             </div>
-            <div className="md:col-span-2">
-              <Label>Preferred Vendor</Label>
-              <Combobox
-                options={opts?.vendors ?? []}
-                value={values.preferredVendorId}
-                onChange={(v) => set("preferredVendorId", v)}
-                placeholder="Pick a vendor or add new"
-              />
-              <a href="/contacts/new?type=vendor" className="text-xs text-primary hover:underline mt-1 inline-block">+ Add new vendor</a>
-            </div>
+            {/* Preferred Vendor field removed — Zoho Books Items doesn't expose
+                this field on the item form. The DB column `preferredVendorId`
+                + Item.preferredVendor relation are kept intact so any items
+                that already have a value continue to work; new items will
+                simply have it as null. The vendors query on
+                /api/items/options also stays (some callers may still use it
+                in the future). If you want the DB column removed too, that's
+                a separate cleanup PR. */}
           </div>
         )}
       </fieldset>
