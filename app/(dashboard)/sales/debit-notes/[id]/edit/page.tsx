@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { DirtyFormProvider, DirtyLink } from "@/components/shared/dirty-form-nav";
 import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { db } from "@/lib/db";
@@ -104,12 +104,13 @@ export default async function EditDebitNotePage({
   }
 
   return (
+    <DirtyFormProvider>
     <div className="p-6 max-w-6xl mx-auto space-y-4">
       <div className="flex items-center gap-2">
         <Button asChild variant="ghost" size="icon" aria-label="Back">
-          <Link href={`/sales/debit-notes/${dn.id}`}>
+          <DirtyLink href={`/sales/debit-notes/${dn.id}`}>
             <ArrowLeft className="h-4 w-4" />
-          </Link>
+          </DirtyLink>
         </Button>
         <h1 className="text-xl font-semibold">
           Edit Debit Note {dn.debitNoteNumber}
@@ -161,5 +162,6 @@ export default async function EditDebitNotePage({
         cancelHref={`/sales/debit-notes/${dn.id}`}
       />
     </div>
+    </DirtyFormProvider>
   );
 }

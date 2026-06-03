@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { DirtyFormProvider, DirtyLink } from "@/components/shared/dirty-form-nav";
 import { notFound } from "next/navigation";
 import { ArrowLeft, ShoppingBag } from "lucide-react";
 import { db } from "@/lib/db";
@@ -152,6 +153,7 @@ export default async function EditPurchaseOrderPage({
   const action = updatePurchaseOrderAction.bind(null, po.id);
 
   return (
+    <DirtyFormProvider>
     <div className="p-6 max-w-6xl mx-auto space-y-4">
       <nav aria-label="Breadcrumb" className="text-xs text-muted-foreground">
         <Link href="/purchases/orders" className="hover:underline">
@@ -162,9 +164,9 @@ export default async function EditPurchaseOrderPage({
       </nav>
       <div className="flex items-center gap-2">
         <Button asChild variant="ghost" size="icon" aria-label="Back">
-          <Link href="/purchases/orders">
+          <DirtyLink href="/purchases/orders">
             <ArrowLeft className="h-4 w-4" />
-          </Link>
+          </DirtyLink>
         </Button>
         <ShoppingBag className="h-5 w-5 text-muted-foreground" />
         <h1 className="text-2xl font-semibold tracking-tight">
@@ -213,5 +215,6 @@ export default async function EditPurchaseOrderPage({
         submitLabel="Update purchase order"
       />
     </div>
+    </DirtyFormProvider>
   );
 }
