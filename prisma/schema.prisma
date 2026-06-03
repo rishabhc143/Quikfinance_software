@@ -379,7 +379,6 @@ model Contact {
   quotes               Quote[]
   salesOrders          SalesOrder[]
   expenses             Expense[]
-  preferredFor         Item[]                @relation("PreferredVendor")
   paymentsReceived     PaymentReceived[]
   paymentsMade         PaymentMade[]
   creditNotes          CreditNote[]
@@ -548,7 +547,6 @@ model Item {
   costPrice             Decimal?                @db.Decimal(18, 4)
   purchaseAccountId     String?
   purchaseDescription   String?
-  preferredVendorId     String?
   imageUrl              String?
   images                String[]                @default([])
   trackInventory        Boolean                 @default(false)
@@ -561,7 +559,6 @@ model Item {
   updatedAt             DateTime                @updatedAt
   deletedAt             DateTime?
   organization          Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  preferredVendor       Contact?                @relation("PreferredVendor", fields: [preferredVendorId], references: [id])
   invoiceLineItems      InvoiceLineItem[]
   billLineItems         BillLineItem[]
   inventoryAdjustments  InventoryAdjustment[]

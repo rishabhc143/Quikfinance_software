@@ -26,7 +26,6 @@ export default async function EditItemPage({ params }: { params: { id: string } 
     costPrice: item.costPrice ? Number(item.costPrice) : null,
     purchaseAccountId: item.purchaseAccountId,
     purchaseDescription: item.purchaseDescription,
-    preferredVendorId: item.preferredVendorId,
     trackInventory: item.trackInventory,
     inventoryAccountId: item.inventoryAccountId,
     openingStock: item.openingStock ? Number(item.openingStock) : null,
