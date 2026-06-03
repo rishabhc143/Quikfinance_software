@@ -17,7 +17,6 @@ export const itemFormSchema = z.object({
   costPrice: z.coerce.number().nonnegative().optional().nullable(),
   purchaseAccountId: z.string().optional().nullable(),
   purchaseDescription: z.string().max(2000).optional().nullable(),
-  preferredVendorId: z.string().optional().nullable(),
 
   trackInventory: z.coerce.boolean().default(false),
   inventoryAccountId: z.string().optional().nullable(),

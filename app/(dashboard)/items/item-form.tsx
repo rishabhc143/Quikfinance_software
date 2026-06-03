@@ -23,7 +23,6 @@ type Options = {
    *  effectively dead UI. Now populated from the route with Asset-type
    *  accounts grouped by subType. */
   inventoryAccounts: ComboboxOption[];
-  vendors: ComboboxOption[];
   /** PR #338: Zoho-parity Sales Information Tax dropdown — active
    *  taxes only, label formatted "Name (rate%)" by the API. */
   taxes: ComboboxOption[];
@@ -46,7 +45,6 @@ export type ItemFormValues = {
   costPrice: number | null;
   purchaseAccountId: string | null;
   purchaseDescription: string | null;
-  preferredVendorId: string | null;
   trackInventory: boolean;
   inventoryAccountId: string | null;
   openingStock: number | null;
@@ -68,7 +66,6 @@ const blank: ItemFormValues = {
   costPrice: null,
   purchaseAccountId: null,
   purchaseDescription: null,
-  preferredVendorId: null,
   trackInventory: false,
   inventoryAccountId: null,
   openingStock: null,

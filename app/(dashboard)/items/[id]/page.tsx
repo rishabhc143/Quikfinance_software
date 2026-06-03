@@ -13,7 +13,6 @@ export default async function ItemDetailPage({ params }: { params: { id: string 
   const { organization } = await requireOrganization();
   const item = await db.item.findFirst({
     where: { id: params.id, organizationId: organization.id },
-    include: { preferredVendor: true },
   });
   if (!item) notFound();
 
@@ -91,7 +90,6 @@ export default async function ItemDetailPage({ params }: { params: { id: string 
               <Field label="Cost Price">{item.costPrice !== null ? formatMoney(item.costPrice, cur) : "—"}</Field>
               <Field label="Account">{purchaseAccount?.name ?? "—"}</Field>
               <Field label="Description">{item.purchaseDescription ?? "—"}</Field>
-              <Field label="Preferred Vendor">{item.preferredVendor?.displayName ?? "—"}</Field>
             </dl>
           </CardContent>
         </Card>

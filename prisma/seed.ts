@@ -193,7 +193,6 @@ async function main() {
       costPrice: 1500,
       purchaseAccountId: cogs?.id,
       purchaseDescription: "Subcontractor cost",
-      preferredVendorId: sampleVendor.id,
     },
   });
 

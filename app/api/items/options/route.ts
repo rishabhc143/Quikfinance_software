@@ -29,7 +29,7 @@ function accountGroup(row: {
 export async function GET() {
   const { organization } = await requireOrganization();
 
-  const [salesAccounts, purchaseAccounts, inventoryAccounts, vendors, taxes, prefs] = await Promise.all([
+  const [salesAccounts, purchaseAccounts, inventoryAccounts, taxes, prefs] = await Promise.all([
     // Per Zoho-parity user ask (PR #334): the Account dropdown in the
     // item form now shows ALL active accounts grouped by subType
     // (Income / Other Current Liability / Fixed Asset / etc.), not
@@ -54,11 +54,6 @@ export async function GET() {
       where: { organizationId: organization.id, isActive: true, type: "ASSET" },
       select: { id: true, name: true, code: true, type: true, subType: true },
       orderBy: [{ subType: "asc" }, { name: "asc" }],
-    }),
-    db.contact.findMany({
-      where: { organizationId: organization.id, deletedAt: null, type: { in: ["VENDOR", "BOTH"] } },
-      select: { id: true, displayName: true, email: true },
-      orderBy: { displayName: "asc" },
     }),
     // PR #338: tax options for the new Sales Information Tax dropdown.
     // Active only, sorted by rate so the dropdown reads as a tax-ladder
@@ -90,7 +85,6 @@ export async function GET() {
       hint: a.code ?? undefined,
       group: accountGroup(a),
     })),
-    vendors: vendors.map((v) => ({ value: v.id, label: v.displayName, hint: v.email ?? undefined })),
     // PR #338: each tax option labels as "Name (rate%)" so the user can
     // see which rate they're picking without expanding a hint column.
     taxes: taxes.map((t) => ({
