@@ -120,6 +120,14 @@ export default async function TrialBalancePage({
   // Compute the trial balance + pre-fetch shared toolbar data in
   // parallel so the report renders fast even with cold caches.
   const [lines, activityRows, existingSchedule] = await Promise.all([
+    // Audit r3 R2-9 partial: safety cap at 50k journal lines. Trial
+    // balance aggregates across the entire fiscal period to date; an
+    // org with heavy manual journals could approach 100k+ lines/year.
+    // 50k = ~25MB; the JSON aggregation in JS afterwards is the bigger
+    // memory pressure than the wire transfer. Full pagination here is
+    // structurally hard (the report has to sum debit+credit across the
+    // whole period to compute net per account); the right long-term
+    // fix is materialized account_balance rows, deferred until scale.
     db.journalEntryLine.findMany({
       where: {
         journalEntry: {
@@ -135,6 +143,7 @@ export default async function TrialBalancePage({
           select: { id: true, name: true, code: true, type: true },
         },
       },
+      take: 50000,
     }),
     getRecentReportActivity(organization.id, "trial-balance", 20),
     getExistingSchedule({
