@@ -1,3 +1,4 @@
+import { DirtyFormProvider } from "@/components/shared/dirty-form-nav";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
 import { SettingsShell } from "@/components/shared/settings-shell";
@@ -18,7 +19,7 @@ export default async function QuotesPreferencesPage() {
   ]);
 
   return (
-    <SettingsShell
+    <DirtyFormProvider><SettingsShell
       title="Quote Preferences"
       description="Defaults, field visibility, PDF template, and email templates for the Quotes module."
     >
@@ -26,6 +27,6 @@ export default async function QuotesPreferencesPage() {
         initial={prefs.quotes}
         pdfTemplates={templates.map((t) => ({ value: t.id, label: t.name }))}
       />
-    </SettingsShell>
+    </SettingsShell></DirtyFormProvider>
   );
 }

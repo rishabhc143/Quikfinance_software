@@ -1,3 +1,4 @@
+import { DirtyFormProvider } from "@/components/shared/dirty-form-nav";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
 import { Card, CardContent } from "@/components/ui/card";
@@ -13,8 +14,8 @@ export default async function PdfTemplatesPage() {
     create: { organizationId: organization.id },
   });
   return (
-    <SettingsShell title="PDF Templates" description="Customize the layout of invoices, quotes, and receipts.">
+    <DirtyFormProvider><SettingsShell title="PDF Templates" description="Customize the layout of invoices, quotes, and receipts.">
       <Card><CardContent className="pt-6"><PdfTemplateForm initial={prefs.pdfTemplate} /></CardContent></Card>
-    </SettingsShell>
+    </SettingsShell></DirtyFormProvider>
   );
 }

@@ -1,3 +1,4 @@
+import { DirtyFormProvider } from "@/components/shared/dirty-form-nav";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
 import { Card, CardContent } from "@/components/ui/card";
@@ -13,12 +14,12 @@ export default async function MsmePage() {
     create: { organizationId: organization.id },
   });
   return (
-    <SettingsShell title="MSME Settings" description="Micro, Small & Medium Enterprises identification and reporting flags.">
+    <DirtyFormProvider><SettingsShell title="MSME Settings" description="Micro, Small & Medium Enterprises identification and reporting flags.">
       <Card>
         <CardContent className="pt-6">
           <MsmeForm initial={{ registered: prefs.msmeRegistered, number: prefs.msmeNumber ?? "" }} />
         </CardContent>
       </Card>
-    </SettingsShell>
+    </SettingsShell></DirtyFormProvider>
   );
 }

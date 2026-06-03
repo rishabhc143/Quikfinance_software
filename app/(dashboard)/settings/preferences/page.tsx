@@ -1,3 +1,4 @@
+import { DirtyFormProvider } from "@/components/shared/dirty-form-nav";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
 import { Card, CardContent } from "@/components/ui/card";
@@ -13,12 +14,12 @@ export default async function UserPreferencesPage() {
     create: { organizationId: organization.id },
   });
   return (
-    <SettingsShell title="User Preferences" description="Defaults applied to everyone in this organization.">
+    <DirtyFormProvider><SettingsShell title="User Preferences" description="Defaults applied to everyone in this organization.">
       <Card>
         <CardContent className="pt-6">
           <UserPreferencesForm initial={{ themeDefault: prefs.themeDefault, densityDefault: prefs.densityDefault }} />
         </CardContent>
       </Card>
-    </SettingsShell>
+    </SettingsShell></DirtyFormProvider>
   );
 }

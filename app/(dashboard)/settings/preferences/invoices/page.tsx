@@ -1,3 +1,4 @@
+import { DirtyFormProvider } from "@/components/shared/dirty-form-nav";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
 import { SettingsShell } from "@/components/shared/settings-shell";
@@ -16,7 +17,7 @@ export default async function InvoicesPreferencesPage() {
     }),
   ]);
   return (
-    <SettingsShell
+    <DirtyFormProvider><SettingsShell
       title="Invoice Preferences"
       description="Defaults, reminders, field visibility, PDF template, and email templates for the Invoices module."
     >
@@ -24,6 +25,6 @@ export default async function InvoicesPreferencesPage() {
         initial={prefs.invoices}
         pdfTemplates={templates.map((t) => ({ value: t.id, label: t.name }))}
       />
-    </SettingsShell>
+    </SettingsShell></DirtyFormProvider>
   );
 }

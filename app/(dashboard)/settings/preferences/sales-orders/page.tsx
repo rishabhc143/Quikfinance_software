@@ -1,3 +1,4 @@
+import { DirtyFormProvider } from "@/components/shared/dirty-form-nav";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
 import { SettingsShell } from "@/components/shared/settings-shell";
@@ -16,7 +17,7 @@ export default async function SalesOrdersPreferencesPage() {
     }),
   ]);
   return (
-    <SettingsShell
+    <DirtyFormProvider><SettingsShell
       title="Sales Order Preferences"
       description="Defaults, field visibility, PDF template, and email templates for the Sales Orders module."
     >
@@ -24,6 +25,6 @@ export default async function SalesOrdersPreferencesPage() {
         initial={prefs.salesOrders}
         pdfTemplates={templates.map((t) => ({ value: t.id, label: t.name }))}
       />
-    </SettingsShell>
+    </SettingsShell></DirtyFormProvider>
   );
 }

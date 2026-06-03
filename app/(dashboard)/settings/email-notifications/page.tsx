@@ -1,3 +1,4 @@
+import { DirtyFormProvider } from "@/components/shared/dirty-form-nav";
 import { Card, CardContent } from "@/components/ui/card";
 import { SettingsShell } from "@/components/shared/settings-shell";
 import { db } from "@/lib/db";
@@ -14,7 +15,7 @@ export default async function EmailNotificationsPage() {
     create: { organizationId: organization.id },
   });
   return (
-    <SettingsShell title="Email Notifications" description="Choose which events trigger emails for your team and customers.">
+    <DirtyFormProvider><SettingsShell title="Email Notifications" description="Choose which events trigger emails for your team and customers.">
       <Card>
         <CardContent className="pt-6">
           <EmailNotificationsForm
@@ -29,6 +30,6 @@ export default async function EmailNotificationsPage() {
           />
         </CardContent>
       </Card>
-    </SettingsShell>
+    </SettingsShell></DirtyFormProvider>
   );
 }

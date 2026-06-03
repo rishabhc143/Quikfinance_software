@@ -1,3 +1,4 @@
+import { DirtyFormProvider } from "@/components/shared/dirty-form-nav";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
 import { Card, CardContent } from "@/components/ui/card";
@@ -13,12 +14,12 @@ export default async function AiPreferencesPage() {
     create: { organizationId: organization.id },
   });
   return (
-    <SettingsShell title="AI Preferences" description="Customize how the Quikfinance AI Assistant behaves for your organization.">
+    <DirtyFormProvider><SettingsShell title="AI Preferences" description="Customize how the Quikfinance AI Assistant behaves for your organization.">
       <Card>
         <CardContent className="pt-6">
           <AiPreferencesForm initial={{ systemPromptOverride: prefs.aiSystemPromptOverride ?? "", rateLimitPerDay: prefs.aiRateLimitPerDay }} />
         </CardContent>
       </Card>
-    </SettingsShell>
+    </SettingsShell></DirtyFormProvider>
   );
 }

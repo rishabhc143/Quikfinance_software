@@ -1,3 +1,4 @@
+import { DirtyFormProvider } from "@/components/shared/dirty-form-nav";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
 import { Card, CardContent } from "@/components/ui/card";
@@ -13,12 +14,12 @@ export default async function DirectTaxesPage() {
     create: { organizationId: organization.id },
   });
   return (
-    <SettingsShell title="Direct Taxes" description="TDS / withholding tax configuration and ID numbers.">
+    <DirtyFormProvider><SettingsShell title="Direct Taxes" description="TDS / withholding tax configuration and ID numbers.">
       <Card>
         <CardContent className="pt-6">
           <DirectTaxesForm initial={{ tdsEnabled: prefs.tdsEnabled, tan: prefs.tanNumber ?? "", pan: prefs.panNumber ?? "" }} />
         </CardContent>
       </Card>
-    </SettingsShell>
+    </SettingsShell></DirtyFormProvider>
   );
 }

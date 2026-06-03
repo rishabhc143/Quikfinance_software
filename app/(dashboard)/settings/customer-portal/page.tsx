@@ -1,3 +1,4 @@
+import { DirtyFormProvider } from "@/components/shared/dirty-form-nav";
 import { db } from "@/lib/db";
 import { requireOrganization } from "@/lib/auth-helpers";
 import { Card, CardContent } from "@/components/ui/card";
@@ -13,7 +14,7 @@ export default async function CustomerPortalPage() {
     create: { organizationId: organization.id },
   });
   return (
-    <SettingsShell title="Customer Portal" description="Self-service portal for customers to view invoices and pay online.">
+    <DirtyFormProvider><SettingsShell title="Customer Portal" description="Self-service portal for customers to view invoices and pay online.">
       <Card>
         <CardContent className="pt-6">
           <PortalForm
@@ -26,6 +27,6 @@ export default async function CustomerPortalPage() {
           />
         </CardContent>
       </Card>
-    </SettingsShell>
+    </SettingsShell></DirtyFormProvider>
   );
 }
