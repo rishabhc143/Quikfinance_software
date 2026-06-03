@@ -29,7 +29,7 @@ function accountGroup(row: {
 export async function GET() {
   const { organization } = await requireOrganization();
 
-  const [salesAccounts, purchaseAccounts, vendors, prefs] = await Promise.all([
+  const [salesAccounts, purchaseAccounts, inventoryAccounts, vendors, prefs] = await Promise.all([
     // Per Zoho-parity user ask (PR #334): the Account dropdown in the
     // item form now shows ALL active accounts grouped by subType
     // (Income / Other Current Liability / Fixed Asset / etc.), not
@@ -41,6 +41,17 @@ export async function GET() {
     }),
     db.chartOfAccount.findMany({
       where: { organizationId: organization.id, isActive: true },
+      select: { id: true, name: true, code: true, type: true, subType: true },
+      orderBy: [{ subType: "asc" }, { name: "asc" }],
+    }),
+    // PR #335: Inventory Account dropdown was previously rendered with
+    // `options={[]}` (a hardcoded empty array — literally unselectable
+    // by the user). Filtered to ASSET type because inventory value
+    // semantically belongs on the asset side of the ledger (typically
+    // "Stock on Hand" under Other Current Asset). Grouped by subType
+    // for consistency with the Sales/Purchase dropdowns.
+    db.chartOfAccount.findMany({
+      where: { organizationId: organization.id, isActive: true, type: "ASSET" },
       select: { id: true, name: true, code: true, type: true, subType: true },
       orderBy: [{ subType: "asc" }, { name: "asc" }],
     }),
@@ -60,6 +71,12 @@ export async function GET() {
       group: accountGroup(a),
     })),
     purchaseAccounts: purchaseAccounts.map((a) => ({
+      value: a.id,
+      label: a.name,
+      hint: a.code ?? undefined,
+      group: accountGroup(a),
+    })),
+    inventoryAccounts: inventoryAccounts.map((a) => ({
       value: a.id,
       label: a.name,
       hint: a.code ?? undefined,
