@@ -1883,61 +1883,6 @@ export const HELP_CATEGORIES: FaqCategory[] = [
         ),
       },
       {
-        id: "stock-adjustment",
-        q: "How do I do a stock adjustment?",
-        a: (
-          <>
-            <P>
-              Stock adjustments correct your book stock when it
-              diverges from physical reality — damage, theft,
-              recount discrepancies, or opening-balance corrections.
-            </P>
-            <H>How</H>
-            <ol className="list-decimal ml-5 space-y-1.5">
-              <Step>
-                Open{" "}
-                <L href="/items/stock-adjustments/new">
-                  Items → Inventory Adjustments → New
-                </L>
-              </Step>
-              <Step>
-                Pick the item and warehouse (if multi-warehouse)
-              </Step>
-              <Step>
-                Pick the <strong>Reason</strong>: Damage / Theft /
-                Recount / Opening / Other
-              </Step>
-              <Step>
-                Enter the adjustment quantity (positive to increase,
-                negative to decrease) and the new physical count
-              </Step>
-              <Step>
-                Save — Quikfinance posts the offsetting journal entry
-                to the right account automatically based on the
-                reason
-              </Step>
-            </ol>
-            <H>Where the offset goes</H>
-            <ul className="list-disc ml-5 space-y-1.5">
-              <Bullet>
-                <strong>Damage / Theft</strong> → Inventory Loss
-                expense
-              </Bullet>
-              <Bullet>
-                <strong>Recount</strong> → Inventory Shrinkage
-                expense
-              </Bullet>
-              <Bullet>
-                <strong>Opening</strong> → Opening Balance Equity
-              </Bullet>
-              <Bullet>
-                <strong>Other</strong> → you pick the account
-              </Bullet>
-            </ul>
-          </>
-        ),
-      },
-      {
         id: "low-stock-alert",
         q: "How do I see items running low on stock?",
         a: (

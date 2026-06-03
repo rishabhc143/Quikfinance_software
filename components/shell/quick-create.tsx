@@ -19,10 +19,6 @@ const GROUPS: Group[] = [
     ],
   },
   {
-    name: "INVENTORY",
-    items: [{ label: "Inventory Adjustments", href: "/items/inventory-adjustments/new" }],
-  },
-  {
     name: "SALES",
     items: [
       { label: "Customer", href: "/contacts/new?type=customer" },

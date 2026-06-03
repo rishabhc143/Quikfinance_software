@@ -1,14 +1,14 @@
 import { test, expect } from "@playwright/test";
 
 /**
- * Smoke test for the inventory + reports pages shipped in PRs #66–#79.
+ * Smoke test for inventory-aware reports + the GSTR-1 export page.
  *
- * These are server-rendered pages with non-trivial joins (stock
- * levels join InventoryAdjustment + InventoryReservation; valuation
- * joins those with cost prices; GSTR-1 export reads invoices in a
- * period). A regression in any of these is silent today — the
- * existing sales-lifecycle.spec covers the Sales sub-pages but not
- * these. This catches the obvious "page crashes" class of bug.
+ * Originally covered `/items/stock` too, but the Stock Levels +
+ * Inventory Adjustments sub-modules were removed (the inventory
+ * libraries still drive invoice/CN/DC stock decrement under the
+ * hood — they just don't have user-facing pages anymore). The
+ * stock-valuation REPORT survives because it's a different surface
+ * and still has real callers.
  *
  * Auth uses the same seed-admin credentials as the rest of the e2e
  * suite. No fixtures needed — we only assert the pages render their
@@ -38,7 +38,6 @@ test.describe("Inventory + Reports smoke", () => {
     await signInViaApi(page);
 
     const checks: { url: string; title: RegExp }[] = [
-      { url: "/items/stock", title: /^stock levels$/i },
       { url: "/reports/stock-valuation", title: /^stock valuation$/i },
       { url: "/reports/gstr1", title: /^gstr-1 export$/i },
     ];
