@@ -157,6 +157,7 @@ model Organization {
   locations             Location[]
   promoBanners          PromoBanner[]
   aiConversations       AiConversation[]
+  anomalyAlerts         AnomalyAlert[]
   reminders             Reminder[]
   workflowActions       WorkflowAction[]
   workflowLogs          WorkflowLog[]
@@ -2337,6 +2338,32 @@ model AiMessage {
   content        String         @db.Text
   createdAt      DateTime       @default(now())
   conversation   AiConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+}
+
+// CF-7 / AD-1 — Anomaly alerts surfaced by the nightly detector cron.
+// Detector keys + fingerprint scheme documented in lib/anomaly/.
+model AnomalyAlert {
+  id             String       @id @default(cuid())
+  organizationId String
+  detectorKey    String
+  severity       String       @default("medium") // high | medium | low
+  title          String
+  description    String       @db.Text
+  refType        String? // 'bill' | 'invoice' | 'recurring_bill' | 'recurring_invoice' | 'contact' | etc.
+  refId          String?
+  status         String       @default("open") // open | dismissed | acted
+  dismissedAt    DateTime?
+  dismissedById  String?
+  dismissReason  String?
+  /// Stable identity hash so the cron doesn't re-create the same
+  /// alert while it's still OPEN, but DOES re-create after dismissal
+  /// if the anomaly re-emerges.
+  fingerprint    String
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @default(now()) @updatedAt
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, status, createdAt])
 }
 
 // ───────────────────────── PHASE-X COMPLETION ─────────────────────────

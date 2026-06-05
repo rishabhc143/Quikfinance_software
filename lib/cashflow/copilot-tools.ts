@@ -31,7 +31,8 @@ export type CopilotToolName =
   | "get_overdue_invoices"
   | "get_upcoming_bills"
   | "get_top_customers_by_ar"
-  | "get_recurring_profiles";
+  | "get_recurring_profiles"
+  | "get_open_anomalies";
 
 /** Tool schemas Anthropic receives. Order doesn't matter; Claude
  *  picks based on the descriptions. */
@@ -120,6 +121,26 @@ export const COPILOT_TOOLS = [
     input_schema: {
       type: "object" as const,
       properties: {},
+    },
+  },
+  {
+    name: "get_open_anomalies",
+    description:
+      "Returns open anomaly alerts surfaced by the nightly anomaly detector — possible duplicate bills, stuck recurring profiles, and other issues worth the user's attention. Each result includes detector key, severity (high/medium/low), title, description, and (optionally) a deep-link refType/refId pointing at the source row. Use this when the user asks 'is anything broken?', 'what should I look at?', 'any issues?', or any open-ended question about the health of their books — read this first so you can volunteer findings instead of waiting to be asked.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        severity: {
+          type: "string",
+          description:
+            "Optional severity filter. 'high' only / 'medium' only / 'low' only. Omit for all severities.",
+          enum: ["high", "medium", "low"],
+        },
+        limit: {
+          type: "number",
+          description: "Max alerts to return (default 20, max 100).",
+        },
+      },
     },
   },
 ] as const;
@@ -402,6 +423,59 @@ export async function runTool(
           ...rb.map((p) => fmt(p, "recurring_bill")),
           ...re.map((p) => fmt(p, "recurring_expense")),
         ],
+      };
+    }
+
+    case "get_open_anomalies": {
+      const limit = clamp(input.limit, 1, 100, 20);
+      const severityIn =
+        typeof input.severity === "string" &&
+        ["high", "medium", "low"].includes(input.severity)
+          ? [input.severity as string]
+          : ["high", "medium", "low"];
+      const alerts = await db.anomalyAlert.findMany({
+        where: {
+          organizationId,
+          status: "open",
+          severity: { in: severityIn },
+        },
+        select: {
+          id: true,
+          detectorKey: true,
+          severity: true,
+          title: true,
+          description: true,
+          refType: true,
+          refId: true,
+          createdAt: true,
+        },
+        // High severity first; within same severity, most recent first.
+        // We achieve that by sorting client-side since severity is a
+        // string column (Postgres sort would alphabetise high < low < medium).
+        orderBy: { createdAt: "desc" },
+        take: limit * 2, // overfetch so client-side sort doesn't drop high-severity hits
+      });
+      const sevRank = { high: 0, medium: 1, low: 2 } as const;
+      const sorted = alerts
+        .slice()
+        .sort((a, b) => {
+          const sa = sevRank[a.severity as keyof typeof sevRank] ?? 3;
+          const sb = sevRank[b.severity as keyof typeof sevRank] ?? 3;
+          if (sa !== sb) return sa - sb;
+          return b.createdAt.getTime() - a.createdAt.getTime();
+        })
+        .slice(0, limit);
+      return {
+        count: sorted.length,
+        alerts: sorted.map((a) => ({
+          detector: a.detectorKey,
+          severity: a.severity,
+          title: a.title,
+          description: a.description,
+          refType: a.refType,
+          refId: a.refId,
+          detectedAt: format(a.createdAt, "yyyy-MM-dd"),
+        })),
       };
     }
 
