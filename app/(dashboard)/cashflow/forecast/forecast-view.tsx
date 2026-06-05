@@ -21,6 +21,7 @@ import {
   ChevronDown,
   ChevronRight,
   Clock,
+  Download,
   FlaskConical,
   TrendingUp as TrendingUpIcon,
   Wallet,
@@ -70,7 +71,7 @@ export function ForecastView({
 
   return (
     <div className="space-y-6">
-      {/* ── CF-3 — Stress-test scenario picker ─────────────────────── */}
+      {/* ── CF-3 — Stress-test scenario picker + CF-4 export ───────── */}
       <div className="flex flex-wrap items-center gap-2">
         <div className="flex items-center gap-2 text-sm text-muted-foreground mr-2">
           <FlaskConical className="h-4 w-4" />
@@ -103,6 +104,21 @@ export function ForecastView({
             top of any learned payment delay.
           </span>
         )}
+        {/* CF-4 — Excel export. Plain anchor so the browser downloads
+            instead of navigating. Preserves the current stress scenario
+            so the exported workbook matches what the user sees. */}
+        <a
+          href={
+            stressDays > 0
+              ? `/api/cashflow/forecast/export?stressDays=${stressDays}`
+              : "/api/cashflow/forecast/export"
+          }
+          className="ml-auto inline-flex items-center gap-1.5 rounded-md border bg-background px-3 py-1.5 text-sm font-medium hover:bg-muted border-input"
+          aria-label="Export forecast to Excel"
+        >
+          <Download className="h-4 w-4" />
+          Export to Excel
+        </a>
       </div>
 
       {/* ── Base-vs-stress delta banner (only when stress > 0) ─────── */}
