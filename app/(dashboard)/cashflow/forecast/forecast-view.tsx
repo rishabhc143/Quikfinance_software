@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { format, parseISO } from "date-fns";
 import {
   Line,
@@ -20,6 +21,7 @@ import {
   ChevronDown,
   ChevronRight,
   Clock,
+  FlaskConical,
   TrendingUp as TrendingUpIcon,
   Wallet,
 } from "lucide-react";
@@ -34,15 +36,26 @@ import type {
 } from "@/lib/cashflow/types";
 
 /**
- * Client renderer for CF-1 forecast. Three layers:
- *   1. Summary cards (starting / ending / net / min-balance)
- *   2. Running-balance line chart over the full horizon
- *   3. Weekly grid with expandable per-day drilldown
+ * Client renderer for CF-1/CF-2/CF-3 forecast. Four layers:
+ *   1. Stress-test button group (CF-3) — URL-syncs ?stressDays=N
+ *   2. Summary cards (starting / ending / net / min-balance) + base-vs-stress delta
+ *   3. Running-balance line chart over the full horizon
+ *   4. Weekly grid with expandable per-day drilldown
  *
  * No data fetching here — the page passes the full projection in.
+ * When a stress scenario is active, the page also computes the base
+ * case so the UI can show a comparison delta card.
  */
-export function ForecastView({ forecast }: { forecast: CashflowForecast }) {
-  const { summary, weeks, days, currency } = forecast;
+export function ForecastView({
+  forecast,
+  baseForecast,
+  stressOptions,
+}: {
+  forecast: CashflowForecast;
+  baseForecast: CashflowForecast | null;
+  stressOptions: number[];
+}) {
+  const { summary, weeks, days, currency, stressDays } = forecast;
 
   // Chart data — one point per day with running balance + zero
   // reference line for the eye to track. We also surface inflow /
@@ -57,6 +70,50 @@ export function ForecastView({ forecast }: { forecast: CashflowForecast }) {
 
   return (
     <div className="space-y-6">
+      {/* ── CF-3 — Stress-test scenario picker ─────────────────────── */}
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="flex items-center gap-2 text-sm text-muted-foreground mr-2">
+          <FlaskConical className="h-4 w-4" />
+          <span>Stress test:</span>
+        </div>
+        {stressOptions.map((days) => {
+          const isActive = stressDays === days;
+          const href = days === 0
+            ? "/cashflow/forecast"
+            : `/cashflow/forecast?stressDays=${days}`;
+          return (
+            <Link
+              key={days}
+              href={href}
+              prefetch={false}
+              className={cn(
+                "inline-flex items-center justify-center rounded-md border px-3 py-1.5 text-sm font-medium transition-colors",
+                isActive
+                  ? "bg-primary text-primary-foreground border-primary"
+                  : "bg-background hover:bg-muted border-input text-foreground"
+              )}
+            >
+              {days === 0 ? "Base case" : `+${days}d`}
+            </Link>
+          );
+        })}
+        {stressDays > 0 && (
+          <span className="text-xs text-muted-foreground ml-2">
+            All customer inflows shifted later by {stressDays} days on
+            top of any learned payment delay.
+          </span>
+        )}
+      </div>
+
+      {/* ── Base-vs-stress delta banner (only when stress > 0) ─────── */}
+      {baseForecast && stressDays > 0 && (
+        <StressDeltaCard
+          base={baseForecast}
+          stress={forecast}
+          currency={currency}
+        />
+      )}
+
       {/* ── Summary cards ────────────────────────────────────────────── */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
         <SummaryCard
@@ -444,6 +501,123 @@ function DayDrilldown({
           </div>
         </div>
       ))}
+    </div>
+  );
+}
+
+function StressDeltaCard({
+  base,
+  stress,
+  currency,
+}: {
+  base: CashflowForecast;
+  stress: CashflowForecast;
+  currency: string;
+}) {
+  const minDelta = stress.summary.minBalance - base.summary.minBalance;
+  const endDelta = stress.summary.endingBalance - base.summary.endingBalance;
+  const newRisk =
+    stress.summary.hasInsolvencyRisk && !base.summary.hasInsolvencyRisk;
+  const weekDelta =
+    stress.summary.weeksWithDeficit - base.summary.weeksWithDeficit;
+
+  return (
+    <div
+      className={cn(
+        "rounded-md border-l-4 p-3 text-sm space-y-1",
+        newRisk
+          ? "border-rose-500 bg-rose-50 dark:bg-rose-950/20"
+          : "border-amber-500 bg-amber-50 dark:bg-amber-950/20"
+      )}
+    >
+      <div className="flex items-start gap-2">
+        <FlaskConical
+          className={cn(
+            "h-4 w-4 shrink-0 mt-0.5",
+            newRisk ? "text-rose-600" : "text-amber-600"
+          )}
+        />
+        <div className="flex-1">
+          <strong>Under +{stress.stressDays}d stress:</strong>
+          <ul className="mt-1 space-y-0.5 text-xs">
+            <li>
+              <span className="text-muted-foreground">Minimum balance:</span>{" "}
+              <span className="font-mono">
+                {formatMoney(base.summary.minBalance, currency)}
+              </span>
+              {" → "}
+              <span
+                className={cn(
+                  "font-mono font-semibold",
+                  minDelta < 0 && "text-rose-700"
+                )}
+              >
+                {formatMoney(stress.summary.minBalance, currency)}
+              </span>{" "}
+              <span
+                className={cn(
+                  "text-xs",
+                  minDelta < 0 ? "text-rose-600" : "text-emerald-600"
+                )}
+              >
+                ({minDelta < 0 ? "" : "+"}
+                {formatMoney(minDelta, currency)})
+              </span>
+            </li>
+            <li>
+              <span className="text-muted-foreground">Ending balance:</span>{" "}
+              <span className="font-mono">
+                {formatMoney(base.summary.endingBalance, currency)}
+              </span>
+              {" → "}
+              <span
+                className={cn(
+                  "font-mono",
+                  endDelta < 0 && "text-rose-700"
+                )}
+              >
+                {formatMoney(stress.summary.endingBalance, currency)}
+              </span>{" "}
+              <span
+                className={cn(
+                  "text-xs",
+                  endDelta < 0 ? "text-rose-600" : "text-emerald-600"
+                )}
+              >
+                ({endDelta < 0 ? "" : "+"}
+                {formatMoney(endDelta, currency)})
+              </span>
+            </li>
+            <li>
+              <span className="text-muted-foreground">
+                Weeks with deficit:
+              </span>{" "}
+              <span className="font-mono">{base.summary.weeksWithDeficit}</span>
+              {" → "}
+              <span className="font-mono font-semibold">
+                {stress.summary.weeksWithDeficit}
+              </span>{" "}
+              {weekDelta !== 0 && (
+                <span
+                  className={cn(
+                    "text-xs",
+                    weekDelta > 0 ? "text-rose-600" : "text-emerald-600"
+                  )}
+                >
+                  ({weekDelta > 0 ? "+" : ""}
+                  {weekDelta} {Math.abs(weekDelta) === 1 ? "week" : "weeks"})
+                </span>
+              )}
+            </li>
+            {newRisk && (
+              <li className="mt-1 font-semibold text-rose-700">
+                ⚠ Insolvency risk emerges under this scenario — base
+                case stays solvent but stress case dips below zero.
+              </li>
+            )}
+          </ul>
+        </div>
+      </div>
     </div>
   );
 }
