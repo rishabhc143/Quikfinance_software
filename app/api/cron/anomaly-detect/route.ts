@@ -4,6 +4,10 @@ import { runAnomalyDetectors } from "@/lib/anomaly/run-all";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+// Iterates every org serially. At ~10–30ms per org, even 1000 orgs
+// fits comfortably inside 60s — but the default 10s would fail
+// once we cross ~300 orgs. Set the Hobby ceiling explicitly.
+export const maxDuration = 60;
 
 /**
  * CF-7 — Nightly anomaly-detection cron.

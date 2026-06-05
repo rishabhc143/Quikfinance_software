@@ -6,6 +6,12 @@ import { db } from "@/lib/db";
 import { COPILOT_TOOLS, runTool } from "@/lib/cashflow/copilot-tools";
 
 export const runtime = "nodejs";
+// CF-5 hotfix: the agentic loop (Claude call → tool → Claude call again)
+// easily runs 15–30s with tool use. Vercel's default function timeout
+// is 10s on Hobby, which was killing the stream mid-flight and leaving
+// the client's "Thinking…" spinner stuck forever. 60s is the Hobby
+// ceiling and comfortably covers a 6-turn agentic conversation.
+export const maxDuration = 60;
 
 /**
  * CF-5 — CFO Copilot endpoint.
