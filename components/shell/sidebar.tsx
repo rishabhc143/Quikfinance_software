@@ -87,6 +87,7 @@ const NAV: NavItem[] = [
     children: [
       { label: "12-week Forecast", href: "/cashflow/forecast" },
       { label: "CFO Copilot", href: "/cashflow/copilot" },
+      { label: "Alerts", href: "/cashflow/alerts" },
     ],
   },
   {
