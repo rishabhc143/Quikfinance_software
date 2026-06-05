@@ -19,13 +19,19 @@ import {
   ArrowUpRight,
   ChevronDown,
   ChevronRight,
+  Clock,
+  TrendingUp as TrendingUpIcon,
   Wallet,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { formatMoney } from "@/lib/money";
 import { cn } from "@/lib/utils";
-import type { CashflowForecast, ForecastDay } from "@/lib/cashflow/types";
+import type {
+  CashflowForecast,
+  ForecastDay,
+  ForecastItem,
+} from "@/lib/cashflow/types";
 
 /**
  * Client renderer for CF-1 forecast. Three layers:
@@ -109,6 +115,22 @@ export function ForecastView({ forecast }: { forecast: CashflowForecast }) {
             </span>
             . Review the weekly grid below to spot which inflows or
             outflows drive the dip and consider rescheduling.
+          </div>
+        </div>
+      )}
+
+      {/* ── Predictive layer notice ─────────────────────────────────── */}
+      {summary.patternsApplied > 0 && (
+        <div className="rounded-md border-l-4 border-blue-500 bg-blue-50 dark:bg-blue-950/20 p-3 text-sm flex items-start gap-2">
+          <TrendingUpIcon className="h-4 w-4 text-blue-600 shrink-0 mt-0.5" />
+          <div>
+            <strong>Predictive adjustment applied.</strong>{" "}
+            {summary.patternsApplied} invoice / bill{" "}
+            {summary.patternsApplied === 1 ? "item was" : "items were"}{" "}
+            shifted from the contractual due date based on the last 12
+            months of payment history for that customer or vendor.
+            Hover any item with a clock icon below to see the original
+            due date.
           </div>
         </div>
       )}
@@ -387,17 +409,12 @@ function DayDrilldown({
               {d.inflows.length > 0 ? (
                 <ul className="space-y-0.5">
                   {d.inflows.map((it, i) => (
-                    <li
+                    <ItemLine
                       key={i}
-                      className="flex items-center justify-between"
-                    >
-                      <span className="truncate text-emerald-700">
-                        ↑ {it.label}
-                      </span>
-                      <span className="tabular-nums ml-2 text-emerald-700">
-                        {formatMoney(it.amount, currency)}
-                      </span>
-                    </li>
+                      item={it}
+                      currency={currency}
+                      direction="in"
+                    />
                   ))}
                 </ul>
               ) : (
@@ -410,17 +427,12 @@ function DayDrilldown({
               {d.outflows.length > 0 ? (
                 <ul className="space-y-0.5">
                   {d.outflows.map((it, i) => (
-                    <li
+                    <ItemLine
                       key={i}
-                      className="flex items-center justify-between"
-                    >
-                      <span className="truncate text-rose-600">
-                        ↓ {it.label}
-                      </span>
-                      <span className="tabular-nums ml-2 text-rose-600">
-                        {formatMoney(it.amount, currency)}
-                      </span>
-                    </li>
+                      item={it}
+                      currency={currency}
+                      direction="out"
+                    />
                   ))}
                 </ul>
               ) : (
@@ -433,6 +445,54 @@ function DayDrilldown({
         </div>
       ))}
     </div>
+  );
+}
+
+function ItemLine({
+  item,
+  currency,
+  direction,
+}: {
+  item: ForecastItem;
+  currency: string;
+  direction: "in" | "out";
+}) {
+  const color = direction === "in" ? "text-emerald-700" : "text-rose-600";
+  const arrow = direction === "in" ? "↑" : "↓";
+  // CF-2 — show a small clock icon + tooltip when this item was
+  // shifted from its contractual due date by the learned-delay layer.
+  const shifted =
+    item.originalDate && item.delayAppliedDays && item.delayAppliedDays !== 0;
+  const tooltip = shifted
+    ? `Originally due ${format(parseISO(item.originalDate!), "d MMM yyyy")} — shifted ${
+        item.delayAppliedDays! > 0 ? "+" : ""
+      }${item.delayAppliedDays}d based on history`
+    : undefined;
+
+  return (
+    <li className={cn("flex items-center justify-between", color)}>
+      <span className="truncate flex items-center gap-1 min-w-0">
+        <span>{arrow}</span>
+        <span className="truncate">{item.label}</span>
+        {shifted && (
+          <span
+            title={tooltip}
+            className="text-blue-600 dark:text-blue-400 shrink-0 inline-flex items-center"
+            aria-label={tooltip}
+          >
+            <Clock className="h-3 w-3" />
+            <span className="ml-0.5 text-[10px] font-mono">
+              {item.delayAppliedDays! > 0
+                ? `+${item.delayAppliedDays}d`
+                : `${item.delayAppliedDays}d`}
+            </span>
+          </span>
+        )}
+      </span>
+      <span className={cn("tabular-nums ml-2 shrink-0", color)}>
+        {formatMoney(item.amount, currency)}
+      </span>
+    </li>
   );
 }
 

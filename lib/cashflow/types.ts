@@ -21,6 +21,15 @@ export type ForecastItem = {
   label: string;
   /** Always positive; the sign is implied by inflow/outflow placement. */
   amount: number;
+  /** CF-2 — when the predictive payment-delay layer shifted this
+   *  item from its contractual due date, this holds the original
+   *  "yyyy-MM-dd" so the UI can show both. Absent when no shift was
+   *  applied (recurring profiles, items where the customer/vendor
+   *  has < MIN_SAMPLE_SIZE historical payments). */
+  originalDate?: string;
+  /** CF-2 — signed shift in days. Positive = paid later than due
+   *  date (customer pays late); negative = paid earlier. */
+  delayAppliedDays?: number;
 };
 
 export type ForecastDay = {
@@ -63,6 +72,10 @@ export type ForecastSummary = {
   weeksWithDeficit: number;
   /** True when running balance dips below zero on any day. */
   hasInsolvencyRisk: boolean;
+  /** CF-2 — count of open invoice/bill placements that were shifted
+   *  by the learned payment-delay layer. Surfaces in the UI as
+   *  "N items adjusted for typical payment delay". */
+  patternsApplied: number;
 };
 
 export type CashflowForecast = {
