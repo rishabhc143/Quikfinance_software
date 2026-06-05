@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, Package, FileText, ShoppingCart, Wallet,
   Clock, BookOpen, BarChart3, FolderOpen, CreditCard,
-  Settings, ChevronDown,
+  Settings, ChevronDown, TrendingUp,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -80,6 +80,14 @@ const NAV: NavItem[] = [
     ],
   },
   { label: "Banking", href: "/banking", icon: Wallet },
+  {
+    label: "Cashflow",
+    href: "/cashflow/forecast",
+    icon: TrendingUp,
+    children: [
+      { label: "12-week Forecast", href: "/cashflow/forecast" },
+    ],
+  },
   {
     label: "Accountant",
     href: "/accountant",
