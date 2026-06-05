@@ -2,6 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireOrganization } from "@/lib/auth-helpers";
+import { db } from "@/lib/db";
 import { COPILOT_TOOLS, runTool } from "@/lib/cashflow/copilot-tools";
 
 export const runtime = "nodejs";
@@ -34,6 +35,12 @@ const requestSchema = z.object({
     )
     .min(1)
     .max(40),
+  /** CF-6 — optional conversation to attach to. When absent we
+   *  auto-create a new AiConversation row, titled from the first
+   *  user message. The created id is returned in the
+   *  `x-conversation-id` response header so the client can pin
+   *  subsequent requests to the same thread. */
+  conversationId: z.string().optional(),
 });
 
 const SYSTEM_PROMPT = (orgName: string, currency: string) => `\
@@ -67,21 +74,62 @@ export async function POST(req: Request) {
     );
   }
 
-  const { organization } = await requireOrganization();
+  const { user, organization } = await requireOrganization();
   const body = await req.json().catch(() => ({}));
   const parsed = requestSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json({ error: "Invalid request" }, { status: 400 });
   }
 
-  // CF-5 v1 — no conversation persistence yet; rate-limit by IP +
-  // user is not yet wired here, so we just gate via a per-request
-  // safety. AiConversation hookup lands in v2 (we'll mirror the
-  // existing /api/ai/chat scheme then).
   void RATE_LIMIT_PER_DAY;
+
+  // CF-6 — resolve or create the conversation row. When the client
+  // sent a conversationId, validate it's theirs (org + user scoped)
+  // and load it. Otherwise create a fresh one with a title derived
+  // from the first user message (so the sidebar list looks human).
+  let conversation = parsed.data.conversationId
+    ? await db.aiConversation.findFirst({
+        where: {
+          id: parsed.data.conversationId,
+          organizationId: organization.id,
+          userId: user.id,
+        },
+      })
+    : null;
+  if (!conversation) {
+    const firstUser = parsed.data.messages.find((m) => m.role === "user");
+    const title = firstUser
+      ? firstUser.content.slice(0, 80).replace(/\s+/g, " ").trim()
+      : "Cashflow conversation";
+    conversation = await db.aiConversation.create({
+      data: {
+        organizationId: organization.id,
+        userId: user.id,
+        title,
+      },
+    });
+  }
+
+  // Persist the latest user message before calling the LLM so it's
+  // safely in the DB even if streaming fails midway.
+  const lastUser = parsed.data.messages.filter((m) => m.role === "user").at(-1);
+  if (lastUser) {
+    await db.aiMessage.create({
+      data: {
+        conversationId: conversation.id,
+        role: "user",
+        content: lastUser.content,
+      },
+    });
+  }
 
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
   const encoder = new TextEncoder();
+  // CF-6 — accumulate the streamed assistant text so we can write a
+  // single AiMessage row at the end. Anthropic emits text in chunks
+  // but we want one persisted row, not N partial rows.
+  let assistantText = "";
+  const persistedConversationId = conversation.id;
 
   // Convert chat history into Anthropic Message format. We keep tool
   // calls / tool results internal to this single request (not echoed
@@ -110,6 +158,7 @@ export async function POST(req: Request) {
           // server-side and continue the agentic loop.
           for (const block of response.content) {
             if (block.type === "text") {
+              assistantText += block.text;
               controller.enqueue(encoder.encode(block.text));
             }
           }
@@ -159,6 +208,22 @@ export async function POST(req: Request) {
           break;
         }
         controller.close();
+        // CF-6 — persist the assistant turn's final text. Wrap in a
+        // try/catch so a DB hiccup at the end doesn't surface as a
+        // stream error to the user (they've already seen the answer).
+        if (assistantText.trim()) {
+          try {
+            await db.aiMessage.create({
+              data: {
+                conversationId: persistedConversationId,
+                role: "assistant",
+                content: assistantText,
+              },
+            });
+          } catch (persistErr) {
+            console.error("[copilot] failed to persist assistant message", persistErr);
+          }
+        }
       } catch (err) {
         const msg = err instanceof Error ? err.message : "Unknown error";
         controller.enqueue(encoder.encode(`\n[error: ${msg}]`));
@@ -168,6 +233,11 @@ export async function POST(req: Request) {
   });
 
   return new Response(stream, {
-    headers: { "Content-Type": "text/plain; charset=utf-8" },
+    headers: {
+      "Content-Type": "text/plain; charset=utf-8",
+      // CF-6 — echo the conversation id so the client can pin
+      // subsequent requests + reflect into the URL.
+      "x-conversation-id": conversation.id,
+    },
   });
 }
