@@ -48,17 +48,41 @@ import type {
 } from "./types";
 
 const DEFAULT_HORIZON_DAYS = 84; // 12 weeks
+const MAX_STRESS_DAYS = 60;
+
+export type ForecastOptions = {
+  currency?: string;
+  /**
+   * CF-3 — stress-test scenario. Adds N days to every customer-side
+   * pattern's avgDelayDays before placing open invoices. Used by the
+   * UI's "Base / +7d / +14d / +30d" button group to let CFOs quickly
+   * see the projection under a "collections slip by N days" hypothesis.
+   *
+   * Only affects INFLOWS (open invoices). Outflows are deterministic
+   * from our own scheduled payments — we don't model "what if we pay
+   * vendors late" because that's our choice, not a counterparty's.
+   *
+   * Clamped to [0, 60]. Recurring invoices unaffected (they're our
+   * own scheduled bills, not customer-paid).
+   */
+  stressDays?: number;
+};
 
 export async function computeForecast(
   organizationId: string,
   startDate: Date,
   horizonDays: number = DEFAULT_HORIZON_DAYS,
-  options?: {
-    currency?: string;
-  }
+  options?: ForecastOptions
 ): Promise<CashflowForecast> {
   const start = startOfDay(startDate);
   const end = startOfDay(addDays(start, horizonDays - 1));
+  // CF-3 — clamp stress-days into the supported range; ignore negative
+  // values (users can't model "early payments globally" — that's not a
+  // realistic stress test).
+  const stressDays = Math.max(
+    0,
+    Math.min(MAX_STRESS_DAYS, options?.stressDays ?? 0)
+  );
 
   const [
     bankAccounts,
@@ -256,9 +280,21 @@ export async function computeForecast(
   };
 
   // ── Open invoices ─────────────────────────────────────────────────────
+  // CF-3: when stressDays > 0, layer it ON TOP of any learned customer
+  // delay. A customer with avg +5d under +14d stress projects at +19d.
+  // For customers with no learned pattern, the stress alone applies via
+  // a synthetic pattern so the UI still shows the shift indicator.
   for (const inv of openInvoices) {
     const remaining = Number(inv.total) - Number(inv.amountPaid);
     if (remaining <= 0) continue;
+    const basePattern = customerDelays.get(inv.contactId);
+    const effectivePattern: PaymentDelayPattern | undefined = stressDays > 0
+      ? {
+          contactId: inv.contactId,
+          avgDelayDays: (basePattern?.avgDelayDays ?? 0) + stressDays,
+          sampleSize: basePattern?.sampleSize ?? 0,
+        }
+      : basePattern;
     placeOn(
       inv.dueDate,
       {
@@ -268,7 +304,7 @@ export async function computeForecast(
         amount: remaining,
       },
       "in",
-      customerDelays.get(inv.contactId)
+      effectivePattern
     );
   }
 
@@ -448,6 +484,7 @@ export async function computeForecast(
     endDate: format(end, "yyyy-MM-dd"),
     horizonDays,
     currency: options?.currency ?? "INR",
+    stressDays,
     days,
     weeks,
     summary: {

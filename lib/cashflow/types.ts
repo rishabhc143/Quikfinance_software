@@ -85,6 +85,10 @@ export type CashflowForecast = {
   /** Currency code, e.g. "INR" — for display only. v1 assumes a single
    *  currency across all accounts (org default). */
   currency: string;
+  /** CF-3 — stress-test offset applied to inflow projection dates.
+   *  Zero = base case. Echoed in the response so the UI can render
+   *  the current scenario label. */
+  stressDays: number;
   days: ForecastDay[];
   weeks: ForecastWeek[];
   summary: ForecastSummary;
