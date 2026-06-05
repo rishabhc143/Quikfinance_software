@@ -34,6 +34,11 @@ import "server-only";
 
 import { addDays, format, startOfDay } from "date-fns";
 import { db } from "@/lib/db";
+import {
+  getCustomerPaymentDelays,
+  getVendorPaymentDelays,
+  type PaymentDelayPattern,
+} from "./payment-patterns";
 import { projectOccurrences } from "./recurring-projection";
 import type {
   CashflowForecast,
@@ -63,6 +68,8 @@ export async function computeForecast(
     recurringInvoices,
     recurringBills,
     recurringExpenses,
+    customerDelays,
+    vendorDelays,
   ] = await Promise.all([
     db.bankAccount.findMany({
       where: { organizationId, isActive: true },
@@ -92,6 +99,9 @@ export async function computeForecast(
         dueDate: true,
         total: true,
         amountPaid: true,
+        // CF-2 needs contactId to look up the learned payment-delay
+        // pattern for this customer.
+        contactId: true,
         contact: { select: { displayName: true } },
       },
     }),
@@ -109,6 +119,9 @@ export async function computeForecast(
         dueDate: true,
         total: true,
         amountPaid: true,
+        // CF-2 needs contactId to look up the learned payment-delay
+        // pattern for this vendor.
+        contactId: true,
         contact: { select: { displayName: true } },
       },
     }),
@@ -160,6 +173,12 @@ export async function computeForecast(
         amount: true,
       },
     }),
+    // CF-2 — learned per-customer / per-vendor payment delays.
+    // The engine applies these to open-invoice / open-bill projection
+    // dates so the forecast reflects how counterparties ACTUALLY pay,
+    // not just contractual due dates.
+    getCustomerPaymentDelays(organizationId, start),
+    getVendorPaymentDelays(organizationId, start),
   ]);
 
   // ── Starting balance ───────────────────────────────────────────────────
@@ -188,17 +207,45 @@ export async function computeForecast(
     });
   }
 
+  // CF-2 — counter for items shifted by the learned-delay layer.
+  // Reported in summary so the UI can surface "N items adjusted
+  // for typical payment delay".
+  let patternsApplied = 0;
+
   const placeOn = (
     rawDate: Date,
     item: ForecastItem,
-    direction: "in" | "out"
+    direction: "in" | "out",
+    pattern?: PaymentDelayPattern | null
   ): void => {
     const dueDate = startOfDay(rawDate);
+    let adjustedDate = dueDate;
+    // CF-2 — when we have a learned pattern, shift the placement
+    // date by the customer/vendor's average payment delay. Pattern
+    // is only present when sample size ≥ 3 and within the lookback
+    // window — see `aggregateDelays` for the rules.
+    if (pattern && pattern.avgDelayDays !== 0) {
+      adjustedDate = startOfDay(
+        addDays(dueDate, pattern.avgDelayDays)
+      );
+    }
     // Past-due flows land on day 0 (they're owed/owing NOW).
-    const effDate = dueDate < start ? start : dueDate;
+    const effDate = adjustedDate < start ? start : adjustedDate;
     const key = format(effDate, "yyyy-MM-dd");
     const day = dayMap.get(key);
     if (!day) return; // past the horizon
+
+    // Annotate the item with the original due date when a shift
+    // was actually applied, so the UI can render both.
+    if (pattern && pattern.avgDelayDays !== 0) {
+      const originalKey = format(dueDate, "yyyy-MM-dd");
+      if (originalKey !== key) {
+        item.originalDate = originalKey;
+        item.delayAppliedDays = pattern.avgDelayDays;
+        patternsApplied += 1;
+      }
+    }
+
     if (direction === "in") {
       day.inflows.push(item);
       day.totalIn += item.amount;
@@ -220,7 +267,8 @@ export async function computeForecast(
         label: `Invoice ${inv.number} — ${inv.contact.displayName}`,
         amount: remaining,
       },
-      "in"
+      "in",
+      customerDelays.get(inv.contactId)
     );
   }
 
@@ -236,7 +284,8 @@ export async function computeForecast(
         label: `Bill ${bill.number} — ${bill.contact?.displayName ?? "Vendor"}`,
         amount: remaining,
       },
-      "out"
+      "out",
+      bill.contactId ? vendorDelays.get(bill.contactId) : null
     );
   }
 
@@ -411,6 +460,7 @@ export async function computeForecast(
       minBalanceDate,
       weeksWithDeficit,
       hasInsolvencyRisk,
+      patternsApplied,
     },
   };
 }
