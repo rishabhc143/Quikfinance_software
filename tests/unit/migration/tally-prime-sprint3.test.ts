@@ -144,24 +144,26 @@ describe("tallyPrimeParser — Sprint 3 voucher types", () => {
     expect(pmt?.totals.total).toBe(11800);
   });
 
-  it("still warns about Journal voucher type (Sprint 4+ territory)", async () => {
+  it("Sprint 5 — Journal is now imported (was unsupported in Sprint 3)", async () => {
     const result = await tallyPrimeParser.parse(FIXTURE_XML);
-    const w = result.warnings.find((w) => w.code === "voucher_type_unsupported_v1");
-    expect(w).toBeDefined();
-    expect(w?.message).toMatch(/journal/i);
+    const j = result.vouchers.find((v) => v.type === "journal");
+    expect(j).toBeDefined();
+    expect(j?.sourceVoucherNumber).toBe("JRN-001");
   });
 
-  it("extracts 4 vouchers total across the three new types + skips the Journal", async () => {
+  it("extracts 4 vouchers total — Purchase + Receipt + Payment + Journal", async () => {
     const result = await tallyPrimeParser.parse(FIXTURE_XML);
-    expect(result.vouchers).toHaveLength(3); // Purchase + Receipt + Payment
+    // Sprint 3 fixture has 4 voucher types; Sprint 5 imports all of
+    // them (Journal was previously unsupported, now first-class).
+    expect(result.vouchers).toHaveLength(4);
     const types = result.vouchers.map((v) => v.type).sort();
-    expect(types).toEqual(["payment", "purchase", "receipt"]);
+    expect(types).toEqual(["journal", "payment", "purchase", "receipt"]);
   });
 
   it("each voucher uses Tally GUID as sourceGuid (not the fallback synthetic key)", async () => {
     const result = await tallyPrimeParser.parse(FIXTURE_XML);
     const guids = result.vouchers.map((v) => v.sourceGuid).sort();
-    expect(guids).toEqual(["p-001", "pay-001", "r-001"]);
+    expect(guids).toEqual(["j-001", "p-001", "pay-001", "r-001"]);
   });
 
   it("Receipt without a matching party-ledger line falls back to largest amount", async () => {

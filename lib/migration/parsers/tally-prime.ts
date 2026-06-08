@@ -650,6 +650,67 @@ function parseCashVoucher(
   return result;
 }
 
+/** Sprint 5 — Journal voucher. Tally journal vouchers have N
+ *  debit + N credit lines to any ledgers (no party-side line, no
+ *  inventory). We capture the ledger entries as canonical lines so
+ *  the reconciliation report can show them; the forecast engine
+ *  ignores type='journal' (these are internal adjustments, not
+ *  cash movements). */
+function parseJournalVoucher(
+  node: Record<string, unknown>,
+  warnings: ParseWarning[]
+): CanonicalVoucher | null {
+  const guid = textOf(node["GUID"]);
+  const voucherNumber = textOf(node["VOUCHERNUMBER"]);
+  const dateIso = tallyDateToIso(textOf(node["DATE"]));
+  const narration = textOf(node["NARRATION"]) || undefined;
+
+  if (!guid && !voucherNumber) {
+    warnings.push({
+      code: "voucher_no_identity",
+      message: "Journal voucher has no GUID or VOUCHERNUMBER — skipped.",
+    });
+    return null;
+  }
+
+  const sourceGuid = guid || `vch:journal:${voucherNumber}:${dateIso}`;
+
+  const allLedgerEntries =
+    (node["ALLLEDGERENTRIES.LIST"] as Record<string, unknown>[] | undefined) ??
+    (node["LEDGERENTRIES.LIST"] as Record<string, unknown>[] | undefined) ??
+    [];
+
+  const lines: CanonicalLine[] = allLedgerEntries.map((le) => ({
+    itemName: textOf(le["LEDGERNAME"]) || undefined,
+    amount: Math.abs(toNum(le["AMOUNT"])),
+    ledgerRef: textOf(le["LEDGERNAME"]) || undefined,
+    raw: le,
+  }));
+
+  // Total = sum of one side (debits = credits in a balanced
+  // journal; we sum debit-side which is the positive amounts).
+  const total = allLedgerEntries
+    .map((le) => toNum(le["AMOUNT"]))
+    .filter((n) => n > 0)
+    .reduce((s, n) => s + n, 0);
+
+  return {
+    sourceFormat: SOURCE_FORMAT,
+    sourceGuid,
+    sourceVoucherNumber: voucherNumber,
+    type: "journal",
+    date: dateIso,
+    lines,
+    narration,
+    totals: {
+      subtotal: total,
+      tax: 0,
+      total,
+    },
+    raw: node,
+  };
+}
+
 export const tallyPrimeParser: FormatParser = {
   detect(sample) {
     // Quick fingerprint — Tally Prime exports begin with the
@@ -730,13 +791,52 @@ export const tallyPrimeParser: FormatParser = {
           } else if (vchType === "payment") {
             const vch = parseCashVoucher(vn, "payment", warnings);
             if (vch) vouchers.push(vch);
+          } else if (vchType === "credit note" || vchType === "credit_note") {
+            // Sprint 5 — sales return / customer credit. Reduces AR.
+            // Structurally identical to Sales but tagged with the
+            // discriminant type so the projection engine can apply
+            // opposite sign in Sprint 6 (currently treated as "data
+            // we have but don't project").
+            const vch = parseSalesVoucher(vn, warnings);
+            if (vch) {
+              vch.type = "credit_note";
+              vouchers.push(vch);
+            }
+          } else if (vchType === "debit note" || vchType === "debit_note") {
+            // Sprint 5 — purchase return / vendor debit. Reduces AP.
+            const vch = parsePurchaseVoucher(vn, warnings);
+            if (vch) {
+              vch.type = "debit_note";
+              vouchers.push(vch);
+            }
+          } else if (vchType === "contra") {
+            // Sprint 5 — contra entry (bank↔bank, bank↔cash).
+            // No party involved; pure internal cash movement. We
+            // record for completeness but the forecast engine
+            // ignores type='contra' since it nets to zero on the
+            // org's cash position.
+            const vch = parseCashVoucher(vn, "receipt", warnings); // reuse cash parser
+            if (vch) {
+              vch.type = "contra";
+              vch.partyRef = undefined; // contras have no party
+              vouchers.push(vch);
+            }
+          } else if (vchType === "journal") {
+            // Sprint 5 — manual journal voucher. Tally allows N
+            // debits + N credits to any ledgers. We record the
+            // skeleton (date, narration, line ledgers + amounts)
+            // for the reconciliation report; the engine doesn't
+            // project journals (they're internal adjustments,
+            // not cash movements).
+            const vch = parseJournalVoucher(vn, warnings);
+            if (vch) vouchers.push(vch);
           } else if (vchType) {
-            // Still-unsupported types: journal, credit_note, debit_note,
-            // contra, stock-journal, manufacturing, optional. Track so
-            // the user knows what was skipped.
+            // Genuinely unsupported: stock-journal, manufacturing,
+            // optional, memorandum, reversing. Track so the user
+            // knows what was skipped.
             warnings.push({
               code: "voucher_type_unsupported_v1",
-              message: `Voucher type "${vchType}" not yet supported in Companion (Sprint 3 covers Sales/Purchase/Receipt/Payment — skipped).`,
+              message: `Voucher type "${vchType}" not yet supported in Companion (Sprint 5 covers Sales/Purchase/Receipt/Payment/Journal/Credit Note/Debit Note/Contra — others skipped).`,
             });
           }
         }
