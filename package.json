@@ -108,7 +108,7 @@
     "docx": "^9.7.1",
     "embedded-postgres": "18.3.0-beta.17",
     "eslint": "^8.57.1",
-    "eslint-config-next": "14.2.35",
+    "eslint-config-next": "15.5.19",
     "lighthouse": "^13.3.0",
     "postcss": "^8.5.15",
     "prisma": "^5.22.0",
