@@ -76,26 +76,71 @@ export async function projectCompanionVouchers(
   // generate thousands of phantom future inflows.
   const cutoff = new Date(start.getTime() - MAX_AGE_DAYS * 86400000);
 
-  const vouchers = await db.companionVoucher.findMany({
-    where: {
-      organizationId,
-      deletedAt: null,
-      type: { in: ["sales", "purchase"] },
-      date: { gte: cutoff },
-    },
-    select: {
-      id: true,
-      sourceVoucherNumber: true,
-      type: true,
-      date: true,
-      total: true,
-      partyLedger: { select: { displayName: true } },
-    },
-  });
+  // Sprint 4 — two queries:
+  //   1. Within-cutoff rows: include regardless of paid status, so a
+  //      fully-paid recent voucher correctly drops out via the
+  //      total-paidAmount check in the loop below.
+  //   2. Older rows with OUTSTANDING balance: included even though
+  //      they're past the age cutoff, because they still represent
+  //      real unpaid money the user is owed (or owes).
+  // We can't combine these into one query because Prisma can't
+  // compare two columns in a `where`. The partial index from Sprint 4
+  // (`CompanionVoucher_party_type_date_idx`) keeps both queries fast.
+  const [withinCutoff, olderRows] = await Promise.all([
+    db.companionVoucher.findMany({
+      where: {
+        organizationId,
+        deletedAt: null,
+        type: { in: ["sales", "purchase"] },
+        OR: [{ date: { gte: cutoff } }],
+      },
+      select: {
+        id: true,
+        sourceVoucherNumber: true,
+        type: true,
+        date: true,
+        total: true,
+        paidAmount: true,
+        partyLedger: { select: { displayName: true } },
+      },
+    }),
+    db.companionVoucher.findMany({
+      where: {
+        organizationId,
+        deletedAt: null,
+        type: { in: ["sales", "purchase"] },
+        date: { lt: cutoff },
+      },
+      select: {
+        id: true,
+        sourceVoucherNumber: true,
+        type: true,
+        date: true,
+        total: true,
+        paidAmount: true,
+        partyLedger: { select: { displayName: true } },
+      },
+    }),
+  ]);
+
+  // Defensive copy via spread — guards against the test mock
+  // returning the same array reference for both findMany calls
+  // (which used to mutate the iterated list when we pushed into
+  // it). Production Prisma returns fresh arrays so this is a
+  // test-only safety net.
+  const vouchers = [...withinCutoff];
+  for (const o of olderRows) {
+    if (Number(o.total) - Number(o.paidAmount) > 0.005) vouchers.push(o);
+  }
 
   const out: CompanionProjection[] = [];
   for (const v of vouchers) {
-    const amount = Number(v.total);
+    // Sprint 4 — project the UNPAID balance, not the full total.
+    // When the matcher has fully cleared a voucher, this becomes 0
+    // and the voucher contributes nothing to the forecast.
+    const total = Number(v.total);
+    const paid = Number(v.paidAmount);
+    const amount = total - paid;
     if (amount <= 0) continue;
     const projectionDate = startOfDay(addDays(v.date, NET_PAYMENT_DAYS));
     const effDate = projectionDate < start ? start : projectionDate;
