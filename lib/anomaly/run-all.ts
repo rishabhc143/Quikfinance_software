@@ -20,6 +20,8 @@ import { detectDuplicateBills } from "./detectors/duplicate-bill";
 import { detectGstinMismatch } from "./detectors/gstin-mismatch";
 import { detectMissingRecurring } from "./detectors/missing-recurring";
 import { detectOverdueJump } from "./detectors/overdue-jump";
+import { detectStaleInvoiceDraft } from "./detectors/stale-invoice-draft";
+import { detectUnusedRecurringProfile } from "./detectors/unused-recurring-profile";
 import { detectVendorConcentration } from "./detectors/vendor-concentration";
 import type { DetectedAnomaly, DetectorFn } from "./types";
 
@@ -38,12 +40,17 @@ import type { DetectedAnomaly, DetectorFn } from "./types";
  *   - large_unbilled_expense: billable expense >30 days old, no invoice
  */
 const DETECTORS: DetectorFn[] = [
+  // v1
   detectDuplicateBills,
   detectMissingRecurring,
+  // v2 — Sprint 8 cashflow/AR/AP/compliance signals
   detectOverdueJump,
   detectBalanceDrop,
   detectVendorConcentration,
   detectGstinMismatch,
+  // v3 — workflow / data-hygiene signals
+  detectStaleInvoiceDraft,
+  detectUnusedRecurringProfile,
 ];
 
 export type AnomalyRunResult = {
