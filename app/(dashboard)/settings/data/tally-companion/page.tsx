@@ -1,5 +1,5 @@
 import { format } from "date-fns";
-import { Database, FileSpreadsheet, CheckCircle2, AlertCircle, Clock } from "lucide-react";
+import { Database, FileSpreadsheet, CheckCircle2, AlertCircle, Clock, FileDown } from "lucide-react";
 import { requireOrganization } from "@/lib/auth-helpers";
 import { db } from "@/lib/db";
 import { TallyUploader } from "./tally-uploader";
@@ -234,15 +234,25 @@ function BatchRow({
             </>
           )}
         </div>
-        {/* Sprint 4 — show Undo button on Done batches within
-            their rollback window. */}
-        {batch.status === "done" &&
-          batch.rollbackExpiresAt &&
-          batch.rollbackExpiresAt.getTime() > Date.now() && (
-            <div className="mt-2">
-              <RollbackButton batchId={batch.id} />
-            </div>
-          )}
+        {/* Sprint 4/5 — show Undo + Download reconciliation on
+            Done batches within their rollback window. */}
+        {batch.status === "done" && (
+          <div className="mt-2 flex gap-2 flex-wrap">
+            <a
+              href={`/api/companion/batches/${batch.id}/reconciliation`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs inline-flex items-center gap-1 px-2 py-1 rounded border border-input bg-background hover:bg-muted/50"
+            >
+              <FileDown className="h-3 w-3" />
+              Download reconciliation PDF
+            </a>
+            {batch.rollbackExpiresAt &&
+              batch.rollbackExpiresAt.getTime() > Date.now() && (
+                <RollbackButton batchId={batch.id} />
+              )}
+          </div>
+        )}
       </div>
     </li>
   );
