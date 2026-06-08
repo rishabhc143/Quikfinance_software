@@ -162,17 +162,22 @@ describe("tallyPrimeParser.parse — ledgers", () => {
 });
 
 describe("tallyPrimeParser.parse — sales vouchers", () => {
-  it("extracts both sales vouchers (skips Receipt)", async () => {
+  it("extracts both sales vouchers + the receipt (Sprint 3 added receipt support)", async () => {
     const result = await tallyPrimeParser.parse(FIXTURE_XML);
-    expect(result.vouchers).toHaveLength(2);
-    expect(result.vouchers.every((v) => v.type === "sales")).toBe(true);
+    // Before Sprint 3: only 2 sales vouchers. After Sprint 3: 2 sales
+    // + 1 receipt = 3. The receipt is now a first-class CompanionVoucher.
+    expect(result.vouchers).toHaveLength(3);
+    const salesVouchers = result.vouchers.filter((v) => v.type === "sales");
+    expect(salesVouchers).toHaveLength(2);
   });
 
-  it("warns about the unsupported Receipt voucher", async () => {
+  it("does NOT warn about the Receipt voucher anymore (Sprint 3 supports it)", async () => {
     const result = await tallyPrimeParser.parse(FIXTURE_XML);
-    const w = result.warnings.find((w) => w.code === "voucher_type_unsupported_v1");
-    expect(w).toBeDefined();
-    expect(w?.message).toMatch(/receipt/i);
+    const w = result.warnings.find(
+      (w) =>
+        w.code === "voucher_type_unsupported_v1" && /receipt/i.test(w.message)
+    );
+    expect(w).toBeUndefined();
   });
 
   it("parses dates from yyyyMMdd to ISO yyyy-MM-dd", async () => {
@@ -181,11 +186,14 @@ describe("tallyPrimeParser.parse — sales vouchers", () => {
     expect(inv1?.date).toBe("2024-05-15");
   });
 
-  it("preserves voucher number verbatim", async () => {
+  it("preserves voucher number verbatim across sales + receipt types", async () => {
     const result = await tallyPrimeParser.parse(FIXTURE_XML);
+    // Sprint 3 — fixture's Receipt voucher now also lands as a
+    // CompanionVoucher, so it appears in the number list.
     expect(result.vouchers.map((v) => v.sourceVoucherNumber).sort()).toEqual([
       "INV-001",
       "INV-002",
+      "RCT-001",
     ]);
   });
 
