@@ -7,9 +7,19 @@
  * This describes which rows appear, NOT their amounts, so it needs no
  * ledger aggregation — just the account list + the report's section map.
  *
- * Phase 2 supports the Profit & Loss family. The AccountType → section
- * mapping mirrors `lib/reports/profit-loss.ts` (SECTION_TYPES /
- * SECTION_LABELS) so the wizard's structure matches the real report.
+ * Supported report families:
+ *   - Profit & Loss (`profit-and-loss`, `horizontal-profit-and-loss`,
+ *     `profit-and-loss-schedule-iii`) — INCOME / COGS / EXPENSE split
+ *     mirrors `lib/reports/profit-loss.ts`
+ *   - Balance Sheet (`balance-sheet`, `horizontal-balance-sheet`,
+ *     `balance-sheet-schedule-iii`) — ASSET / LIABILITY / EQUITY split
+ *     mirrors `lib/reports/balance-sheet.ts`
+ *   - Trial Balance (`trial-balance`) — one section per AccountType
+ *   - Cash Flow Statement (`cash-flow-statement`) — three empty
+ *     activity sections (Operating / Investing / Financing); the user
+ *     manually adds the relevant accounts since CF activity
+ *     classification isn't stored on the Chart of Accounts.
+ *
  * Other report keys return `null` (the wizard shows a "coming soon"
  * message for those until each gets its own structure).
  */
@@ -30,28 +40,80 @@ export type AccountForStructure = {
   type: string;
 };
 
+/** A section definition: which AccountType (or types) it collects. */
+type SectionDef = { key: string; label: string; accountTypes: string[] };
+
 /** P&L section order + the AccountType each section collects. */
-const PNL_SECTIONS: { key: string; label: string; accountType: string }[] = [
-  { key: "operating-income", label: "Operating Income", accountType: "INCOME" },
+const PNL_SECTIONS: SectionDef[] = [
+  {
+    key: "operating-income",
+    label: "Operating Income",
+    accountTypes: ["INCOME"],
+  },
   {
     key: "cost-of-goods-sold",
     label: "Cost of Goods Sold",
-    accountType: "COST_OF_GOODS_SOLD",
+    accountTypes: ["COST_OF_GOODS_SOLD"],
   },
   {
     key: "operating-expense",
     label: "Operating Expense",
-    accountType: "EXPENSE",
+    accountTypes: ["EXPENSE"],
   },
   {
     key: "non-operating-income",
     label: "Non Operating Income",
-    accountType: "OTHER_INCOME",
+    accountTypes: ["OTHER_INCOME"],
   },
   {
     key: "non-operating-expense",
     label: "Non Operating Expense",
-    accountType: "OTHER_EXPENSE",
+    accountTypes: ["OTHER_EXPENSE"],
+  },
+];
+
+/**
+ * Balance Sheet sections — one per top-level AccountType. The actual
+ * BS report subdivides ASSET into Current / Non-Current / Fixed using
+ * `accountSubType` (see `lib/reports/balance-sheet.ts` `bucketFor`),
+ * but the wizard intentionally keeps a flat structure: the user can
+ * add custom subsection rows via the "Add Section" action if they want
+ * to mirror their internal layout. Keeps the AccountForStructure
+ * payload minimal (no subType column).
+ */
+const BS_SECTIONS: SectionDef[] = [
+  { key: "assets", label: "Assets", accountTypes: ["ASSET"] },
+  { key: "liabilities", label: "Liabilities", accountTypes: ["LIABILITY"] },
+  { key: "equity", label: "Equity", accountTypes: ["EQUITY"] },
+];
+
+/**
+ * Trial Balance sections — one per AccountType, ordered the standard
+ * way (assets → liabilities → equity → income → COGS → expenses).
+ * Mirrors how Indian Indian CAs lay out TBs: balance-sheet accounts
+ * first, then P&L accounts. The single "Total" formula row at the
+ * bottom stands in for the balanced debit-credit footer.
+ */
+const TB_SECTIONS: SectionDef[] = [
+  { key: "tb-assets", label: "Assets", accountTypes: ["ASSET"] },
+  { key: "tb-liabilities", label: "Liabilities", accountTypes: ["LIABILITY"] },
+  { key: "tb-equity", label: "Equity", accountTypes: ["EQUITY"] },
+  { key: "tb-income", label: "Income", accountTypes: ["INCOME"] },
+  {
+    key: "tb-other-income",
+    label: "Other Income",
+    accountTypes: ["OTHER_INCOME"],
+  },
+  {
+    key: "tb-cogs",
+    label: "Cost of Goods Sold",
+    accountTypes: ["COST_OF_GOODS_SOLD"],
+  },
+  { key: "tb-expense", label: "Expenses", accountTypes: ["EXPENSE"] },
+  {
+    key: "tb-other-expense",
+    label: "Other Expenses",
+    accountTypes: ["OTHER_EXPENSE"],
   },
 ];
 
@@ -64,8 +126,8 @@ function sortAccounts(a: AccountForStructure, b: AccountForStructure): number {
   });
 }
 
-function pnlSectionNode(
-  def: (typeof PNL_SECTIONS)[number],
+function sectionNode(
+  def: SectionDef,
   accounts: AccountForStructure[],
 ): CustomReportSectionNode {
   return {
@@ -73,32 +135,17 @@ function pnlSectionNode(
     key: def.key,
     label: def.label,
     accounts: accounts
-      .filter((a) => a.type === def.accountType)
+      .filter((a) => def.accountTypes.includes(a.type))
       .sort(sortAccounts)
       .map((a) => ({ id: a.id, name: a.name })),
   };
 }
 
-/**
- * Returns the ordered node list for the given base report, or `null`
- * when the report type doesn't have a structure editor yet.
- *
- * P&L order: Operating Income → Cost of Goods Sold → [fx Gross Profit]
- * → Operating Expense → [fx Operating Profit] → Non Operating Income →
- * Non Operating Expense → [fx Net Profit/Loss].
- */
-export function buildCustomReportStructure(
-  reportKey: string,
+function buildPnlStructure(
   accounts: AccountForStructure[],
-): CustomReportSectionNode[] | null {
-  if (reportKey !== "profit-and-loss") return null;
-
+): CustomReportSectionNode[] {
   const byKey = (k: string) =>
-    pnlSectionNode(
-      PNL_SECTIONS.find((s) => s.key === k)!,
-      accounts,
-    );
-
+    sectionNode(PNL_SECTIONS.find((s) => s.key === k)!, accounts);
   return [
     byKey("operating-income"),
     byKey("cost-of-goods-sold"),
@@ -109,6 +156,122 @@ export function buildCustomReportStructure(
     byKey("non-operating-expense"),
     { kind: "formula", label: "Net Profit/Loss" },
   ];
+}
+
+function buildBalanceSheetStructure(
+  accounts: AccountForStructure[],
+): CustomReportSectionNode[] {
+  const byKey = (k: string) =>
+    sectionNode(BS_SECTIONS.find((s) => s.key === k)!, accounts);
+  return [
+    byKey("assets"),
+    { kind: "formula", label: "Total Assets" },
+    byKey("liabilities"),
+    { kind: "formula", label: "Total Liabilities" },
+    byKey("equity"),
+    { kind: "formula", label: "Total Equity" },
+    { kind: "formula", label: "Total Liabilities & Equity" },
+  ];
+}
+
+function buildTrialBalanceStructure(
+  accounts: AccountForStructure[],
+): CustomReportSectionNode[] {
+  return [
+    ...TB_SECTIONS.map((def) => sectionNode(def, accounts)),
+    { kind: "formula", label: "Total" },
+  ];
+}
+
+/**
+ * Cash Flow has fixed activity sections but the underlying accounts
+ * cannot be auto-classified — the chart of accounts doesn't carry an
+ * "Operating / Investing / Financing" tag. So we return empty sections
+ * the user populates manually via the wizard's "Add Account" action.
+ */
+function buildCashFlowStructure(): CustomReportSectionNode[] {
+  return [
+    {
+      kind: "section",
+      key: "cf-operating",
+      label: "Cash Flow from Operating Activities",
+      accounts: [],
+    },
+    { kind: "formula", label: "Net Cash from Operating Activities" },
+    {
+      kind: "section",
+      key: "cf-investing",
+      label: "Cash Flow from Investing Activities",
+      accounts: [],
+    },
+    { kind: "formula", label: "Net Cash from Investing Activities" },
+    {
+      kind: "section",
+      key: "cf-financing",
+      label: "Cash Flow from Financing Activities",
+      accounts: [],
+    },
+    { kind: "formula", label: "Net Cash from Financing Activities" },
+    { kind: "formula", label: "Net Change in Cash" },
+  ];
+}
+
+/**
+ * Normalise variant report keys (horizontal / schedule-iii layouts)
+ * to the canonical key used by `buildCustomReportStructure`. The
+ * variants change presentation (rotated columns, regulatory headers),
+ * not the underlying section + formula structure, so they share the
+ * same wizard tree.
+ */
+function canonicalReportKey(reportKey: string): string {
+  if (
+    reportKey === "horizontal-profit-and-loss" ||
+    reportKey === "profit-and-loss-schedule-iii"
+  ) {
+    return "profit-and-loss";
+  }
+  if (
+    reportKey === "horizontal-balance-sheet" ||
+    reportKey === "balance-sheet-schedule-iii"
+  ) {
+    return "balance-sheet";
+  }
+  return reportKey;
+}
+
+/**
+ * Returns the ordered node list for the given base report, or `null`
+ * when the report type doesn't have a structure editor yet.
+ *
+ * P&L order: Operating Income → COGS → [fx Gross Profit] → Operating
+ *   Expense → [fx Operating Profit] → Non Operating Income → Non
+ *   Operating Expense → [fx Net Profit/Loss].
+ * Balance Sheet order: Assets → [fx Total Assets] → Liabilities →
+ *   [fx Total Liabilities] → Equity → [fx Total Equity] →
+ *   [fx Total Liabilities & Equity].
+ * Trial Balance order: Assets → Liabilities → Equity → Income →
+ *   Other Income → COGS → Expenses → Other Expenses → [fx Total].
+ * Cash Flow order: Operating Activities → [fx Net …] → Investing
+ *   Activities → [fx Net …] → Financing Activities → [fx Net …] →
+ *   [fx Net Change in Cash].
+ */
+export function buildCustomReportStructure(
+  reportKey: string,
+  accounts: AccountForStructure[],
+): CustomReportSectionNode[] | null {
+  const canonical = canonicalReportKey(reportKey);
+  switch (canonical) {
+    case "profit-and-loss":
+      return buildPnlStructure(accounts);
+    case "balance-sheet":
+      return buildBalanceSheetStructure(accounts);
+    case "trial-balance":
+      return buildTrialBalanceStructure(accounts);
+    case "cash-flow-statement":
+      return buildCashFlowStructure();
+    default:
+      return null;
+  }
 }
 
 /* ────────────────────────────────────────────────────────────────────
