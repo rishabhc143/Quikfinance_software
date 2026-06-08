@@ -3,6 +3,7 @@ import { Database, FileSpreadsheet, CheckCircle2, AlertCircle, Clock } from "luc
 import { requireOrganization } from "@/lib/auth-helpers";
 import { db } from "@/lib/db";
 import { TallyUploader } from "./tally-uploader";
+import { RollbackButton } from "./rollback-button";
 
 export const metadata = { title: "Tally Companion" };
 export const dynamic = "force-dynamic";
@@ -233,6 +234,15 @@ function BatchRow({
             </>
           )}
         </div>
+        {/* Sprint 4 — show Undo button on Done batches within
+            their rollback window. */}
+        {batch.status === "done" &&
+          batch.rollbackExpiresAt &&
+          batch.rollbackExpiresAt.getTime() > Date.now() && (
+            <div className="mt-2">
+              <RollbackButton batchId={batch.id} />
+            </div>
+          )}
       </div>
     </li>
   );

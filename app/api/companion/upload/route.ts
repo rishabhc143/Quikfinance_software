@@ -8,6 +8,7 @@ import {
   ledgerToCreateInput,
   voucherToCreateInput,
 } from "@/lib/migration/mapper";
+import { runPaymentMatcher } from "@/lib/migration/payment-matcher";
 import type { FormatParser, ParseResult } from "@/lib/migration/canonical";
 
 export const runtime = "nodejs";
@@ -173,7 +174,29 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: msg, batchId: batch.id }, { status: 500 });
   }
 
-  // ── 5. Mark complete + set rollback window ────────────────────
+  // ── 5. Sprint 4 — run the payment matcher ─────────────────────
+  // FIFO-matches Receipt vouchers against Sales (and Payment against
+  // Purchase) per party, populating `paidAmount` on the matched
+  // sales/purchase vouchers. Runs across ALL non-deleted Companion
+  // vouchers for the org (not just this batch) so cross-batch
+  // matching works — a receipt imported today correctly pays down a
+  // sales voucher imported last month.
+  let matcherStats:
+    | Awaited<ReturnType<typeof runPaymentMatcher>>
+    | { vouchersUpdated: 0; totalCashApplied: 0; unmatchedCash: 0 } = {
+    vouchersUpdated: 0,
+    totalCashApplied: 0,
+    unmatchedCash: 0,
+  };
+  try {
+    matcherStats = await runPaymentMatcher(organization.id);
+  } catch (e) {
+    // Matcher failure shouldn't roll back the import — the vouchers
+    // are still useful with default paidAmount=0. Log + continue.
+    console.error("[companion/upload] payment matcher failed", e);
+  }
+
+  // ── 6. Mark complete + set rollback window ────────────────────
   const completed = new Date();
   const rollbackExpiry = new Date(completed.getTime() + 30 * 86400000); // 30 days
   await db.migrationBatch.update({
@@ -212,6 +235,7 @@ export async function POST(req: Request) {
       warnings: parseResult.warnings.length,
     },
     warnings: parseResult.warnings,
+    matcher: matcherStats,
     next: {
       historyUrl: "/settings/data/tally-companion",
     },

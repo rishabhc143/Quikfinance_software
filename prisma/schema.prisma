@@ -2506,6 +2506,12 @@ model CompanionVoucher {
   subtotal            Decimal          @default(0) @db.Decimal(18, 4)
   tax                 Decimal          @default(0) @db.Decimal(18, 4)
   total               Decimal          @default(0) @db.Decimal(18, 4)
+  /// Sprint 4 — sum of matched Receipt/Payment voucher amounts.
+  /// Populated by lib/migration/payment-matcher.ts after every
+  /// import batch. Forecast projects (total - paidAmount) so a
+  /// fully-paid imported Sales voucher contributes nothing to
+  /// future inflows.
+  paidAmount          Decimal          @default(0) @db.Decimal(18, 4)
   /// Line items inlined as JSON. See CanonicalLine in
   /// lib/migration/canonical.ts for shape.
   lines               Json
