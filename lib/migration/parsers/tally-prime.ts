@@ -412,6 +412,244 @@ function parseSalesVoucher(
   return result;
 }
 
+/** Sprint 3 — Purchase voucher. Structurally identical to Sales
+ *  except (a) cash flows the other way and (b) inventory entries
+ *  and ledger entries have opposite signs (purchase debits the
+ *  vendor ledger, sales credits the customer ledger). We don't
+ *  need to flip signs here — we just absolute-value all amounts
+ *  and let the forecast engine apply the in/out direction based
+ *  on `type === "purchase"`. */
+function parsePurchaseVoucher(
+  node: Record<string, unknown>,
+  warnings: ParseWarning[]
+): CanonicalVoucher | null {
+  // Implementation mirrors parseSalesVoucher but with type="purchase"
+  // and the warning code prefixed accordingly. Refactoring both into
+  // a shared helper would obscure the (small) semantic differences;
+  // duplicating the ~40 lines is clearer for v1.
+  const guid = textOf(node["GUID"]);
+  const voucherNumber = textOf(node["VOUCHERNUMBER"]);
+  const dateIso = tallyDateToIso(textOf(node["DATE"]));
+  const partyName = textOf(node["PARTYLEDGERNAME"]) || textOf(node["PARTYNAME"]);
+  const partyGstin = textOf(node["PARTYGSTIN"]) || undefined;
+  const placeOfSupply = textOf(node["PLACEOFSUPPLY"]) || textOf(node["STATENAME"]) || undefined;
+  const narration = textOf(node["NARRATION"]) || undefined;
+
+  if (!guid && !voucherNumber) {
+    warnings.push({
+      code: "voucher_no_identity",
+      message: "Purchase voucher has no GUID or VOUCHERNUMBER — skipped.",
+    });
+    return null;
+  }
+
+  const sourceGuid = guid || `vch:purchase:${voucherNumber}:${dateIso}`;
+
+  const inventoryEntries =
+    (node["ALLINVENTORYENTRIES.LIST"] as Record<string, unknown>[] | undefined) ?? [];
+  const lines: CanonicalLine[] = [];
+
+  for (const entry of inventoryEntries) {
+    const itemName = textOf(entry["STOCKITEMNAME"]) || undefined;
+    const hsn = textOf(entry["GSTHSNNAME"]) || textOf(entry["HSNCODE"]) || undefined;
+    const rate = entry["RATE"] != null ? toNum(entry["RATE"]) : undefined;
+    const quantityRaw = textOf(entry["BILLEDQTY"]) || textOf(entry["ACTUALQTY"]);
+    const quantity = quantityRaw ? toNum(quantityRaw.split(" ")[0]) : undefined;
+    const amount = Math.abs(toNum(entry["AMOUNT"]));
+
+    let taxAmount = 0;
+    const subLedgerEntries =
+      (entry["LEDGERENTRIES.LIST"] as Record<string, unknown>[] | undefined) ?? [];
+    for (const subL of subLedgerEntries) {
+      const ledName = textOf(subL["LEDGERNAME"]).toLowerCase();
+      if (
+        ledName.includes("cgst") ||
+        ledName.includes("sgst") ||
+        ledName.includes("igst") ||
+        ledName.includes("cess")
+      ) {
+        taxAmount += Math.abs(toNum(subL["AMOUNT"]));
+      }
+    }
+    const taxRate = amount > 0 && taxAmount > 0 ? +((taxAmount / amount) * 100).toFixed(2) : undefined;
+
+    lines.push({
+      itemName,
+      hsn,
+      rate,
+      quantity,
+      amount,
+      taxRate,
+      taxAmount: taxAmount > 0 ? taxAmount : undefined,
+      raw: entry,
+    });
+  }
+
+  if (lines.length === 0) {
+    const ledgerEntries =
+      (node["ALLLEDGERENTRIES.LIST"] as Record<string, unknown>[] | undefined) ??
+      (node["LEDGERENTRIES.LIST"] as Record<string, unknown>[] | undefined) ??
+      [];
+    const expenseLines = ledgerEntries.filter((le) => {
+      const ledName = textOf(le["LEDGERNAME"]).toLowerCase();
+      return !ledName.includes("gst") && !ledName.includes("tcs") && !ledName.includes("tds") && ledName !== partyName.toLowerCase();
+    });
+    for (const le of expenseLines) {
+      lines.push({
+        itemName: textOf(le["LEDGERNAME"]) || undefined,
+        amount: Math.abs(toNum(le["AMOUNT"])),
+        ledgerRef: textOf(le["LEDGERNAME"]) || undefined,
+        raw: le,
+      });
+    }
+  }
+
+  const allLedgerEntries =
+    (node["ALLLEDGERENTRIES.LIST"] as Record<string, unknown>[] | undefined) ??
+    (node["LEDGERENTRIES.LIST"] as Record<string, unknown>[] | undefined) ??
+    [];
+  let gross = 0;
+  for (const le of allLedgerEntries) {
+    const ledName = textOf(le["LEDGERNAME"]).toLowerCase();
+    if (ledName === partyName.toLowerCase()) {
+      gross = Math.abs(toNum(le["AMOUNT"]));
+      break;
+    }
+  }
+  if (gross === 0) {
+    gross = lines.reduce((s, l) => s + l.amount + (l.taxAmount ?? 0), 0);
+  }
+  const subtotal = lines.reduce((s, l) => s + l.amount, 0);
+  const tax = lines.reduce((s, l) => s + (l.taxAmount ?? 0), 0);
+
+  const result: CanonicalVoucher = {
+    sourceFormat: SOURCE_FORMAT,
+    sourceGuid,
+    sourceVoucherNumber: voucherNumber,
+    type: "purchase",
+    date: dateIso,
+    placeOfSupply,
+    lines,
+    narration,
+    totals: {
+      subtotal,
+      tax,
+      total: gross || subtotal + tax,
+    },
+    raw: node,
+  };
+  if (partyName) {
+    result.partyRef = {
+      sourceGuid: `ledger:${partyName.toLowerCase()}`,
+      displayName: partyName,
+      gstin: partyGstin,
+    };
+  } else {
+    warnings.push({
+      code: "voucher_missing_party",
+      message: `Purchase voucher ${voucherNumber} has no PARTYLEDGERNAME — preserved without party link.`,
+      sourceGuid,
+    });
+  }
+  return result;
+}
+
+/** Sprint 3 — Receipt + Payment vouchers. These are simpler than
+ *  Sales/Purchase: a single party-side line with the cash amount.
+ *  Used by Sprint 4 to compute remaining-unpaid balance on the
+ *  Sales/Purchase vouchers they pair with. For now we just record
+ *  them as CompanionVoucher rows with type="receipt" / "payment".
+ *
+ *  Receipt = money IN (customer paid us → reduces AR)
+ *  Payment = money OUT (we paid a vendor → reduces AP)
+ *
+ *  Both have the same XML shape: a header + LEDGERENTRIES.LIST
+ *  with the party-side line carrying the cash amount, and one or
+ *  more bank/cash-side lines. We sum the party-side line as the
+ *  voucher total. */
+function parseCashVoucher(
+  node: Record<string, unknown>,
+  type: "receipt" | "payment",
+  warnings: ParseWarning[]
+): CanonicalVoucher | null {
+  const guid = textOf(node["GUID"]);
+  const voucherNumber = textOf(node["VOUCHERNUMBER"]);
+  const dateIso = tallyDateToIso(textOf(node["DATE"]));
+  const partyName = textOf(node["PARTYLEDGERNAME"]) || textOf(node["PARTYNAME"]);
+  const narration = textOf(node["NARRATION"]) || undefined;
+
+  if (!guid && !voucherNumber) {
+    warnings.push({
+      code: "voucher_no_identity",
+      message: `${type === "receipt" ? "Receipt" : "Payment"} voucher has no GUID or VOUCHERNUMBER — skipped.`,
+    });
+    return null;
+  }
+
+  const sourceGuid = guid || `vch:${type}:${voucherNumber}:${dateIso}`;
+
+  // Cash vouchers have all their data in LEDGERENTRIES.LIST.
+  // The party line has the amount with sign opposite to the bank
+  // line. We take absolute value of the party-side amount as the
+  // total — that's the cash amount that flowed.
+  const allLedgerEntries =
+    (node["ALLLEDGERENTRIES.LIST"] as Record<string, unknown>[] | undefined) ??
+    (node["LEDGERENTRIES.LIST"] as Record<string, unknown>[] | undefined) ??
+    [];
+
+  let total = 0;
+  const lines: CanonicalLine[] = [];
+  for (const le of allLedgerEntries) {
+    const ledName = textOf(le["LEDGERNAME"]);
+    const amt = Math.abs(toNum(le["AMOUNT"]));
+    lines.push({
+      itemName: ledName || undefined,
+      amount: amt,
+      ledgerRef: ledName || undefined,
+      raw: le,
+    });
+    // The party-side line is the one referencing the party name
+    // (case-insensitive). If we can't find an exact match (e.g.
+    // multi-party voucher) we fall back to the largest amount.
+    if (partyName && ledName.toLowerCase() === partyName.toLowerCase()) {
+      total = amt;
+    }
+  }
+  if (total === 0) {
+    // Fallback: largest line amount.
+    total = lines.reduce((m, l) => Math.max(m, l.amount), 0);
+  }
+
+  const result: CanonicalVoucher = {
+    sourceFormat: SOURCE_FORMAT,
+    sourceGuid,
+    sourceVoucherNumber: voucherNumber,
+    type,
+    date: dateIso,
+    lines,
+    narration,
+    totals: {
+      subtotal: total,
+      tax: 0, // Cash vouchers carry no tax (the underlying Sales/Bill did)
+      total,
+    },
+    raw: node,
+  };
+  if (partyName) {
+    result.partyRef = {
+      sourceGuid: `ledger:${partyName.toLowerCase()}`,
+      displayName: partyName,
+    };
+  } else {
+    warnings.push({
+      code: "voucher_missing_party",
+      message: `${type === "receipt" ? "Receipt" : "Payment"} voucher ${voucherNumber} has no PARTYLEDGERNAME — Sprint-4 payment-matching will skip it.`,
+      sourceGuid,
+    });
+  }
+  return result;
+}
+
 export const tallyPrimeParser: FormatParser = {
   detect(sample) {
     // Quick fingerprint — Tally Prime exports begin with the
@@ -477,12 +715,28 @@ export const tallyPrimeParser: FormatParser = {
           if (vchType === "sales") {
             const vch = parseSalesVoucher(vn, warnings);
             if (vch) vouchers.push(vch);
+          } else if (vchType === "purchase") {
+            // Sprint 3: Purchase vouchers project as outflows in the
+            // forecast engine (companion-projection.ts already handles
+            // the "purchase" type — Sprint 2 wiring).
+            const vch = parsePurchaseVoucher(vn, warnings);
+            if (vch) vouchers.push(vch);
+          } else if (vchType === "receipt") {
+            // Sprint 3: Receipts recorded but not yet matched against
+            // Sales vouchers. Sprint 4 builds the FIFO matcher that
+            // reduces remaining-unpaid balance on the paired Sales.
+            const vch = parseCashVoucher(vn, "receipt", warnings);
+            if (vch) vouchers.push(vch);
+          } else if (vchType === "payment") {
+            const vch = parseCashVoucher(vn, "payment", warnings);
+            if (vch) vouchers.push(vch);
           } else if (vchType) {
-            // v1 only supports Sales. Track unsupported types so
+            // Still-unsupported types: journal, credit_note, debit_note,
+            // contra, stock-journal, manufacturing, optional. Track so
             // the user knows what was skipped.
             warnings.push({
               code: "voucher_type_unsupported_v1",
-              message: `Voucher type "${vchType}" not yet supported in Companion v1 — skipped (will be added in v2).`,
+              message: `Voucher type "${vchType}" not yet supported in Companion (Sprint 3 covers Sales/Purchase/Receipt/Payment — skipped).`,
             });
           }
         }
