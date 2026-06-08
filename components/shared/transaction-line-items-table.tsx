@@ -178,8 +178,17 @@ export function TransactionLineItemsTable(props: TransactionLineItemsTableProps)
   );
   const [expanded, setExpanded] = React.useState<Record<string, boolean>>({});
 
-  const taxOptions = props.taxOptions ?? [];
-  const taxByValue = React.useMemo(() => new Map(taxOptions.map((t) => [t.value, t])), [taxOptions]);
+  // Memoise the empty-fallback so taxOptions is referentially stable
+  // when props.taxOptions is undefined — fixes the react-hooks/
+  // exhaustive-deps warning on the useMemo below that depends on it.
+  const taxOptions = React.useMemo(
+    () => props.taxOptions ?? [],
+    [props.taxOptions]
+  );
+  const taxByValue = React.useMemo(
+    () => new Map(taxOptions.map((t) => [t.value, t])),
+    [taxOptions]
+  );
 
   const totalQuantity = React.useMemo(
     () =>

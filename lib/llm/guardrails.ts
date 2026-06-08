@@ -23,6 +23,9 @@ import { startOfDay } from "date-fns";
 import { db } from "@/lib/db";
 import { calcCostCents } from "./pricing";
 
+// `calcCostCents` is also re-used inside `recordLlmUsage` below — the
+// import above feeds both call sites.
+
 /** Hard per-day defaults. Single-tenant Quikfinance for now;
  *  per-tier override lives on OrganizationPreference in Phase 2. */
 export const DEFAULTS = {
@@ -160,6 +163,45 @@ export async function recordLlmCall(args: {
       },
     }),
   ]);
+}
+
+/** Record raw token usage without an associated conversation.
+ *
+ *  Used by background / one-shot LLM calls that don't fit the
+ *  chat-message model — e.g. the Smart Capture LLM fallback in
+ *  lib/documents/parsers/llm-fallback.ts. We still want their
+ *  spend to count toward the per-org daily budget + show up in
+ *  the cost dashboard, even though there's no AiConversation to
+ *  attach to.
+ *
+ *  Same upsert semantics as recordLlmCall — idempotent on
+ *  (orgId, day). */
+export async function recordLlmUsage(args: {
+  organizationId: string;
+  tokensIn: number;
+  tokensOut: number;
+  model: string;
+}): Promise<void> {
+  if (args.tokensIn <= 0 && args.tokensOut <= 0) return;
+  const cost = calcCostCents(args.model, args.tokensIn, args.tokensOut);
+  const todayUtc = startOfDay(new Date());
+  await db.organizationAIUsage.upsert({
+    where: { organizationId_day: { organizationId: args.organizationId, day: todayUtc } },
+    create: {
+      organizationId: args.organizationId,
+      day: todayUtc,
+      tokensIn: args.tokensIn,
+      tokensOut: args.tokensOut,
+      costCents: cost,
+      callCount: 1,
+    },
+    update: {
+      tokensIn: { increment: args.tokensIn },
+      tokensOut: { increment: args.tokensOut },
+      costCents: { increment: cost },
+      callCount: { increment: 1 },
+    },
+  });
 }
 
 /** System-prompt preamble that hardens against prompt-injection

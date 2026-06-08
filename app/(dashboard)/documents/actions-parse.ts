@@ -85,7 +85,7 @@ export async function retryExtractWithPasswordAction(input: {
   const llmEnabledC = isLlmFallbackEnabled();
   if (isBankStmtC && heuristicEmptyC && llmEnabledC) {
     try {
-      const llm = await parseBankStatementWithLLM(result.text);
+      const llm = await parseBankStatementWithLLM(result.text, organization.id);
       if (llm && llm.rows.length > 0) {
         extractedFields = llm;
         parserSourceC = "llm";
@@ -183,7 +183,7 @@ export async function retryParseWithLLMAction(input: {
 
   let llm: ParsedBankStatement | null = null;
   try {
-    llm = await parseBankStatementWithLLM(doc.extractedText);
+    llm = await parseBankStatementWithLLM(doc.extractedText, organization.id);
   } catch (err) {
     console.warn("[documents/retry-llm] LLM fallback threw", err);
   }

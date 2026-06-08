@@ -28,6 +28,11 @@ import type {
   BankTransactionRow,
   ParsedBankStatement,
 } from "./bank-statement-types";
+import {
+  GuardrailError,
+  assertWithinBudget,
+  recordLlmUsage,
+} from "@/lib/llm/guardrails";
 
 /** Input size guard. Below 200 chars there's no real statement to
  *  parse; above 30 kB the prompt cost balloons and we'd risk hitting
@@ -115,11 +120,15 @@ export function isLlmFallbackEnabled(): boolean {
  * Up to 2 calls: first to haiku for cost, then if the response
  * doesn't validate, one retry with sonnet for accuracy.
  *
- * Pure function with respect to our codebase — only side effect
- * is the outbound API call.
+ * When `organizationId` is provided, the call is gated by the
+ * per-org daily token budget (Guardrail 2) and the spend is
+ * recorded into OrganizationAIUsage (Guardrail 3 dashboard). When
+ * absent (legacy callsite, tests), the call still runs but isn't
+ * billed against any org — keep new callers always passing org.
  */
 export async function parseBankStatementWithLLM(
-  text: string | null | undefined
+  text: string | null | undefined,
+  organizationId?: string
 ): Promise<ParsedBankStatement | null> {
   if (!isLlmFallbackEnabled()) return null;
   if (!text) return null;
@@ -127,18 +136,33 @@ export async function parseBankStatementWithLLM(
   if (trimmed.length < MIN_TEXT_CHARS) return null;
   if (trimmed.length > MAX_TEXT_CHARS) return null;
 
+  // Guardrail pre-flight (skipped when no org context).
+  if (organizationId) {
+    try {
+      await assertWithinBudget({ organizationId });
+    } catch (e) {
+      if (e instanceof GuardrailError) {
+        console.warn(
+          `[llm-fallback] org ${organizationId} over daily token budget — falling back to extracted-text panel`
+        );
+        return null;
+      }
+      throw e;
+    }
+  }
+
   const promptText =
     trimmed.length > MAX_PROMPT_TEXT_CHARS
       ? trimmed.slice(0, MAX_PROMPT_TEXT_CHARS)
       : trimmed;
 
   // First attempt: haiku (cheap).
-  let parsed = await callClaude(HAIKU_MODEL, promptText);
+  let parsed = await callClaude(HAIKU_MODEL, promptText, organizationId);
   if (parsed) return parsed;
 
   // Second attempt: sonnet (more accurate, ~5x cost). Cap at 2
   // total calls per statement.
-  parsed = await callClaude(SONNET_MODEL, promptText);
+  parsed = await callClaude(SONNET_MODEL, promptText, organizationId);
   return parsed;
 }
 
@@ -151,7 +175,8 @@ export async function parseBankStatementWithLLM(
  */
 async function callClaude(
   model: string,
-  text: string
+  text: string,
+  organizationId?: string
 ): Promise<ParsedBankStatement | null> {
   try {
     const anthropic = new Anthropic({
@@ -163,6 +188,25 @@ async function callClaude(
       system: SYSTEM_PROMPT,
       messages: [{ role: "user", content: text }],
     });
+
+    // Guardrail 5/3: record spend even on failure paths below so
+    // the dashboard reflects what Anthropic actually charged us.
+    // Wrapped in try/catch so a DB hiccup doesn't break parsing.
+    if (organizationId && response.usage) {
+      try {
+        await recordLlmUsage({
+          organizationId,
+          tokensIn: response.usage.input_tokens ?? 0,
+          tokensOut: response.usage.output_tokens ?? 0,
+          model,
+        });
+      } catch (usageErr) {
+        console.warn(
+          "[llm-fallback] failed to record usage",
+          usageErr
+        );
+      }
+    }
 
     // Aggregate every text block in the response.
     const raw = response.content
