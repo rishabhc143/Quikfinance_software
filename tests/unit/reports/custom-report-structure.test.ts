@@ -37,10 +37,10 @@ function section(
 }
 
 describe("buildCustomReportStructure — unsupported report types", () => {
-  it("returns null for non-P&L report keys", () => {
-    expect(buildCustomReportStructure("balance-sheet", [])).toBeNull();
-    expect(buildCustomReportStructure("cash-flow", [])).toBeNull();
+  it("returns null for report keys without a structure editor", () => {
     expect(buildCustomReportStructure("sales-by-customer", [])).toBeNull();
+    expect(buildCustomReportStructure("ar-aging-summary", [])).toBeNull();
+    expect(buildCustomReportStructure("general-ledger", [])).toBeNull();
     expect(buildCustomReportStructure("", [])).toBeNull();
   });
 });
@@ -181,6 +181,201 @@ describe("buildCustomReportStructure — sort order within a section", () => {
       "Alpha",
       "Charlie",
     ]);
+  });
+});
+
+describe("buildCustomReportStructure — Balance Sheet", () => {
+  const accounts: AccountForStructure[] = [
+    { id: "a1", name: "Cash", code: "1000", type: "ASSET" },
+    { id: "a2", name: "Bank", code: "1100", type: "ASSET" },
+    { id: "l1", name: "Trade Payables", code: "2000", type: "LIABILITY" },
+    { id: "e1", name: "Owners Capital", code: "3000", type: "EQUITY" },
+    // P&L accounts must be ignored by the BS wizard.
+    { id: "i1", name: "Sales", code: "4000", type: "INCOME" },
+    { id: "x1", name: "Rent", code: "6000", type: "EXPENSE" },
+  ];
+
+  it("returns the 7 nodes in canonical Balance Sheet order", () => {
+    const list = buildCustomReportStructure("balance-sheet", accounts)!;
+    expect(list).toHaveLength(7);
+    expect(list[0]).toMatchObject({ kind: "section", key: "assets" });
+    expect(list[1]).toEqual({ kind: "formula", label: "Total Assets" });
+    expect(list[2]).toMatchObject({ kind: "section", key: "liabilities" });
+    expect(list[3]).toEqual({ kind: "formula", label: "Total Liabilities" });
+    expect(list[4]).toMatchObject({ kind: "section", key: "equity" });
+    expect(list[5]).toEqual({ kind: "formula", label: "Total Equity" });
+    expect(list[6]).toEqual({
+      kind: "formula",
+      label: "Total Liabilities & Equity",
+    });
+  });
+
+  it("places each balance-sheet account under the section matching its AccountType", () => {
+    const list = buildCustomReportStructure("balance-sheet", accounts);
+    expect(section(list, "assets").accounts.map((a) => a.name)).toEqual([
+      "Cash",
+      "Bank",
+    ]);
+    expect(section(list, "liabilities").accounts.map((a) => a.name)).toEqual([
+      "Trade Payables",
+    ]);
+    expect(section(list, "equity").accounts.map((a) => a.name)).toEqual([
+      "Owners Capital",
+    ]);
+  });
+
+  it("ignores P&L account types (INCOME / EXPENSE / etc.)", () => {
+    const list = buildCustomReportStructure("balance-sheet", accounts)!;
+    const names = list
+      .filter(
+        (n): n is Extract<CustomReportSectionNode, { kind: "section" }> =>
+          n.kind === "section"
+      )
+      .flatMap((n) => n.accounts.map((a) => a.name));
+    expect(names).not.toContain("Sales");
+    expect(names).not.toContain("Rent");
+  });
+
+  it("treats horizontal-balance-sheet and balance-sheet-schedule-iii as the same canonical structure", () => {
+    const canonical = buildCustomReportStructure("balance-sheet", accounts);
+    expect(
+      buildCustomReportStructure("horizontal-balance-sheet", accounts)
+    ).toEqual(canonical);
+    expect(
+      buildCustomReportStructure("balance-sheet-schedule-iii", accounts)
+    ).toEqual(canonical);
+  });
+});
+
+describe("buildCustomReportStructure — Trial Balance", () => {
+  const accounts: AccountForStructure[] = [
+    { id: "a1", name: "Cash", code: "1000", type: "ASSET" },
+    { id: "l1", name: "Loan", code: "2000", type: "LIABILITY" },
+    { id: "e1", name: "Capital", code: "3000", type: "EQUITY" },
+    { id: "i1", name: "Sales", code: "4000", type: "INCOME" },
+    { id: "oi1", name: "Interest", code: "4900", type: "OTHER_INCOME" },
+    { id: "c1", name: "COGS", code: "5000", type: "COST_OF_GOODS_SOLD" },
+    { id: "x1", name: "Rent", code: "6000", type: "EXPENSE" },
+    { id: "ox1", name: "Bank Charges", code: "6900", type: "OTHER_EXPENSE" },
+  ];
+
+  it("returns one section per AccountType plus a Total formula row (9 nodes)", () => {
+    const list = buildCustomReportStructure("trial-balance", accounts)!;
+    expect(list).toHaveLength(9);
+    expect(list.map((n) => n.kind)).toEqual([
+      "section",
+      "section",
+      "section",
+      "section",
+      "section",
+      "section",
+      "section",
+      "section",
+      "formula",
+    ]);
+    expect(list[8]).toEqual({ kind: "formula", label: "Total" });
+  });
+
+  it("orders sections balance-sheet accounts first, then P&L accounts", () => {
+    const list = buildCustomReportStructure("trial-balance", accounts)!;
+    const sectionKeys = list
+      .filter(
+        (n): n is Extract<CustomReportSectionNode, { kind: "section" }> =>
+          n.kind === "section"
+      )
+      .map((n) => n.key);
+    expect(sectionKeys).toEqual([
+      "tb-assets",
+      "tb-liabilities",
+      "tb-equity",
+      "tb-income",
+      "tb-other-income",
+      "tb-cogs",
+      "tb-expense",
+      "tb-other-expense",
+    ]);
+  });
+
+  it("populates every section with the accounts matching its AccountType", () => {
+    const list = buildCustomReportStructure("trial-balance", accounts);
+    expect(section(list, "tb-assets").accounts.map((a) => a.name)).toEqual([
+      "Cash",
+    ]);
+    expect(
+      section(list, "tb-other-income").accounts.map((a) => a.name)
+    ).toEqual(["Interest"]);
+    expect(section(list, "tb-cogs").accounts.map((a) => a.name)).toEqual([
+      "COGS",
+    ]);
+    expect(
+      section(list, "tb-other-expense").accounts.map((a) => a.name)
+    ).toEqual(["Bank Charges"]);
+  });
+});
+
+describe("buildCustomReportStructure — Cash Flow Statement", () => {
+  // Cash Flow can't auto-classify accounts (Operating vs Investing vs
+  // Financing isn't a property of the Chart of Accounts), so the wizard
+  // hands the user empty sections to populate manually.
+  it("returns 3 empty activity sections + 4 formula rows (7 nodes)", () => {
+    const list = buildCustomReportStructure("cash-flow-statement", [])!;
+    expect(list).toHaveLength(7);
+    expect(list[0]).toMatchObject({
+      kind: "section",
+      key: "cf-operating",
+      accounts: [],
+    });
+    expect(list[1]).toEqual({
+      kind: "formula",
+      label: "Net Cash from Operating Activities",
+    });
+    expect(list[2]).toMatchObject({
+      kind: "section",
+      key: "cf-investing",
+      accounts: [],
+    });
+    expect(list[3]).toEqual({
+      kind: "formula",
+      label: "Net Cash from Investing Activities",
+    });
+    expect(list[4]).toMatchObject({
+      kind: "section",
+      key: "cf-financing",
+      accounts: [],
+    });
+    expect(list[5]).toEqual({
+      kind: "formula",
+      label: "Net Cash from Financing Activities",
+    });
+    expect(list[6]).toEqual({ kind: "formula", label: "Net Change in Cash" });
+  });
+
+  it("keeps the activity sections empty even when accounts are supplied", () => {
+    const accounts: AccountForStructure[] = [
+      { id: "a1", name: "Cash", code: "1000", type: "ASSET" },
+      { id: "i1", name: "Sales", code: "4000", type: "INCOME" },
+    ];
+    const list = buildCustomReportStructure("cash-flow-statement", accounts)!;
+    for (const node of list) {
+      if (node.kind === "section") expect(node.accounts).toEqual([]);
+    }
+  });
+});
+
+describe("buildCustomReportStructure — P&L canonical variants", () => {
+  // The horizontal layout and Schedule III formatting are presentation
+  // variants of the same report; the wizard tree must match.
+  const accounts: AccountForStructure[] = [
+    { id: "i1", name: "Sales", code: "4000", type: "INCOME" },
+  ];
+  it("horizontal-profit-and-loss + profit-and-loss-schedule-iii share the P&L structure", () => {
+    const canonical = buildCustomReportStructure("profit-and-loss", accounts);
+    expect(
+      buildCustomReportStructure("horizontal-profit-and-loss", accounts)
+    ).toEqual(canonical);
+    expect(
+      buildCustomReportStructure("profit-and-loss-schedule-iii", accounts)
+    ).toEqual(canonical);
   });
 });
 
