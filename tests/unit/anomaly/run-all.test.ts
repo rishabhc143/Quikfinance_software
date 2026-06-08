@@ -64,7 +64,13 @@ function det(
 describe("runAnomalyDetectors", () => {
   it("returns zero counts when no detectors emit anything", async () => {
     const out = await runAnomalyDetectors(ORG, TODAY);
-    expect(out).toEqual({ detected: 0, inserted: 0, skipped: 0 });
+    // AD-v2 added newHighSeverityIds to the return shape.
+    expect(out).toEqual({
+      detected: 0,
+      inserted: 0,
+      skipped: 0,
+      newHighSeverityIds: [],
+    });
     expect(createManyMock).not.toHaveBeenCalled();
   });
 
