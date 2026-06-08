@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { runAnomalyDetectors } from "@/lib/anomaly/run-all";
+import { notifyHighSeverity } from "@/lib/anomaly/notify";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -35,26 +36,64 @@ export async function GET(req: Request) {
     }
   }
 
-  const orgs = await db.organization.findMany({ select: { id: true } });
+  // AD-v2: pull org name too so the email digest is personalised.
+  const orgs = await db.organization.findMany({
+    select: { id: true, name: true },
+  });
   const today = new Date();
   const results: Array<{
     organizationId: string;
     detected: number;
     inserted: number;
     skipped: number;
+    emailsSent: number;
     error?: string;
   }> = [];
 
   for (const org of orgs) {
     try {
       const r = await runAnomalyDetectors(org.id, today);
-      results.push({ organizationId: org.id, ...r });
+
+      // AD-v2: digest-email HIGH-severity NEW alerts (if any).
+      // Fetched fresh from DB so the email reflects what's actually
+      // in the inbox after dedup.
+      let emailsSent = 0;
+      if (r.newHighSeverityIds.length > 0) {
+        const newAlerts = await db.anomalyAlert.findMany({
+          where: {
+            id: { in: r.newHighSeverityIds },
+            organizationId: org.id,
+          },
+          select: {
+            id: true,
+            detectorKey: true,
+            severity: true,
+            title: true,
+            description: true,
+          },
+        });
+        const notifyResult = await notifyHighSeverity({
+          organizationId: org.id,
+          organizationName: org.name,
+          newAlerts,
+        });
+        emailsSent = notifyResult.emailsSent;
+      }
+
+      results.push({
+        organizationId: org.id,
+        detected: r.detected,
+        inserted: r.inserted,
+        skipped: r.skipped,
+        emailsSent,
+      });
     } catch (e) {
       results.push({
         organizationId: org.id,
         detected: 0,
         inserted: 0,
         skipped: 0,
+        emailsSent: 0,
         error: e instanceof Error ? e.message : String(e),
       });
     }
@@ -65,8 +104,9 @@ export async function GET(req: Request) {
       detected: acc.detected + r.detected,
       inserted: acc.inserted + r.inserted,
       skipped: acc.skipped + r.skipped,
+      emailsSent: acc.emailsSent + r.emailsSent,
     }),
-    { detected: 0, inserted: 0, skipped: 0 }
+    { detected: 0, inserted: 0, skipped: 0, emailsSent: 0 }
   );
 
   return NextResponse.json({
