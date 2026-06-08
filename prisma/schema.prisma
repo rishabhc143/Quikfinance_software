@@ -1579,6 +1579,11 @@ model BankAccount {
   description    String?
   currency       String             @default("INR")
   openingBalance Decimal            @default(0) @db.Decimal(18, 4)
+  /// BNK-A polish — date the opening balance was struck. Used by the
+  /// first reconciliation as its period-start date. Null = unknown
+  /// (treated as "before any imported transaction" for backward compat
+  /// with rows that pre-date this column).
+  openingBalanceAsOf DateTime?
   isActive       Boolean            @default(true)
   createdAt      DateTime           @default(now())
   /// BNK-D — Bridge to ChartOfAccount so Money In Categorise can post a

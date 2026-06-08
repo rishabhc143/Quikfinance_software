@@ -31,6 +31,10 @@ const schema = z.object({
   ifsc: z.string().max(20).nullable().optional(),
   description: z.string().max(500).nullable().optional(),
   isPrimary: z.coerce.boolean().default(false),
+  // BNK-A polish — opening balance amount + the date it was struck.
+  // Both default to 0/null for back-compat with the old form payload.
+  openingBalance: z.coerce.number().min(0).default(0),
+  openingBalanceAsOf: z.coerce.date().nullable().optional(),
 });
 
 function parse(formData: FormData) {
@@ -45,6 +49,12 @@ function parse(formData: FormData) {
     ifsc: raw.ifsc ? String(raw.ifsc).toUpperCase() : null,
     description: raw.description || null,
     isPrimary: raw.isPrimary === "true",
+    openingBalance: raw.openingBalance || 0,
+    // <input type="date"> sends "" when empty — pass through as null so
+    // coerce.date doesn't try to parse it as a date and throw.
+    openingBalanceAsOf: raw.openingBalanceAsOf
+      ? String(raw.openingBalanceAsOf)
+      : null,
   });
 }
 
@@ -81,6 +91,8 @@ export async function createBankAccountAction(formData: FormData) {
       ifsc: data.ifsc,
       description: data.description,
       isPrimary,
+      openingBalance: data.openingBalance,
+      openingBalanceAsOf: data.openingBalanceAsOf ?? null,
       // Legacy free-text column kept in sync for any older code path that
       // still reads it. Drop in a future cleanup PR once nothing reads it.
       accountType: data.type === "CREDIT_CARD" ? "credit_card" : "checking",
@@ -98,6 +110,8 @@ export async function createBankAccountAction(formData: FormData) {
       type: data.type,
       isPrimary,
       currency: data.currency,
+      openingBalance: data.openingBalance,
+      openingBalanceAsOf: data.openingBalanceAsOf?.toISOString() ?? null,
     },
   });
   revalidatePath("/banking");
