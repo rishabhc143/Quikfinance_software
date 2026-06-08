@@ -44,7 +44,7 @@ export default async function BankingPage() {
           </p>
         </div>
         <Button asChild>
-          <Link href="/banking/accounts/new">
+          <Link href="/banking/accounts/connect">
             <Plus className="h-4 w-4 mr-1" /> Add Bank Account
           </Link>
         </Button>
