@@ -17,6 +17,7 @@ const GROUPS: Group[] = [
       { label: "Custom Domain", href: "/settings/custom-domain" },
       { label: "Locations", href: "/settings/locations" },
       { label: "AI Preferences", href: "/settings/ai" },
+      { label: "AI Usage & Cost", href: "/settings/ai-usage" },
       { label: "Manage Subscription", href: "/settings/subscription" },
     ],
   },

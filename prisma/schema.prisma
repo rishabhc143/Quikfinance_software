@@ -157,6 +157,7 @@ model Organization {
   locations             Location[]
   promoBanners          PromoBanner[]
   aiConversations       AiConversation[]
+  aiUsage               OrganizationAIUsage[]
   anomalyAlerts         AnomalyAlert[]
   migrationBatches      MigrationBatch[]
   companionLedgers      CompanionLedger[]
@@ -2339,8 +2340,53 @@ model AiMessage {
   conversationId String
   role           String
   content        String         @db.Text
+  /// Guardrail 5 — token + latency telemetry on assistant messages
+  /// only (user messages have these all null). Powers the
+  /// /settings/ai-usage dashboard and per-org budget enforcement.
+  tokensIn       Int?
+  tokensOut      Int?
+  latencyMs      Int?
+  model          String?
+  /// "end_turn" | "max_tokens" | "tool_use" | "stop_sequence" |
+  /// "abort"  — for debugging "why did this answer cut off?".
+  stopReason     String?
   createdAt      DateTime       @default(now())
   conversation   AiConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
+}
+
+/// Guardrail 2 — per-org per-day token + cost aggregate. Updated
+/// after every Anthropic call via upsert on (orgId, day). Powers
+/// the budget enforcement gate at request time and the
+/// /settings/ai-usage telemetry dashboard.
+///
+/// Default daily budget is 1M input + 200K output tokens per org
+/// (≈ $6/day at Sonnet 4.5 list pricing). Org-level overrides will
+/// live on OrganizationPreference (Phase 2) — v1 uses hardcoded
+/// defaults.
+model OrganizationAIUsage {
+  id             String       @id @default(cuid())
+  organizationId String
+  /// Bucketing date — midnight UTC of the calendar day the
+  /// activity occurred on. We use a midnight-anchored Date instead
+  /// of a Date-only column so it round-trips cleanly through
+  /// Prisma / JSON without timezone surprises.
+  day            DateTime
+  tokensIn       Int          @default(0)
+  tokensOut      Int          @default(0)
+  /// Computed cost in USD cents (integer to avoid float drift).
+  /// At Sonnet 4.5 list: input $3/M = 0.0003¢/token,
+  /// output $15/M = 0.0015¢/token.
+  costCents      Int          @default(0)
+  /// Number of individual LLM calls aggregated into this row.
+  callCount      Int          @default(0)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @default(now()) @updatedAt
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, day])
+  @@index([organizationId, day(sort: Desc)])
 }
 
 // CF-7 / AD-1 — Anomaly alerts surfaced by the nightly detector cron.

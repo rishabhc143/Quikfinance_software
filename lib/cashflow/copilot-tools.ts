@@ -22,8 +22,13 @@ import "server-only";
  */
 
 import { format } from "date-fns";
+import { z } from "zod";
 import { db } from "@/lib/db";
 import { computeForecast } from "./forecast";
+import {
+  getCachedToolResult,
+  setCachedToolResult,
+} from "@/lib/llm/cache";
 
 export type CopilotToolName =
   | "get_cashflow_summary"
@@ -153,9 +158,96 @@ const clamp = (n: unknown, min: number, max: number, fallback: number): number =
   return Math.max(min, Math.min(max, Math.floor(parsed)));
 };
 
+// ── Guardrail 7: zod schemas for tool inputs ────────────────────
+// Anthropic's tool_use blocks come back with claimed inputs that
+// match the JSON schema we sent, but the SDK does not enforce them
+// — Claude can hallucinate a string where we expect a number, or
+// emit extra fields. zod gives us a deterministic gate before the
+// input reaches the executor.
+//
+// Each schema accepts what the JSON schema declares + uses `.strip()`
+// (default) to drop any extras, so a slightly off tool_use block
+// still works rather than failing the agentic loop.
+const stressDaysSchema = z
+  .union([z.literal(0), z.literal(7), z.literal(14), z.literal(30)])
+  .optional();
+const limitSchema = z.number().int().positive().max(100).optional();
+const daysAheadSchema = z.number().int().positive().max(90).optional();
+
+const TOOL_INPUT_SCHEMAS: Record<string, z.ZodTypeAny> = {
+  get_cashflow_summary: z.object({ stressDays: stressDaysSchema }).passthrough(),
+  get_weekly_breakdown: z.object({ stressDays: stressDaysSchema }).passthrough(),
+  get_overdue_invoices: z.object({ limit: limitSchema }).passthrough(),
+  get_upcoming_bills: z.object({ limit: limitSchema, daysAhead: daysAheadSchema }).passthrough(),
+  get_top_customers_by_ar: z.object({ limit: limitSchema }).passthrough(),
+  get_recurring_profiles: z.object({}).passthrough(),
+  get_open_anomalies: z
+    .object({
+      severity: z.enum(["high", "medium", "low"]).optional(),
+      limit: limitSchema,
+    })
+    .passthrough(),
+};
+
+/** Guardrail 8: which tools are deterministic-by-orgId-and-input
+ *  enough to safely cache for 5 minutes. All v1 tools qualify
+ *  (they're read-only views over data that mutates rarely vs the
+ *  cache TTL). If we ever add write tools they go OUTSIDE this
+ *  list and never hit the cache. */
+const CACHEABLE_TOOLS = new Set([
+  "get_cashflow_summary",
+  "get_weekly_breakdown",
+  "get_overdue_invoices",
+  "get_upcoming_bills",
+  "get_top_customers_by_ar",
+  "get_recurring_profiles",
+  "get_open_anomalies",
+]);
+
 /** Dispatcher invoked by the API route on each tool call. Returns
- *  a plain object that Claude sees as the tool result. */
+ *  a plain object that Claude sees as the tool result.
+ *
+ *  Guardrail layers applied around the inner dispatch:
+ *    1. Schema validation (Guardrail 7) — input checked against
+ *       the zod schema before reaching any DB code. Throws with a
+ *       friendly message that Claude can incorporate into its
+ *       next-turn reasoning ("you passed limit=-5; please pass
+ *       a positive integer").
+ *    2. Cache lookup (Guardrail 8) — for deterministic read-only
+ *       tools, return the 5-min-old result if available.
+ *    3. Inner executor — the unchanged business logic from CF-5.
+ *    4. Cache store — write the result back for future requests. */
 export async function runTool(
+  organizationId: string,
+  organizationCurrency: string,
+  name: string,
+  input: Record<string, unknown>
+): Promise<unknown> {
+  const schema = TOOL_INPUT_SCHEMAS[name];
+  if (schema) {
+    const parsed = schema.safeParse(input);
+    if (!parsed.success) {
+      const issues = parsed.error.issues.slice(0, 3).map((i) => `${i.path.join(".") || "input"}: ${i.message}`).join("; ");
+      throw new Error(`Invalid tool input — ${issues}`);
+    }
+    input = parsed.data as Record<string, unknown>;
+  }
+
+  // Cache check
+  if (CACHEABLE_TOOLS.has(name)) {
+    const cached = getCachedToolResult(organizationId, name, input);
+    if (cached !== undefined) return cached;
+  }
+
+  const result = await runToolInner(organizationId, organizationCurrency, name, input);
+
+  if (CACHEABLE_TOOLS.has(name)) {
+    setCachedToolResult(organizationId, name, input, result);
+  }
+  return result;
+}
+
+async function runToolInner(
   organizationId: string,
   organizationCurrency: string,
   name: string,

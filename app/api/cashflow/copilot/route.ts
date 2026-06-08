@@ -4,6 +4,13 @@ import { z } from "zod";
 import { requireOrganization } from "@/lib/auth-helpers";
 import { db } from "@/lib/db";
 import { COPILOT_TOOLS, runTool } from "@/lib/cashflow/copilot-tools";
+import {
+  GuardrailError,
+  PROMPT_INJECTION_GUARD,
+  assertWithinBudget,
+  assertWithinRateLimit,
+  recordLlmCall,
+} from "@/lib/llm/guardrails";
 
 export const runtime = "nodejs";
 // CF-5 hotfix: the agentic loop (Claude call → tool → Claude call again)
@@ -22,13 +29,14 @@ export const maxDuration = 60;
  * inside the agentic loop (max 6 turns) and their results are fed
  * back into Claude until it produces a final text answer.
  *
- * Differences vs the general-purpose chat at `/api/ai/chat`:
- *   • Tool-use enabled (this one can actually look at your data).
- *   • Specialised system prompt tuned for cashflow Q&A.
- *   • No conversation persistence in v1 (the page keeps history in
- *     React state; we add AiConversation/AiMessage hookup in v2
- *     once the tool surface is stable).
- *   • Same daily rate-limit ceiling for safety.
+ * Guardrails (Phase 8 Sprint 2):
+ *   • Per-user rate limit (100 messages/day) — assertWithinRateLimit
+ *   • Per-org daily token budget — assertWithinBudget
+ *   • Abort signal — req.signal threaded into anthropic.messages.create
+ *   • Audit log of every call — recordLlmCall stores tokens, latency,
+ *     model, stopReason on the AiMessage row + upserts daily org usage
+ *   • Prompt-injection hardening — PROMPT_INJECTION_GUARD prepended
+ *     to the system prompt
  */
 
 const requestSchema = z.object({
@@ -41,15 +49,12 @@ const requestSchema = z.object({
     )
     .min(1)
     .max(40),
-  /** CF-6 — optional conversation to attach to. When absent we
-   *  auto-create a new AiConversation row, titled from the first
-   *  user message. The created id is returned in the
-   *  `x-conversation-id` response header so the client can pin
-   *  subsequent requests to the same thread. */
   conversationId: z.string().optional(),
 });
 
 const SYSTEM_PROMPT = (orgName: string, currency: string) => `\
+${PROMPT_INJECTION_GUARD}
+
 You are the CFO Copilot for **${orgName}**, an in-app financial assistant inside Quikfinance.
 
 Your job: answer the user's questions about their cashflow, AR, AP, and recurring revenue/expenses using the read-only tools provided. You CANNOT mutate anything — no sending reminders, no marking paid, no changing dates. If asked to do anything mutative, explain you're read-only in this version and suggest where in Quikfinance they can do it themselves.
@@ -70,7 +75,7 @@ Example interactions:
 - User: "Will I be able to pay payroll on the 7th?" → call get_weekly_breakdown → identify the relevant week, report ending/min balance.
 `;
 
-const RATE_LIMIT_PER_DAY = 100;
+const MODEL = "claude-sonnet-4-5";
 
 export async function POST(req: Request) {
   if (!process.env.ANTHROPIC_API_KEY) {
@@ -87,12 +92,24 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Invalid request" }, { status: 400 });
   }
 
-  void RATE_LIMIT_PER_DAY;
+  // ── Guardrail pre-flight ────────────────────────────────────
+  try {
+    await assertWithinRateLimit({
+      organizationId: organization.id,
+      userId: user.id,
+    });
+    await assertWithinBudget({ organizationId: organization.id });
+  } catch (e) {
+    if (e instanceof GuardrailError) {
+      return NextResponse.json(
+        { error: e.message, code: e.code },
+        { status: 429 }
+      );
+    }
+    throw e;
+  }
 
-  // CF-6 — resolve or create the conversation row. When the client
-  // sent a conversationId, validate it's theirs (org + user scoped)
-  // and load it. Otherwise create a fresh one with a title derived
-  // from the first user message (so the sidebar list looks human).
+  // ── Resolve / create conversation ───────────────────────────
   let conversation = parsed.data.conversationId
     ? await db.aiConversation.findFirst({
         where: {
@@ -115,14 +132,16 @@ export async function POST(req: Request) {
       },
     });
   }
+  const conversationId = conversation.id;
 
-  // Persist the latest user message before calling the LLM so it's
-  // safely in the DB even if streaming fails midway.
+  // Persist user message before LLM call so it's safely in DB even
+  // if streaming fails. User messages don't carry telemetry (the
+  // LLM hasn't run yet) so we write them directly.
   const lastUser = parsed.data.messages.filter((m) => m.role === "user").at(-1);
   if (lastUser) {
     await db.aiMessage.create({
       data: {
-        conversationId: conversation.id,
+        conversationId,
         role: "user",
         content: lastUser.content,
       },
@@ -131,15 +150,15 @@ export async function POST(req: Request) {
 
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
   const encoder = new TextEncoder();
-  // CF-6 — accumulate the streamed assistant text so we can write a
-  // single AiMessage row at the end. Anthropic emits text in chunks
-  // but we want one persisted row, not N partial rows.
-  let assistantText = "";
-  const persistedConversationId = conversation.id;
 
-  // Convert chat history into Anthropic Message format. We keep tool
-  // calls / tool results internal to this single request (not echoed
-  // to the client) — only the final assistant text reaches the UI.
+  // Telemetry accumulators across all agentic-loop turns. Recorded
+  // once at the end as a single AiMessage + OrganizationAIUsage row.
+  let assistantText = "";
+  let totalTokensIn = 0;
+  let totalTokensOut = 0;
+  let lastStopReason = "unknown";
+  const startedAt = Date.now();
+
   type AnthMessage = Anthropic.MessageParam;
   const messages: AnthMessage[] = parsed.data.messages.map((m) => ({
     role: m.role,
@@ -151,17 +170,25 @@ export async function POST(req: Request) {
       try {
         const MAX_TURNS = 6;
         for (let turn = 0; turn < MAX_TURNS; turn += 1) {
-          const response = await anthropic.messages.create({
-            model: "claude-sonnet-4-5",
-            max_tokens: 2048,
-            system: SYSTEM_PROMPT(organization.name, organization.currency),
-            tools: COPILOT_TOOLS as unknown as Anthropic.Tool[],
-            messages,
-          });
+          // Guardrail 4: forward the request abort signal so closing
+          // the browser tab stops generation + billing immediately.
+          const response = await anthropic.messages.create(
+            {
+              model: MODEL,
+              max_tokens: 2048,
+              system: SYSTEM_PROMPT(organization.name, organization.currency),
+              tools: COPILOT_TOOLS as unknown as Anthropic.Tool[],
+              messages,
+            },
+            { signal: req.signal }
+          );
 
-          // Stream the assistant's text blocks as they come. Tool-use
-          // blocks are NOT streamed to the client — we run them
-          // server-side and continue the agentic loop.
+          // Accumulate token usage from EVERY turn — Anthropic bills
+          // each call independently.
+          totalTokensIn += response.usage?.input_tokens ?? 0;
+          totalTokensOut += response.usage?.output_tokens ?? 0;
+          lastStopReason = response.stop_reason ?? "unknown";
+
           for (const block of response.content) {
             if (block.type === "text") {
               assistantText += block.text;
@@ -170,16 +197,11 @@ export async function POST(req: Request) {
           }
 
           if (response.stop_reason === "tool_use") {
-            // Append assistant message (with tool_use blocks) to
-            // history so Claude can see its own thinking.
             messages.push({
               role: "assistant",
               content: response.content,
             });
 
-            // Run every tool_use block in this assistant message,
-            // collect tool_result blocks in a single user message
-            // for the next iteration.
             const toolResults: Anthropic.ToolResultBlockParam[] = [];
             for (const block of response.content) {
               if (block.type !== "tool_use") continue;
@@ -206,34 +228,46 @@ export async function POST(req: Request) {
               }
             }
             messages.push({ role: "user", content: toolResults });
-            continue; // next turn
+            continue;
           }
 
-          // stop_reason is "end_turn" / "max_tokens" / "stop_sequence"
-          // — Claude is done.
           break;
         }
         controller.close();
-        // CF-6 — persist the assistant turn's final text. Wrap in a
-        // try/catch so a DB hiccup at the end doesn't surface as a
-        // stream error to the user (they've already seen the answer).
-        if (assistantText.trim()) {
-          try {
-            await db.aiMessage.create({
-              data: {
-                conversationId: persistedConversationId,
-                role: "assistant",
-                content: assistantText,
-              },
-            });
-          } catch (persistErr) {
-            console.error("[copilot] failed to persist assistant message", persistErr);
-          }
-        }
       } catch (err) {
-        const msg = err instanceof Error ? err.message : "Unknown error";
-        controller.enqueue(encoder.encode(`\n[error: ${msg}]`));
+        // Abort = client closed tab. Treat as a normal completion
+        // with a special stopReason — still record what we generated
+        // so it's auditable + counted toward budget.
+        if (req.signal.aborted) {
+          lastStopReason = "abort";
+        } else {
+          const msg = err instanceof Error ? err.message : "Unknown error";
+          controller.enqueue(encoder.encode(`\n[error: ${msg}]`));
+        }
         controller.close();
+      }
+
+      // Always record the call (even on partial / aborted streams)
+      // so token spend is accurately attributed. Try/catch so a DB
+      // hiccup at the end doesn't surface to the user — they've
+      // already seen the answer (or the error).
+      const latencyMs = Date.now() - startedAt;
+      if (totalTokensIn > 0 || totalTokensOut > 0 || assistantText.trim()) {
+        try {
+          await recordLlmCall({
+            organizationId: organization.id,
+            conversationId,
+            role: "assistant",
+            content: assistantText || "(empty)",
+            tokensIn: totalTokensIn,
+            tokensOut: totalTokensOut,
+            latencyMs,
+            model: MODEL,
+            stopReason: lastStopReason,
+          });
+        } catch (persistErr) {
+          console.error("[copilot] failed to record LLM call", persistErr);
+        }
       }
     },
   });
@@ -241,9 +275,7 @@ export async function POST(req: Request) {
   return new Response(stream, {
     headers: {
       "Content-Type": "text/plain; charset=utf-8",
-      // CF-6 — echo the conversation id so the client can pin
-      // subsequent requests + reflect into the URL.
-      "x-conversation-id": conversation.id,
+      "x-conversation-id": conversationId,
     },
   });
 }
