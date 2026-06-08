@@ -318,7 +318,7 @@ export async function uploadDocumentsAction(
           const llmEnabledA = isLlmFallbackEnabled();
           if (isBankStmtA && heuristicEmptyA && llmEnabledA) {
             try {
-              const llm = await parseBankStatementWithLLM(extractedText);
+              const llm = await parseBankStatementWithLLM(extractedText, organization.id);
               if (llm && llm.rows.length > 0) {
                 extractedFields = llm;
                 parserSource = "llm";
@@ -511,7 +511,7 @@ export async function uploadBankStatementsAction(
           const llmEnabledB = isLlmFallbackEnabled();
           if (heuristicEmptyB && llmEnabledB) {
             try {
-              const llm = await parseBankStatementWithLLM(extractedText);
+              const llm = await parseBankStatementWithLLM(extractedText, organization.id);
               if (llm && llm.rows.length > 0) {
                 parsedB = llm;
                 parserSourceB = "llm";
