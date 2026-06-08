@@ -17,10 +17,12 @@ import { Button } from "@/components/ui/button";
  *   - Bottom video link: play-in-circle icon + "Watch how to connect
  *     your bank account to Quikfinance"
  *
- * Routing note: until Yodlee/Plaid feeds (BNK-J) ship, BOTH buttons
- * route to the manual Add-Account form. When feeds land, the primary
- * button will open the connection picker instead and the secondary
- * stays on the manual path.
+ * Routing:
+ *   - Primary "Connect Bank / Credit Card" → /banking/accounts/connect
+ *     (the Zoho-shaped picker with partner banks + supported banks +
+ *     a manual-add section)
+ *   - Secondary "Add Manually" → /banking/accounts/new (skips the
+ *     picker, goes straight to the manual form)
  */
 export function BankingEmptyState() {
   return (
@@ -35,10 +37,12 @@ export function BankingEmptyState() {
       </p>
       <div className="mb-6 flex items-center gap-3">
         <Button asChild size="lg">
-          <Link href="/banking/accounts/new">Connect Bank / Credit Card</Link>
+          <Link href="/banking/accounts/connect">
+            Connect Bank / Credit Card
+          </Link>
         </Button>
         <Button asChild variant="outline" size="lg">
-          <Link href="/banking/accounts/new?type=manual">Add Manually</Link>
+          <Link href="/banking/accounts/new">Add Manually</Link>
         </Button>
       </div>
       <p className="text-xs text-muted-foreground">
