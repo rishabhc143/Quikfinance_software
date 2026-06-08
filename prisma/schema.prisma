@@ -158,6 +158,7 @@ model Organization {
   promoBanners          PromoBanner[]
   aiConversations       AiConversation[]
   aiUsage               OrganizationAIUsage[]
+  copilotActions        CopilotProposedAction[]
   anomalyAlerts         AnomalyAlert[]
   migrationBatches      MigrationBatch[]
   companionLedgers      CompanionLedger[]
@@ -2365,6 +2366,41 @@ model AiMessage {
 /// (≈ $6/day at Sonnet 4.5 list pricing). Org-level overrides will
 /// live on OrganizationPreference (Phase 2) — v1 uses hardcoded
 /// defaults.
+/// CFO Copilot Mutating Tools v1 — every mutating tool call goes
+/// through here for explicit user approval before execution.
+/// Pattern: tool creates row (status=pending), returns id to Claude
+/// → UI renders approval card → user clicks Approve → server-side
+/// executor runs + flips status. Without approval, no mutation.
+model CopilotProposedAction {
+  id              String       @id @default(cuid())
+  organizationId  String
+  userId          String
+  conversationId  String?
+  /// Tool name that proposed this action — drives executor lookup.
+  /// "dismiss_anomaly_alert" in v1; more in v2 (send_reminder,
+  /// mark_paid, etc.).
+  actionType      String
+  /// "pending" | "approved" | "rejected" | "expired"
+  status          String       @default("pending")
+  /// Type-narrowed shape per actionType — see
+  /// lib/copilot/actions/types.ts.
+  payload         Json
+  summary         String       @db.Text
+  expiresAt       DateTime
+  approvedAt      DateTime?
+  rejectedAt      DateTime?
+  rejectReason    String?
+  /// Executor's success payload, when status='approved' and the
+  /// mutation ran ok.
+  executionResult Json?
+  /// Executor's error message, when status='approved' and the
+  /// mutation failed.
+  executionError  String?      @db.Text
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @default(now()) @updatedAt
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+}
+
 model OrganizationAIUsage {
   id             String       @id @default(cuid())
   organizationId String
