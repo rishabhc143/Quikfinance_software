@@ -11,7 +11,15 @@ export type ForecastItemSource =
   | "recurring-invoice"
   | "bill"
   | "recurring-bill"
-  | "recurring-expense";
+  | "recurring-expense"
+  /** Tally Companion Sprint 2 — sales voucher imported from Tally,
+   *  projected as inflow under a net-30 assumption. Visually
+   *  distinguished in the UI so users know it's from imported data
+   *  rather than native Quikfinance records. */
+  | "companion-sales"
+  /** Tally Companion Sprint 2 — purchase voucher imported from
+   *  Tally, projected as outflow under net-30. */
+  | "companion-purchase";
 
 export type ForecastItem = {
   source: ForecastItemSource;
@@ -76,6 +84,11 @@ export type ForecastSummary = {
    *  by the learned payment-delay layer. Surfaces in the UI as
    *  "N items adjusted for typical payment delay". */
   patternsApplied: number;
+  /** Tally Companion Sprint 2 — count of CompanionVoucher rows that
+   *  contributed to the forecast (0 when includeCompanion was false
+   *  or no Tally data is imported). Surfaces in the UI as
+   *  "N items from your Tally import". */
+  companionItemsIncluded: number;
 };
 
 export type CashflowForecast = {

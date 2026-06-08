@@ -1,4 +1,5 @@
-import { TrendingUp } from "lucide-react";
+import Link from "next/link";
+import { Database, TrendingUp } from "lucide-react";
 import { requireOrganization } from "@/lib/auth-helpers";
 import { computeForecast } from "@/lib/cashflow/forecast";
 import { ForecastView } from "./forecast-view";
@@ -36,15 +37,21 @@ function parseStressDays(raw: string | undefined): number {
 export default async function CashflowForecastPage({
   searchParams,
 }: {
-  searchParams?: { stressDays?: string };
+  searchParams?: { stressDays?: string; companion?: string };
 }) {
   const { organization } = await requireOrganization();
   const today = new Date();
   const stressDays = parseStressDays(searchParams?.stressDays);
+  // Tally Companion Sprint 2 — URL-driven opt-in. When set, the
+  // forecast engine mixes in CompanionVoucher rows alongside native
+  // Invoices/Bills. Default off so existing single-source-of-truth
+  // behaviour is preserved.
+  const includeCompanion = searchParams?.companion === "1";
 
   const forecast = await computeForecast(organization.id, today, 84, {
     currency: organization.currency,
     stressDays,
+    includeCompanion,
   });
 
   // CF-3 — when a stress scenario is active, also fetch the BASE-case
@@ -56,6 +63,7 @@ export default async function CashflowForecastPage({
       ? await computeForecast(organization.id, today, 84, {
           currency: organization.currency,
           stressDays: 0,
+          includeCompanion,
         })
       : null;
 
@@ -75,11 +83,56 @@ export default async function CashflowForecastPage({
           </p>
         </div>
       </div>
+      {/* Tally Companion Sprint 2 — toggle for mixing in imported
+          Tally data. Only shown when there's at least one Companion
+          voucher AND when the toggle is currently OFF (so the user
+          discovers the feature). Once on, the banner inside
+          ForecastView surfaces the included-item count. */}
+      <CompanionToggle
+        currentlyOn={includeCompanion}
+        stressDays={stressDays}
+      />
+
       <ForecastView
         forecast={forecast}
         baseForecast={baseForecast}
         stressOptions={STRESS_OPTIONS as unknown as number[]}
       />
+    </div>
+  );
+}
+
+function CompanionToggle({
+  currentlyOn,
+  stressDays,
+}: {
+  currentlyOn: boolean;
+  stressDays: number;
+}) {
+  // Preserve other URL params (stressDays) when toggling.
+  const onParams = new URLSearchParams();
+  if (stressDays > 0) onParams.set("stressDays", String(stressDays));
+  if (!currentlyOn) onParams.set("companion", "1");
+  const href = `/cashflow/forecast${onParams.toString() ? `?${onParams.toString()}` : ""}`;
+  const tone = currentlyOn
+    ? "bg-emerald-50 border-emerald-200 text-emerald-900"
+    : "bg-muted/40 border-border text-muted-foreground";
+  return (
+    <div className={`rounded-lg border px-4 py-2 text-sm flex items-center justify-between ${tone}`}>
+      <div className="flex items-center gap-2">
+        <Database className="h-4 w-4" />
+        <span>
+          {currentlyOn
+            ? "Including Tally Companion data in this forecast"
+            : "Tally Companion data not included. Toggle to mix your imported Tally vouchers into the forecast."}
+        </span>
+      </div>
+      <Link
+        href={href}
+        className="text-xs underline hover:no-underline"
+      >
+        {currentlyOn ? "Use native data only" : "Include Tally data"}
+      </Link>
     </div>
   );
 }
