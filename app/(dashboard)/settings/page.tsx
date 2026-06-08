@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Building2, Users, Receipt, Cog, Palette, Workflow, Boxes, CreditCard, Code } from "lucide-react";
+import { Building2, Users, Receipt, Cog, Palette, Workflow, Boxes, CreditCard, Code, Database } from "lucide-react";
 
 type Group = {
   title: string;
@@ -45,6 +45,12 @@ const GROUPS: Group[] = [
       { label: "Reminders", href: "/settings/reminders" },
       { label: "Customer Portal", href: "/settings/customer-portal" },
       { label: "Vendor Portal", href: "/settings/vendor-portal" },
+    ],
+  },
+  {
+    title: "Data Import & Export", icon: Database,
+    items: [
+      { label: "Tally Companion (Beta)", href: "/settings/data/tally-companion" },
     ],
   },
   {

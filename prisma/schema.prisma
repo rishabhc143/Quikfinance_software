@@ -158,6 +158,9 @@ model Organization {
   promoBanners          PromoBanner[]
   aiConversations       AiConversation[]
   anomalyAlerts         AnomalyAlert[]
+  migrationBatches      MigrationBatch[]
+  companionLedgers      CompanionLedger[]
+  companionVouchers     CompanionVoucher[]
   reminders             Reminder[]
   workflowActions       WorkflowAction[]
   workflowLogs          WorkflowLog[]
@@ -2364,6 +2367,111 @@ model AnomalyAlert {
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId, status, createdAt])
+}
+
+// ───────────────────── TALLY COMPANION (Sprint 1) ─────────────────────
+//
+// Read-only mirror of customer's Tally data. Lives in shadow tables
+// (`Companion*` prefix) so it never co-mingles with native entities.
+// The same canonical pipeline backs future Zoho / QB / Marg imports —
+// only the per-format parser changes.
+//
+// See `lib/migration/canonical.ts` for the source-agnostic types
+// these tables persist.
+
+model MigrationBatch {
+  id                String              @id @default(cuid())
+  organizationId    String
+  userId            String
+  /// "tally-prime" | "tally-erp9" | "tally-9" | "zoho-xml" | "qb-qbo"
+  sourceFormat      String
+  sourceFilename    String
+  sourceFilesizeB   Int                 @default(0)
+  /// "queued" | "running" | "done" | "failed" | "rolled_back"
+  status            String              @default("queued")
+  totalLedgers      Int                 @default(0)
+  totalVouchers     Int                 @default(0)
+  insertedLedgers   Int                 @default(0)
+  insertedVouchers  Int                 @default(0)
+  skippedLedgers    Int                 @default(0)
+  skippedVouchers   Int                 @default(0)
+  /// JSON array of ParseWarning — surfaced in the import report.
+  warnings          Json?
+  error             String?
+  /// 30-day rollback window; set on success.
+  rollbackExpiresAt DateTime?
+  startedAt         DateTime            @default(now())
+  completedAt       DateTime?
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @default(now()) @updatedAt
+  organization      Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  ledgers           CompanionLedger[]
+  vouchers          CompanionVoucher[]
+
+  @@index([organizationId, createdAt])
+}
+
+model CompanionLedger {
+  id                 String             @id @default(cuid())
+  organizationId     String
+  migrationBatchId   String
+  sourceFormat       String
+  /// Stable identifier from Tally — idempotent re-import key.
+  sourceGuid         String
+  /// "customer" | "vendor" | "bank" | "income" | "expense" |
+  /// "asset" | "liability" | "tax" | "other"
+  kind               String
+  displayName        String
+  groupPath          String?
+  gstin              String?
+  stateCode          String?
+  address            String?
+  phone              String?
+  email              String?
+  openingBalance     Decimal?           @db.Decimal(18, 4)
+  openingBalanceAsOf DateTime?
+  /// Full source payload for debugging + forward compatibility.
+  raw                Json?
+  deletedAt          DateTime?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @default(now()) @updatedAt
+  organization       Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  migrationBatch     MigrationBatch     @relation(fields: [migrationBatchId], references: [id], onDelete: Cascade)
+  vouchers           CompanionVoucher[]
+
+  @@index([migrationBatchId])
+}
+
+model CompanionVoucher {
+  id                  String           @id @default(cuid())
+  organizationId      String
+  migrationBatchId    String
+  sourceFormat        String
+  sourceGuid          String
+  sourceVoucherNumber String
+  /// "sales" | "purchase" | "receipt" | "payment" | "journal" |
+  /// "credit_note" | "debit_note" | "contra"
+  type                String
+  date                DateTime
+  partyLedgerId       String?
+  placeOfSupply       String?
+  narration           String?
+  currency            String?
+  subtotal            Decimal          @default(0) @db.Decimal(18, 4)
+  tax                 Decimal          @default(0) @db.Decimal(18, 4)
+  total               Decimal          @default(0) @db.Decimal(18, 4)
+  /// Line items inlined as JSON. See CanonicalLine in
+  /// lib/migration/canonical.ts for shape.
+  lines               Json
+  raw                 Json?
+  deletedAt           DateTime?
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @default(now()) @updatedAt
+  organization        Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  migrationBatch      MigrationBatch   @relation(fields: [migrationBatchId], references: [id], onDelete: Cascade)
+  partyLedger         CompanionLedger? @relation(fields: [partyLedgerId], references: [id], onDelete: SetNull)
+
+  @@index([migrationBatchId])
 }
 
 // ───────────────────────── PHASE-X COMPLETION ─────────────────────────

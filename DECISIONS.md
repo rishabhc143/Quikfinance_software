@@ -436,3 +436,42 @@ After a senior-engineer audit (two rounds, six parallel agents in round 2), 11 P
 **Choice:** the shared list-page params helper at `lib/list-params.ts` returns `{q, page, pageSize, sort: string, dir}`. The `defaultSort` parameter accepts any string but the returned `sort` is widened to plain `string`.
 **Why:** the first implementation used `<TSort extends string>` generic so callers got the literal type back. But every list page compares `sort` against multiple option strings in its `orderBy` builder (e.g. `sort === "total" ? ... : sort === "dueDate" ? ...`) — narrowing to the literal default ("issueDate") made those comparisons TS-error as `"no overlap."` Widening to `string` matches what callers actually do at runtime.
 **Trade-off:** lose the literal type for documentation purposes. Callers still see the `defaultSort` argument value documenting intent. 15 unit tests in `tests/unit/list-params.test.ts` cover the "default to X unless URL explicitly says the other" dir semantics (matches every caller's pre-refactor behaviour byte-for-byte).
+
+## Phase 8 — Tally bridge
+
+### D90. Tally **Companion** (read-only data layer) instead of Tally **Migration** (one-shot import-then-leave-Tally).
+**Choice:** the first product Quikfinance ships against Tally users is **Tally Companion** — Tally remains the customer's source of truth, Quikfinance reads their Tally XML exports into shadow tables (`CompanionLedger`, `CompanionVoucher`, `MigrationBatch`), and the existing AI features (CF-1 → CF-7: forecast, payment-delay learning, stress test, CFO Copilot, anomaly detector) run on the imported data. The "full migration" — promoting Companion data into native Quikfinance entities and replacing Tally as the system of record — is **deferred** to Phase 8 Session 2+ as an optional follow-up once trust is established.
+
+**Why:** the alternative — "Tally Migration" pitched as *"export from Tally, import into Quikfinance, stop using Tally"* — surfaces ~40 distinct blockages we mapped before committing. The biggest ones:
+
+1. **Customer trust:** asking an SMB to abandon a 5–10-year Tally history on Day 1 is a non-starter. Most prospects walk away.
+2. **CA gatekeepers:** the customer's CA files from Tally. Replacing Tally requires the CA's buy-in, which requires their workflow to change.
+3. **Lossy round-trip:** Tally has Stock Journals, Manufacturing Journals, Cost Centers, Optional vouchers, post-dated vouchers, and TDL-customised schemas. Quikfinance doesn't and shouldn't model all of these. Round-trip fidelity to 100% is mathematically impossible.
+4. **Reputation risk:** a single bad migration that loses or distorts data kills sales by word-of-mouth in CA WhatsApp groups. The blast radius of a Migration-mode bug is catastrophic.
+5. **Tally Solutions as adversary:** building integrations against Tally's HTTP-XML API or TDL plugin requires Tally Server licensing and may violate EULAs. Tally has historically been protective. Reading public XML is unambiguously legal; writing back to Tally is not.
+6. **Cannibalisation:** if the migration is too easy AND the export-back is too easy, customers may run both tools and never commit, with no clear conversion to paid Quikfinance.
+
+Companion-mode flips every single one of these:
+
+| Migration-mode risk | How Companion eliminates it |
+|---|---|
+| Customer trust gap | Tally stays — zero risk to existing workflow |
+| CA workflow disruption | CA still files from Tally — Quikfinance is invisible to filing |
+| Lossy round-trip | One-way ingest — never round-trips, lossy doesn't matter |
+| Reputation risk | Worst case = "Quikfinance miscounted X" — fixable, not catastrophic |
+| Tally Solutions IP exposure | Read-only against public XML schema — zero exposure |
+| Cannibalisation | Companion tier is a permanent product paying recurring revenue |
+| Reconciliation stress | Tally numbers ARE Companion numbers (just visualised + AI'd) |
+
+The strategic insight: **the same parser pipeline that powers Companion IS the migration pipeline.** When (and if) trust is established 60–90 days post-onboarding, a "promote Companion → native" workflow ships in Session 2 with all the same engineering, but the customer comes to us asking for it rather than being asked to commit on Day 1.
+
+**Trade-off:** Companion mode means Quikfinance is augmenting Tally rather than replacing it, which leaves Tally Solutions in the value chain. Some customers will use Companion forever and never migrate fully — that's fine, they're still paying for the AI tier. The ~10 customers/year who genuinely need a clean Tally → Quikfinance switch can use the Session-2 promote-to-native flow once it ships, with the trust + reconciliation history of months of Companion mode behind them. Worst case we get the strategic blocker we'd have hit anyway with Migration-mode, but only after we've earned the right to ask.
+
+**Sprint 1 implementation (Sprint 1 PR):**
+- `lib/migration/canonical.ts` — versioned source-agnostic intermediate format (`CanonicalLedger`, `CanonicalVoucher`)
+- `lib/migration/parsers/tally-prime.ts` — Tally Prime XML parser; v1 covers Ledgers + Sales vouchers
+- `lib/migration/mapper.ts` — pure mapper from canonical to Prisma `createMany` rows
+- `prisma/migrations/20260614000000_tally_companion_v1` — `MigrationBatch`, `CompanionLedger`, `CompanionVoucher` tables (additive only, all behind a partial unique index on `(orgId, sourceFormat, sourceGuid) WHERE deletedAt IS NULL` for idempotent re-import)
+- `app/api/companion/upload/route.ts` — multipart upload, parse, persist; 10MB cap in v1 (background-processing for larger files = Phase 2)
+- `app/(dashboard)/settings/data/tally-companion/page.tsx` — landing page with upload widget + history list; reachable from Settings → Data Import & Export → Tally Companion (Beta)
+- 30 vitest unit tests covering parser + mapper happy-path + edge cases (unsupported voucher types, missing party refs, encoding-quirk numbers, unmapped Tally groups)
