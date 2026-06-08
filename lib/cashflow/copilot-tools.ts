@@ -29,6 +29,7 @@ import {
   getCachedToolResult,
   setCachedToolResult,
 } from "@/lib/llm/cache";
+import { proposeAction } from "@/lib/copilot/actions/propose";
 
 export type CopilotToolName =
   | "get_cashflow_summary"
@@ -37,7 +38,11 @@ export type CopilotToolName =
   | "get_upcoming_bills"
   | "get_top_customers_by_ar"
   | "get_recurring_profiles"
-  | "get_open_anomalies";
+  | "get_open_anomalies"
+  // Mutating Tools v1 — every "propose_*" tool creates an approval-
+  // gated CopilotProposedAction row. Nothing mutates until the user
+  // clicks Approve in the chat UI.
+  | "propose_dismiss_anomaly_alert";
 
 /** Tool schemas Anthropic receives. Order doesn't matter; Claude
  *  picks based on the descriptions. */
@@ -156,6 +161,27 @@ export const COPILOT_TOOLS = [
       },
     },
   },
+  {
+    name: "propose_dismiss_anomaly_alert",
+    description:
+      "Propose dismissing an open anomaly alert. Does NOT immediately dismiss — instead creates an approval-gated proposed action that the user reviews + approves in the chat UI before anything mutates. Use this ONLY when the user has indicated they want to dismiss a specific alert (e.g. 'dismiss the duplicate bill alert', 'mark that one as resolved', 'I've reviewed the missing recurring alert, close it'). Always include `alertId` (from get_open_anomalies). The `reason` field is optional but recommended — capture why they're dismissing so the audit log is useful later.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        alertId: {
+          type: "string",
+          description:
+            "The id of the AnomalyAlert to dismiss (from get_open_anomalies).",
+        },
+        reason: {
+          type: "string",
+          description:
+            "Optional human-readable reason for dismissal (max 200 chars). Captures the user's intent.",
+        },
+      },
+      required: ["alertId"],
+    },
+  },
 ] as const;
 
 const ALLOWED_STRESS = new Set([0, 7, 14, 30]);
@@ -181,6 +207,8 @@ const stressDaysSchema = z
   .optional();
 const limitSchema = z.number().int().positive().max(100).optional();
 const daysAheadSchema = z.number().int().positive().max(90).optional();
+const alertIdSchema = z.string().min(1).max(100);
+const reasonSchema = z.string().max(200).optional();
 
 const TOOL_INPUT_SCHEMAS: Record<string, z.ZodTypeAny> = {
   get_cashflow_summary: z
@@ -205,13 +233,18 @@ const TOOL_INPUT_SCHEMAS: Record<string, z.ZodTypeAny> = {
       limit: limitSchema,
     })
     .passthrough(),
+  propose_dismiss_anomaly_alert: z
+    .object({
+      alertId: alertIdSchema,
+      reason: reasonSchema,
+    })
+    .passthrough(),
 };
 
 /** Guardrail 8: which tools are deterministic-by-orgId-and-input
- *  enough to safely cache for 5 minutes. All v1 tools qualify
- *  (they're read-only views over data that mutates rarely vs the
- *  cache TTL). If we ever add write tools they go OUTSIDE this
- *  list and never hit the cache. */
+ *  enough to safely cache for 5 minutes. Only the read-only tools
+ *  qualify — propose_* tools are explicitly NOT cached because they
+ *  create rows + return fresh proposal ids per invocation. */
 const CACHEABLE_TOOLS = new Set([
   "get_cashflow_summary",
   "get_weekly_breakdown",
@@ -221,6 +254,15 @@ const CACHEABLE_TOOLS = new Set([
   "get_recurring_profiles",
   "get_open_anomalies",
 ]);
+
+/** Optional mutation context. Required when the tool being
+ *  invoked is a `propose_*` mutating tool — read-only tools
+ *  ignore it. Passed from the route handler which already
+ *  resolved user + conversation. */
+export type MutationContext = {
+  userId: string;
+  conversationId: string | null;
+};
 
 /** Dispatcher invoked by the API route on each tool call. Returns
  *  a plain object that Claude sees as the tool result.
@@ -239,7 +281,8 @@ export async function runTool(
   organizationId: string,
   organizationCurrency: string,
   name: string,
-  input: Record<string, unknown>
+  input: Record<string, unknown>,
+  mutationCtx?: MutationContext
 ): Promise<unknown> {
   const schema = TOOL_INPUT_SCHEMAS[name];
   if (schema) {
@@ -257,7 +300,7 @@ export async function runTool(
     if (cached !== undefined) return cached;
   }
 
-  const result = await runToolInner(organizationId, organizationCurrency, name, input);
+  const result = await runToolInner(organizationId, organizationCurrency, name, input, mutationCtx);
 
   if (CACHEABLE_TOOLS.has(name)) {
     setCachedToolResult(organizationId, name, input, result);
@@ -269,7 +312,8 @@ async function runToolInner(
   organizationId: string,
   organizationCurrency: string,
   name: string,
-  input: Record<string, unknown>
+  input: Record<string, unknown>,
+  mutationCtx?: MutationContext
 ): Promise<unknown> {
   const today = new Date();
   switch (name) {
@@ -594,6 +638,55 @@ async function runToolInner(
           refId: a.refId,
           detectedAt: format(a.createdAt, "yyyy-MM-dd"),
         })),
+      };
+    }
+
+    case "propose_dismiss_anomaly_alert": {
+      if (!mutationCtx) {
+        throw new Error(
+          "propose_dismiss_anomaly_alert requires a mutation context (userId, conversationId) — the route handler must pass it"
+        );
+      }
+      const alertId = String(input.alertId);
+      const reason =
+        typeof input.reason === "string" && input.reason.trim()
+          ? input.reason.trim().slice(0, 200)
+          : undefined;
+
+      // Validate the alert exists + is open + belongs to this org.
+      // Failing fast here lets Claude self-correct ("that alert is
+      // already dismissed") rather than letting a bad proposal sit
+      // around for the user.
+      const alert = await db.anomalyAlert.findFirst({
+        where: { id: alertId, organizationId },
+        select: { id: true, status: true, title: true },
+      });
+      if (!alert) {
+        return {
+          error: `Alert ${alertId} not found in this organization.`,
+        };
+      }
+      if (alert.status !== "open") {
+        return {
+          error: `Alert "${alert.title}" is already ${alert.status} — nothing to dismiss.`,
+        };
+      }
+
+      const proposal = await proposeAction({
+        organizationId,
+        userId: mutationCtx.userId,
+        conversationId: mutationCtx.conversationId,
+        actionType: "dismiss_anomaly_alert",
+        payload: { alertId, reason },
+        summary: `Dismiss alert "${alert.title}"${reason ? ` (reason: ${reason})` : ""}`,
+      });
+      return {
+        proposed: true,
+        proposalId: proposal.proposalId,
+        summary: proposal.summary,
+        expiresAt: proposal.expiresAt,
+        nextStep:
+          "Tell the user you've prepared this dismissal and they can approve it in the chat UI. Do NOT claim the alert is already dismissed — it's pending their click.",
       };
     }
 

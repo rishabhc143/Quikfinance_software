@@ -206,11 +206,15 @@ export async function POST(req: Request) {
             for (const block of response.content) {
               if (block.type !== "tool_use") continue;
               try {
+                // Mutating tools (propose_*) need user + conversation
+                // context to attribute the proposed action. Pass
+                // for all tools — read-only ones ignore it.
                 const result = await runTool(
                   organization.id,
                   organization.currency,
                   block.name,
-                  block.input as Record<string, unknown>
+                  block.input as Record<string, unknown>,
+                  { userId: user.id, conversationId }
                 );
                 toolResults.push({
                   type: "tool_result",

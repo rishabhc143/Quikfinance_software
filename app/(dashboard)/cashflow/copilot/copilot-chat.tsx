@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import { ProposalCard, type Proposal } from "./proposal-card";
 
 /**
  * CF-5/6 — Client-side chat shell for the CFO Copilot.
@@ -63,7 +64,33 @@ export function CopilotChat({
   const [busy, setBusy] = React.useState(false);
   const [loadingHistory, setLoadingHistory] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  // Mutating Tools v1 — proposals pending the user's approval in
+  // the active conversation. Loaded on conversation switch + after
+  // every send (Copilot may have proposed something).
+  const [pendingProposals, setPendingProposals] = React.useState<Proposal[]>([]);
   const scrollRef = React.useRef<HTMLDivElement>(null);
+
+  const refreshProposals = React.useCallback(async (convId: string | null) => {
+    if (!convId) {
+      setPendingProposals([]);
+      return;
+    }
+    try {
+      const r = await fetch(
+        `/api/cashflow/copilot/proposals/pending?conversationId=${encodeURIComponent(convId)}`
+      );
+      if (!r.ok) return;
+      const data = (await r.json()) as { proposals: Proposal[] };
+      setPendingProposals(data.proposals);
+    } catch {
+      // Silent — proposal panel is best-effort
+    }
+  }, []);
+
+  // Whenever the active conversation changes, reload proposals.
+  React.useEffect(() => {
+    refreshProposals(activeId);
+  }, [activeId, refreshProposals]);
 
   // Load the conversation list once on mount + after any send/delete.
   const refreshConversations = React.useCallback(async () => {
@@ -197,6 +224,9 @@ export function CopilotChat({
       // Refresh sidebar so the new / updated conversation appears
       // (and bubbles to the top thanks to lastActiveAt ordering).
       refreshConversations();
+      // Mutating Tools v1 — Claude may have proposed an action this
+      // turn; pull pending proposals so the approval card shows up.
+      refreshProposals(activeId);
     }
   }
 
@@ -348,6 +378,15 @@ export function CopilotChat({
                   {error}
                 </div>
               )}
+              {/* Mutating Tools v1 — render any pending approval
+                  cards inline below the message stream. */}
+              {pendingProposals.map((p) => (
+                <ProposalCard
+                  key={p.id}
+                  proposal={p}
+                  onResolved={() => refreshProposals(activeId)}
+                />
+              ))}
             </div>
             <form
               onSubmit={onSubmit}
