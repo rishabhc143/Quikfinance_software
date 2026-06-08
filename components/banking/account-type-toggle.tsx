@@ -13,7 +13,7 @@ import { Textarea } from "@/components/ui/textarea";
  * - Bank type shows: Account Number, IFSC, Make-this-primary checkbox
  * - Credit Card type hides those three fields
  * - Both types share: Account Name, Account Code, Currency, Bank Name,
- *   Description
+ *   Opening Balance, As-of Date, Description
  *
  * Renders inside a parent <form action={createBankAccountAction}> — submits
  * via standard FormData. The `type` value is what flips the conditional
@@ -108,6 +108,34 @@ export function AccountTypeToggle({ defaultCurrency }: Props) {
           <HistoryInput autofillKey="account.ifsc" id="ifsc" name="ifsc" maxLength={20} />
         </div>
       ) : null}
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div>
+          <Label htmlFor="openingBalance">Opening Balance</Label>
+          <Input
+            id="openingBalance"
+            name="openingBalance"
+            type="number"
+            inputMode="decimal"
+            step="0.01"
+            min="0"
+            defaultValue="0"
+            placeholder="0.00"
+          />
+          <p className="mt-1 text-xs text-muted-foreground">
+            The bank balance as of the date below. Used by the first
+            reconciliation as its starting point.
+          </p>
+        </div>
+        <div>
+          <Label htmlFor="openingBalanceAsOf">As of Date</Label>
+          <Input
+            id="openingBalanceAsOf"
+            name="openingBalanceAsOf"
+            type="date"
+          />
+        </div>
+      </div>
 
       <div>
         <Label htmlFor="description">Description</Label>
