@@ -14,7 +14,9 @@
     "prisma:studio": "prisma studio",
     "db:seed": "tsx prisma/seed.ts",
     "test": "vitest",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "sanity": "pnpm prisma generate && pnpm type-check && pnpm lint && pnpm test --run && pnpm build",
+    "smoke:prod": "bash scripts/smoke-prod.sh"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
