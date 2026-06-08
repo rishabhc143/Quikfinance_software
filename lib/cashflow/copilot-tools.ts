@@ -45,7 +45,7 @@ export const COPILOT_TOOLS = [
   {
     name: "get_cashflow_summary",
     description:
-      "Returns the high-level 12-week cashflow forecast for this organization: starting balance, projected ending balance, total inflows and outflows, minimum running balance and the date it occurs, weeks with negative cashflow, and insolvency risk flag. Use this when the user asks about overall cash position, runway, or whether they're at risk. Optional `stressDays` (0/7/14/30) adds a 'collections slip by N days' scenario layer.",
+      "Returns the high-level 12-week cashflow forecast for this organization: starting balance, projected ending balance, total inflows and outflows, minimum running balance and the date it occurs, weeks with negative cashflow, and insolvency risk flag. Use this when the user asks about overall cash position, runway, or whether they're at risk. Optional `stressDays` (0/7/14/30) adds a 'collections slip by N days' scenario layer. Optional `includeCompanion` (default false) mixes in imported Tally voucher data — pass true when the user asks about their Tally data or wants to see the combined picture.",
     input_schema: {
       type: "object" as const,
       properties: {
@@ -55,19 +55,27 @@ export const COPILOT_TOOLS = [
             "Optional stress-test offset in days. 0 = base case. 7/14/30 = stress scenarios. Defaults to 0.",
           enum: [0, 7, 14, 30],
         },
+        includeCompanion: {
+          type: "boolean",
+          description:
+            "When true, the forecast includes CompanionVoucher rows imported from Tally alongside native Invoices/Bills. Defaults to false. Pass true when the user mentions Tally or wants to see imported data factored in.",
+        },
       },
     },
   },
   {
     name: "get_weekly_breakdown",
     description:
-      "Returns the 12 weekly buckets of the forecast: per-week inflows, outflows, net cashflow, ending balance, and minimum balance. Use this when the user asks 'when will I be in deficit?' or 'which week is worst?' or wants a week-by-week view.",
+      "Returns the 12 weekly buckets of the forecast: per-week inflows, outflows, net cashflow, ending balance, and minimum balance. Use this when the user asks 'when will I be in deficit?' or 'which week is worst?' or wants a week-by-week view. Optional `includeCompanion` (default false) factors in imported Tally data.",
     input_schema: {
       type: "object" as const,
       properties: {
         stressDays: {
           type: "number",
           enum: [0, 7, 14, 30],
+        },
+        includeCompanion: {
+          type: "boolean",
         },
       },
     },
@@ -175,8 +183,18 @@ const limitSchema = z.number().int().positive().max(100).optional();
 const daysAheadSchema = z.number().int().positive().max(90).optional();
 
 const TOOL_INPUT_SCHEMAS: Record<string, z.ZodTypeAny> = {
-  get_cashflow_summary: z.object({ stressDays: stressDaysSchema }).passthrough(),
-  get_weekly_breakdown: z.object({ stressDays: stressDaysSchema }).passthrough(),
+  get_cashflow_summary: z
+    .object({
+      stressDays: stressDaysSchema,
+      includeCompanion: z.boolean().optional(),
+    })
+    .passthrough(),
+  get_weekly_breakdown: z
+    .object({
+      stressDays: stressDaysSchema,
+      includeCompanion: z.boolean().optional(),
+    })
+    .passthrough(),
   get_overdue_invoices: z.object({ limit: limitSchema }).passthrough(),
   get_upcoming_bills: z.object({ limit: limitSchema, daysAhead: daysAheadSchema }).passthrough(),
   get_top_customers_by_ar: z.object({ limit: limitSchema }).passthrough(),
@@ -259,14 +277,17 @@ async function runToolInner(
       const stressDays = ALLOWED_STRESS.has(input.stressDays as number)
         ? (input.stressDays as number)
         : 0;
+      const includeCompanion = input.includeCompanion === true;
       const f = await computeForecast(organizationId, today, 84, {
         currency: organizationCurrency,
         stressDays,
+        includeCompanion,
       });
       return {
         currency: f.currency,
         scenario:
           stressDays === 0 ? "base" : `stress: +${stressDays} days delay`,
+        includesCompanionData: includeCompanion,
         startingBalance: f.summary.startingBalance,
         endingBalance: f.summary.endingBalance,
         totalInflows: f.summary.totalInflows,
@@ -277,6 +298,7 @@ async function runToolInner(
         weeksWithDeficit: f.summary.weeksWithDeficit,
         hasInsolvencyRisk: f.summary.hasInsolvencyRisk,
         patternsApplied: f.summary.patternsApplied,
+        companionItemsIncluded: f.summary.companionItemsIncluded,
       };
     }
 
@@ -284,14 +306,18 @@ async function runToolInner(
       const stressDays = ALLOWED_STRESS.has(input.stressDays as number)
         ? (input.stressDays as number)
         : 0;
+      const includeCompanion = input.includeCompanion === true;
       const f = await computeForecast(organizationId, today, 84, {
         currency: organizationCurrency,
         stressDays,
+        includeCompanion,
       });
       return {
         currency: f.currency,
         scenario:
           stressDays === 0 ? "base" : `stress: +${stressDays} days delay`,
+        includesCompanionData: includeCompanion,
+        companionItemsIncluded: f.summary.companionItemsIncluded,
         weeks: f.weeks.map((w, idx) => ({
           weekNumber: idx + 1,
           weekStart: w.weekStart,

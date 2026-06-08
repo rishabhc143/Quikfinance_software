@@ -34,6 +34,7 @@ import "server-only";
 
 import { addDays, format, startOfDay } from "date-fns";
 import { db } from "@/lib/db";
+import { projectCompanionVouchers } from "./companion-projection";
 import {
   getCustomerPaymentDelays,
   getVendorPaymentDelays,
@@ -66,6 +67,19 @@ export type ForecastOptions = {
    * own scheduled bills, not customer-paid).
    */
   stressDays?: number;
+  /**
+   * Tally Companion Sprint 2 — when true, CompanionVoucher rows
+   * (imported from Tally) project as inflows/outflows alongside
+   * native Invoices/Bills. Default false to preserve existing
+   * single-source-of-truth behaviour for orgs that haven't imported
+   * Tally data (and to keep the "double-count Tally + native"
+   * concern an explicit opt-in rather than a surprise).
+   *
+   * See lib/cashflow/companion-projection.ts for the v1 assumptions
+   * (net-30 payment, 90-day age cutoff, no payment-delay learning
+   * applied to imported data).
+   */
+  includeCompanion?: boolean;
 };
 
 export async function computeForecast(
@@ -83,6 +97,7 @@ export async function computeForecast(
     0,
     Math.min(MAX_STRESS_DAYS, options?.stressDays ?? 0)
   );
+  const includeCompanion = options?.includeCompanion === true;
 
   const [
     bankAccounts,
@@ -94,6 +109,7 @@ export async function computeForecast(
     recurringExpenses,
     customerDelays,
     vendorDelays,
+    companionResult,
   ] = await Promise.all([
     db.bankAccount.findMany({
       where: { organizationId, isActive: true },
@@ -203,6 +219,12 @@ export async function computeForecast(
     // not just contractual due dates.
     getCustomerPaymentDelays(organizationId, start),
     getVendorPaymentDelays(organizationId, start),
+    // Tally Companion Sprint 2 — only fetch CompanionVoucher rows
+    // when the caller has opted in. Returns empty result when off
+    // so the loop below is a no-op.
+    includeCompanion
+      ? projectCompanionVouchers(organizationId, start, end)
+      : Promise.resolve({ projections: [], total: 0 }),
   ]);
 
   // ── Starting balance ───────────────────────────────────────────────────
@@ -421,6 +443,15 @@ export async function computeForecast(
     }
   }
 
+  // ── Companion vouchers (Tally Companion Sprint 2) ───────────────────
+  // Each CompanionVoucher is placed via the same `placeOn` helper as
+  // native data, with NO payment-delay pattern (Companion data lacks
+  // the historical pair-matching needed for CF-2-style learning).
+  // The placeOn helper still handles past-due → day-0 placement.
+  for (const cp of companionResult.projections) {
+    placeOn(cp.date, cp.item, cp.direction);
+  }
+
   // ── Running balance walk-through ──────────────────────────────────────
   let running = startingBalance;
   const days: ForecastDay[] = [];
@@ -498,6 +529,7 @@ export async function computeForecast(
       weeksWithDeficit,
       hasInsolvencyRisk,
       patternsApplied,
+      companionItemsIncluded: companionResult.total,
     },
   };
 }
