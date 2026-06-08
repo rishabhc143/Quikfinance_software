@@ -177,8 +177,17 @@ A `/api/ping` route exists for keep-warm purposes but is NOT wired into Vercel C
 # Run a single test file
 pnpm test --run tests/unit/documents/parsers/llm-fallback.test.ts
 
-# Full verify gauntlet
-pnpm prisma generate && pnpm type-check && pnpm lint && pnpm test --run && pnpm build
+# Sanity check (after any non-trivial dev — wraps the full gauntlet)
+pnpm sanity
+# Equivalent to:
+#   pnpm prisma generate && pnpm type-check && pnpm lint && pnpm test --run && pnpm build
+
+# Prod smoke test (end-of-day or post-deploy)
+pnpm smoke:prod
+# Hits the canonical URL, asserts public routes 200,
+# auth-gated routes 307 → /login, API endpoints reject
+# unauthenticated calls, latest Vercel deploy = Ready.
+# Override with PROD_URL=https://preview.example pnpm smoke:prod
 
 # Watch CI green
 gh pr checks <num> --watch
@@ -193,6 +202,16 @@ curl -X POST -H "x-migration-key: $MIGRATION_KEY" \
 # List prod deploys
 vercel ls --prod | head -5
 ```
+
+## QA discipline (established 8 Jun 2026)
+
+**Sanity test** after every non-trivial change — `pnpm sanity`. Must be green before any commit.
+
+**Smoke test** at the end of every dev day — `pnpm smoke:prod`. Must be 19/19 green. If anything red, investigate before logging off.
+
+**CI green** before merging any PR — `gh pr checks <num> --watch` blocks until green.
+
+**Prod migration** triggered manually within 5 minutes of every PR with schema changes — never wait for "next deploy" to remember.
 
 ## Where to find the most recent plan
 
