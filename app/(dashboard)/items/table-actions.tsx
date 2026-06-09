@@ -2,7 +2,6 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { MoreHorizontal } from "lucide-react";
 import {
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent,
@@ -15,23 +14,20 @@ import { ExportModal } from "./export-modals";
 /**
  * Items list-page overflow menu.
  *
- * The "Sort by" submenu used to live here as a redundant way to set
- * `?sort=…&dir=…` via menu picks. It was dropped because column-header
- * clicks already sort the table — that's the discoverable native
- * pattern — and the menu sub-list duplicated the affordance with two
- * extra clicks. URL-level sorting (parsed by `parseListSearchParams`)
- * and column-header `SortHeader` (lib/items/items-table.tsx) are
- * untouched.
+ * Items removed over time as the table acquired native equivalents:
+ *   - "Sort by" submenu — column-header clicks already sort, the
+ *     submenu duplicated the affordance.
+ *   - "Refresh List" — browser refresh / Next.js router refresh on
+ *     navigation already covers this; the menu item was unused noise.
+ *   - "Reset Column Width" — column widths weren't user-resizable
+ *     anywhere this menu fronted, so the localStorage clear was a
+ *     dead-end action.
+ *
+ * URL-level sorting (parsed by `parseListSearchParams`) and the
+ * column-header `SortHeader` component (items-table.tsx) are untouched.
  */
 export function ItemsTableActions() {
-  const router = useRouter();
-
   const [exportScope, setExportScope] = React.useState<"all" | "view" | null>(null);
-
-  function refresh() { router.refresh(); }
-  function resetCols() {
-    if (typeof window !== "undefined") localStorage.removeItem("qf:items-column-widths");
-  }
 
   return (
     <>
@@ -54,8 +50,6 @@ export function ItemsTableActions() {
           </DropdownMenuSub>
           <DropdownMenuSeparator />
           <DropdownMenuItem asChild><Link href="/settings/preferences/items">Preferences</Link></DropdownMenuItem>
-          <DropdownMenuItem onSelect={refresh}>Refresh List</DropdownMenuItem>
-          <DropdownMenuItem onSelect={resetCols}>Reset Column Width</DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
 
