@@ -75,7 +75,7 @@ export default async function ItemsPage({ searchParams }: { searchParams: Search
           <Button asChild>
             <Link href="/items/new"><Plus className="h-4 w-4 mr-1" /> New</Link>
           </Button>
-          <ItemsTableActions sort={sort} dir={dir} />
+          <ItemsTableActions />
         </div>
       </header>
 

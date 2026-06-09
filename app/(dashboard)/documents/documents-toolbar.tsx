@@ -2,12 +2,10 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import {
   Upload,
   ChevronDown,
   MoreVertical,
-  RefreshCw,
   Download,
   Link2,
   Mail,
@@ -21,7 +19,6 @@ import {
   DropdownMenuSub,
   DropdownMenuSubTrigger,
   DropdownMenuSubContent,
-  DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 
 /**
@@ -41,8 +38,6 @@ export function DocumentsToolbar({
 }: {
   title: string;
 }) {
-  const router = useRouter();
-
   return (
     <div className="flex items-center justify-between gap-2 px-6 py-3 border-b bg-background">
       <h2 className="text-base font-semibold">{title}</h2>
@@ -108,11 +103,6 @@ export function DocumentsToolbar({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="min-w-[180px]">
-            <DropdownMenuItem onSelect={() => router.refresh()}>
-              <RefreshCw className="h-3.5 w-3.5 mr-2" />
-              Refresh List
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
             <DropdownMenuSub>
               <DropdownMenuSubTrigger>
                 <Upload className="h-3.5 w-3.5 mr-2" />

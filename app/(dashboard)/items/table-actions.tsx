@@ -2,7 +2,6 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { MoreHorizontal } from "lucide-react";
 import {
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent,
@@ -12,24 +11,23 @@ import {
 import { Button } from "@/components/ui/button";
 import { ExportModal } from "./export-modals";
 
-export function ItemsTableActions({ sort, dir }: { sort: string; dir: string }) {
-  const router = useRouter();
-  const pathname = usePathname();
-  const sp = useSearchParams();
-
+/**
+ * Items list-page overflow menu.
+ *
+ * Items removed over time as the table acquired native equivalents:
+ *   - "Sort by" submenu — column-header clicks already sort, the
+ *     submenu duplicated the affordance.
+ *   - "Refresh List" — browser refresh / Next.js router refresh on
+ *     navigation already covers this; the menu item was unused noise.
+ *   - "Reset Column Width" — column widths weren't user-resizable
+ *     anywhere this menu fronted, so the localStorage clear was a
+ *     dead-end action.
+ *
+ * URL-level sorting (parsed by `parseListSearchParams`) and the
+ * column-header `SortHeader` component (items-table.tsx) are untouched.
+ */
+export function ItemsTableActions() {
   const [exportScope, setExportScope] = React.useState<"all" | "view" | null>(null);
-
-  function setSort(field: string, d: "asc" | "desc") {
-    const next = new URLSearchParams(sp.toString());
-    next.set("sort", field);
-    next.set("dir", d);
-    next.delete("page");
-    router.push(`${pathname}?${next.toString()}`);
-  }
-  function refresh() { router.refresh(); }
-  function resetCols() {
-    if (typeof window !== "undefined") localStorage.removeItem("qf:items-column-widths");
-  }
 
   return (
     <>
@@ -40,27 +38,6 @@ export function ItemsTableActions({ sort, dir }: { sort: string; dir: string }) 
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-56">
-          <DropdownMenuSub>
-            <DropdownMenuSubTrigger>Sort by</DropdownMenuSubTrigger>
-            <DropdownMenuPortal>
-              <DropdownMenuSubContent>
-                {([
-                  ["name", "Name"], ["costPrice", "Purchase Rate"], ["sellingPrice", "Rate"],
-                  ["updatedAt", "Last Modified Time"], ["createdAt", "Created Time"],
-                ] as const).map(([field, label]) => (
-                  <React.Fragment key={field}>
-                    <DropdownMenuItem onSelect={() => setSort(field, "asc")} className={sort === field && dir === "asc" ? "font-semibold" : ""}>
-                      {label} ↑
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onSelect={() => setSort(field, "desc")} className={sort === field && dir === "desc" ? "font-semibold" : ""}>
-                      {label} ↓
-                    </DropdownMenuItem>
-                  </React.Fragment>
-                ))}
-              </DropdownMenuSubContent>
-            </DropdownMenuPortal>
-          </DropdownMenuSub>
-          <DropdownMenuSeparator />
           <DropdownMenuItem asChild><Link href="/items/import">Import Items</Link></DropdownMenuItem>
           <DropdownMenuSub>
             <DropdownMenuSubTrigger>Export</DropdownMenuSubTrigger>
@@ -73,8 +50,6 @@ export function ItemsTableActions({ sort, dir }: { sort: string; dir: string }) 
           </DropdownMenuSub>
           <DropdownMenuSeparator />
           <DropdownMenuItem asChild><Link href="/settings/preferences/items">Preferences</Link></DropdownMenuItem>
-          <DropdownMenuItem onSelect={refresh}>Refresh List</DropdownMenuItem>
-          <DropdownMenuItem onSelect={resetCols}>Reset Column Width</DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
 
