@@ -2,7 +2,6 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import Papa from "papaparse";
 import { useDropzone } from "react-dropzone";
 import { Upload, FileSpreadsheet, ArrowRight, ArrowLeft, CheckCircle2, AlertTriangle, Loader2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { importItemsAction } from "../actions";
+import { parseSpreadsheet } from "@/lib/import/parse-spreadsheet";
 import { toast } from "sonner";
 
 type Step = 1 | 2 | 3;
@@ -59,32 +59,28 @@ export function ImportWizard() {
 
   async function parseAndAdvance() {
     if (!file) return;
-    if (!file.name.endsWith(".csv") && !file.name.endsWith(".tsv")) {
-      toast.error("XLS/XLSX support is currently parse-only via CSV. Save as CSV and re-upload for now.");
-      return;
-    }
     setBusy(true);
-    const text = await file.text();
-    const parsed = Papa.parse<Record<string, string>>(text, {
-      header: true,
-      skipEmptyLines: true,
-      delimiter: file.name.endsWith(".tsv") ? "\t" : undefined,
-    });
-    setBusy(false);
-    if (parsed.errors.length > 0) {
-      toast.error(`CSV parse error: ${parsed.errors[0].message}`);
+    let parsed;
+    try {
+      // Handles CSV / TSV via Papa.parse and XLS / XLSX via ExcelJS,
+      // returning a uniform { headers, rows } shape. See
+      // lib/import/parse-spreadsheet.ts.
+      parsed = await parseSpreadsheet(file);
+    } catch (err) {
+      setBusy(false);
+      const msg = err instanceof Error ? err.message : "Could not read file";
+      toast.error(msg);
       return;
     }
-    const data = parsed.data;
-    const cols = Object.keys(data[0] ?? {});
-    setHeaders(cols);
-    setRows(data);
+    setBusy(false);
+    setHeaders(parsed.headers);
+    setRows(parsed.rows);
 
     // Auto-map: case-insensitive match on label and key
     const auto: Partial<Record<TargetKey, string>> = {};
     for (const target of TARGET_FIELDS) {
       const tHay = [target.key, target.label].map((s) => s.toLowerCase().replace(/[\s()/]+/g, ""));
-      const match = cols.find((c) => tHay.includes(c.toLowerCase().replace(/[\s()/]+/g, "")));
+      const match = parsed.headers.find((c) => tHay.includes(c.toLowerCase().replace(/[\s()/]+/g, "")));
       if (match) auto[target.key] = match;
     }
     setMapping((m) => ({ ...m, ...auto }));
@@ -202,7 +198,7 @@ export function ImportWizard() {
                 <strong>Tips:</strong>
                 <ul className="list-disc list-inside mt-1 text-xs space-y-0.5">
                   <li>Map your existing GST treatments into Quikfinance tax codes after import.</li>
-                  <li>Use a CSV converter if your accounting tool exports XLS variants Quikfinance does not yet parse.</li>
+                  <li>XLSX / XLS files use the first sheet only. Move the data you want to import to Sheet 1.</li>
                 </ul>
               </AlertDescription>
             </Alert>

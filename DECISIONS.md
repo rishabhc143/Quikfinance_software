@@ -61,10 +61,11 @@ Every interpretive call I made while implementing the master prompt, with the re
 **Why:** the prompt mandates UploadThing/S3 "stub config", so spinning up a real bucket isn't required for Phase 2. Data URLs work end-to-end today.
 **Trade-off:** large images bloat the row. When real uploads land in Phase 4, the form swaps `readAsDataURL` for an upload call and writes the resulting URL — schema doesn't change.
 
-### D12. XLS/XLSX import is parse-only via "save as CSV" instruction.
-**Choice:** import wizard accepts CSV/TSV directly with `papaparse`. XLS/XLSX upload paths show a toast asking the user to save as CSV.
-**Why:** browser-side XLSX parsing requires shipping `xlsx` (~1.5MB) to the client; adding it to a wizard most users won't open daily is wasteful. Server-side parsing requires file-upload plumbing not yet built.
-**Trade-off:** users with XLSX-only data have to convert. When inline file upload is added in Phase 4, the wizard's `onDrop` switches to `fetch("/api/items/upload-and-parse")` — UI is unchanged.
+### D12. Items import accepts CSV / TSV / XLS / XLSX directly.
+**Choice (superseded D12 original):** the Items import wizard parses CSV/TSV with `papaparse` and XLS/XLSX with `exceljs` — both client-side. Logic lives in `lib/import/parse-spreadsheet.ts` as a shared `parseSpreadsheet(file)` helper that returns a uniform `{ headers, rows }` shape regardless of format.
+**Why:** the original D12 rejected XLSX to avoid shipping `xlsx` (~1.5MB) to the client. ExcelJS is already a dependency (used by the cashflow export at `lib/cashflow/xlsx-export.ts`), so adding the XLSX read path was zero net JS payload. The earlier "save as CSV" instruction was a UX dead-end — users uploaded XLSX, clicked Next, got a confusing toast, and were stuck.
+**Trade-off:** ExcelJS read only handles the FIRST sheet; multi-sheet support is a future feature (would need a sheet picker step). The helper coerces every cell to a string for the wizard's downstream mapping; type-aware parsing (Date/Number cells) is the responsibility of the per-field consumer (e.g. `importItemsAction` runs `Number(row[mapping.sellingPrice])`).
+**Follow-up:** the other 14 import wizards (sales/purchases/contacts/accountant) still use Papa.parse directly. A sweep to migrate them to `parseSpreadsheet()` would unlock XLSX upload across the app.
 
 ### D13. Export password protection is documented as not-yet-implemented; the modal collects it but the API ignores it.
 **Choice:** the Export modal validates the password against the prompt's strict rule (12+ chars, upper/lower/number/special) but the API endpoint produces an unprotected XLSX. The modal text discloses this.
