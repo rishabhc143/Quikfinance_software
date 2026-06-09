@@ -1,24 +1,13 @@
 "use client";
 
 import * as React from "react";
-import { useRouter, usePathname, useSearchParams } from "next/navigation";
-import {
-  MoreHorizontal,
-  ArrowUpDown,
-  Upload,
-  Download,
-  Check,
-} from "lucide-react";
+import { MoreHorizontal, Upload, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSub,
-  DropdownMenuSubTrigger,
-  DropdownMenuSubContent,
-  DropdownMenuPortal,
 } from "@/components/ui/dropdown-menu";
 import { ImportCoaDialog } from "./import-dialog";
 import { ExportCoaDialog } from "./export-dialog";
@@ -26,54 +15,25 @@ import { ExportCoaDialog } from "./export-dialog";
 /**
  * ACCT-E.4 — Chart of Accounts "More actions" menu.
  *
- * Mirrors the spec'''s 3-dot menu:
- *   - Sort by ▸  (Account Name / Account Code / Account Type)
+ * Spec's 3-dot menu items:
  *   - Import Chart of Accounts  (opens 2-step CSV wizard)
- *   - Export ▸  (Export to CSV)
+ *   - Export                    (opens scope picker)
  *
- * Sort writes `?sort=<col>:<dir>` to the URL so the server
- * component re-fetches in the new order. The current sort is
- * highlighted with a check mark for orientation.
+ * Sort UI used to live here as a "Sort by ▸" submenu but was
+ * dropped — column-header clicks already sort the table and the
+ * menu sub-list duplicated the affordance. URL-level sorting
+ * (`?sort=<col>:<dir>`) is still honored by the page; the column
+ * headers in the CoA table set those params on click.
  */
-
-type SortKey = "name" | "code" | "type";
-type SortDir = "asc" | "desc";
-
-const SORT_OPTIONS: Array<{ key: SortKey; label: string }> = [
-  { key: "name", label: "Account Name" },
-  { key: "code", label: "Account Code" },
-  { key: "type", label: "Account Type" },
-];
-
 export function CoaActionsMenu({
-  currentSort,
   exportScope,
 }: {
-  /** Current sort encoded as `<key>:<dir>` or null when default. */
-  currentSort: string | null;
   /** `?status=…&q=…` from the list page, passed to the export
    *  dialog so the download honors the current view. */
   exportScope: string;
 }) {
-  const router = useRouter();
-  const pathname = usePathname();
-  const search = useSearchParams();
   const [importOpen, setImportOpen] = React.useState(false);
   const [exportOpen, setExportOpen] = React.useState(false);
-
-  const [curKey, curDir] = (currentSort ?? "type:asc").split(":") as [
-    SortKey,
-    SortDir,
-  ];
-
-  function setSort(key: SortKey, dir: SortDir) {
-    const next = new URLSearchParams(search?.toString() ?? "");
-    if (key === "type" && dir === "asc") next.delete("sort");
-    else next.set("sort", `${key}:${dir}`);
-    next.delete("page");
-    const qs = next.toString();
-    router.push(qs ? `${pathname}?${qs}` : pathname);
-  }
 
   return (
     <>
@@ -88,45 +48,6 @@ export function CoaActionsMenu({
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-56">
-          <DropdownMenuSub>
-            <DropdownMenuSubTrigger>
-              <ArrowUpDown className="h-3.5 w-3.5 mr-2" />
-              Sort by
-            </DropdownMenuSubTrigger>
-            <DropdownMenuPortal>
-              <DropdownMenuSubContent>
-                {SORT_OPTIONS.map((opt) => {
-                  const ascActive = curKey === opt.key && curDir === "asc";
-                  const descActive = curKey === opt.key && curDir === "desc";
-                  return (
-                    <React.Fragment key={opt.key}>
-                      <DropdownMenuItem
-                        onClick={() => setSort(opt.key, "asc")}
-                      >
-                        {ascActive ? (
-                          <Check className="h-3.5 w-3.5 mr-2" />
-                        ) : (
-                          <span className="w-3.5 mr-2" />
-                        )}
-                        {opt.label} (A→Z)
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        onClick={() => setSort(opt.key, "desc")}
-                      >
-                        {descActive ? (
-                          <Check className="h-3.5 w-3.5 mr-2" />
-                        ) : (
-                          <span className="w-3.5 mr-2" />
-                        )}
-                        {opt.label} (Z→A)
-                      </DropdownMenuItem>
-                    </React.Fragment>
-                  );
-                })}
-              </DropdownMenuSubContent>
-            </DropdownMenuPortal>
-          </DropdownMenuSub>
-
           <DropdownMenuItem onClick={() => setImportOpen(true)}>
             <Upload className="h-3.5 w-3.5 mr-2" />
             Import Chart of Accounts

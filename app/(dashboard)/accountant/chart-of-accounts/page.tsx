@@ -136,7 +136,6 @@ export default async function ChartOfAccountsPage({
           <CoaSearchBox initial={q} />
           <NewAccountDialog />
           <CoaActionsMenu
-            currentSort={searchParams?.sort ?? null}
             exportScope={
               [
                 status !== "active" ? `status=${status}` : "",

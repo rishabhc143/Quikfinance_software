@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { useRouter, useSearchParams, usePathname } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { MoreHorizontal } from "lucide-react";
 import {
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent,
@@ -12,20 +12,22 @@ import {
 import { Button } from "@/components/ui/button";
 import { ExportModal } from "./export-modals";
 
-export function ItemsTableActions({ sort, dir }: { sort: string; dir: string }) {
+/**
+ * Items list-page overflow menu.
+ *
+ * The "Sort by" submenu used to live here as a redundant way to set
+ * `?sort=…&dir=…` via menu picks. It was dropped because column-header
+ * clicks already sort the table — that's the discoverable native
+ * pattern — and the menu sub-list duplicated the affordance with two
+ * extra clicks. URL-level sorting (parsed by `parseListSearchParams`)
+ * and column-header `SortHeader` (lib/items/items-table.tsx) are
+ * untouched.
+ */
+export function ItemsTableActions() {
   const router = useRouter();
-  const pathname = usePathname();
-  const sp = useSearchParams();
 
   const [exportScope, setExportScope] = React.useState<"all" | "view" | null>(null);
 
-  function setSort(field: string, d: "asc" | "desc") {
-    const next = new URLSearchParams(sp.toString());
-    next.set("sort", field);
-    next.set("dir", d);
-    next.delete("page");
-    router.push(`${pathname}?${next.toString()}`);
-  }
   function refresh() { router.refresh(); }
   function resetCols() {
     if (typeof window !== "undefined") localStorage.removeItem("qf:items-column-widths");
@@ -40,27 +42,6 @@ export function ItemsTableActions({ sort, dir }: { sort: string; dir: string }) 
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-56">
-          <DropdownMenuSub>
-            <DropdownMenuSubTrigger>Sort by</DropdownMenuSubTrigger>
-            <DropdownMenuPortal>
-              <DropdownMenuSubContent>
-                {([
-                  ["name", "Name"], ["costPrice", "Purchase Rate"], ["sellingPrice", "Rate"],
-                  ["updatedAt", "Last Modified Time"], ["createdAt", "Created Time"],
-                ] as const).map(([field, label]) => (
-                  <React.Fragment key={field}>
-                    <DropdownMenuItem onSelect={() => setSort(field, "asc")} className={sort === field && dir === "asc" ? "font-semibold" : ""}>
-                      {label} ↑
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onSelect={() => setSort(field, "desc")} className={sort === field && dir === "desc" ? "font-semibold" : ""}>
-                      {label} ↓
-                    </DropdownMenuItem>
-                  </React.Fragment>
-                ))}
-              </DropdownMenuSubContent>
-            </DropdownMenuPortal>
-          </DropdownMenuSub>
-          <DropdownMenuSeparator />
           <DropdownMenuItem asChild><Link href="/items/import">Import Items</Link></DropdownMenuItem>
           <DropdownMenuSub>
             <DropdownMenuSubTrigger>Export</DropdownMenuSubTrigger>
